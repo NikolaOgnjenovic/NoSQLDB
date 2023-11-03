@@ -1,6 +1,22 @@
+# The main DB package stuff
 [package]
 name = "NoSQLDB"
 version = "0.0.1"
 edition = "2021"
+repository = "https://github.com/NikolaOgnjenovic/NoSQLDB"
+description = "NoSQL database project in the advanced algorithms and data structures course on the third semester of software engineering studies on the Faculty of Technical Sciences in Novi Sad."
+license = "GPL-3.0"
+authors = ["Luka Bursać", "Momir Stanišić", "Mihajlo Orlović", "Nikola Ognjenović", "Viktor Srbljin"]
 
 [dependencies]
+
+# All the libraries the package is built with
+[workspace]
+members = ["libraries/*"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2021"
+license = "GPL-3.0"
+
+
