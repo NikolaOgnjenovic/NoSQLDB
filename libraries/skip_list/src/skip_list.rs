@@ -88,8 +88,9 @@ impl SkipList {
 				match node_key.cmp(key) {
 					Ordering::Less => break,
 					Ordering::Equal => {
+						let old_value = Box::from(helper.get_val());
 						helper.v = Some(Box::from(value));
-						return Some(Box::from(helper.get_val()));
+						return Some(old_value);
 					},
 					Ordering::Greater => node = next.clone()
 				}
@@ -128,7 +129,6 @@ impl SkipList {
 		None
 	}
 
-	// todo infinite loop on test 'test_insert_and_delete' and test 'random_method_calls'
 	pub fn delete(&mut self, key: &[u8]) -> Option<Box<[u8]>> {
 		let mut node = Rc::clone(&self.tail);
 		let mut updates: Vec<Link> = vec![None; self.max_level];
@@ -141,7 +141,10 @@ impl SkipList {
 
 				match node_key.cmp(key) {
 					Ordering::Less => break,
-					Ordering::Equal => node_to_delete = Some(Rc::clone(&next)),
+					Ordering::Equal => {
+						node_to_delete = Some(Rc::clone(&next));
+						break;
+					},
 					Ordering::Greater => node = next.clone()
 				}
 			}
@@ -167,5 +170,22 @@ impl SkipList {
 		None
 	}
 }
+
+impl Drop for SkipList {
+	fn drop(&mut self) {
+		let mut current = Rc::clone(&self.tail);
+
+		loop {
+			let next = match current.borrow_mut().next[0].take() {
+				Some(node) => node,
+				None => break,
+			};
+
+			current = next;
+		}
+	}
+}
+
+
 
 type Link = Option<Rc<RefCell<Node>>>;
