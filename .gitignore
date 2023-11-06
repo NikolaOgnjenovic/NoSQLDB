@@ -2,3 +2,5 @@
 **/tests/
 **/.idea/
 Cargo.lock
+**/.vs/
+
