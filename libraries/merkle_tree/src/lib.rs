@@ -73,4 +73,18 @@ mod tests {
 
         assert!(merkle_tree.root.is_none());
     }
+
+    /// Tests the serialization and deserialization of a Merkle tree.
+    #[test]
+    fn test_serialization_deserialization() {
+        let original_data = &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        let merkle_tree = MerkleTree::new(original_data);
+        let serialized_data = merkle_tree.serialize();
+        let deserialized_tree = MerkleTree::deserialize(serialized_data);
+
+        assert_eq!(
+            merkle_tree.get_different_chunks_indices(&deserialized_tree),
+            Vec::<usize>::new()
+        );
+    }
 }
