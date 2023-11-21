@@ -1,12 +1,14 @@
 use crate::b_tree_node::{Node, Entry};
 use crate::order_error::OrderError;
 
+/// BTree for keeping arbitrary key and value bytes.
 pub struct BTree {
     root: Option<Node>,
     order: usize
 }
 
 impl BTree {
+    /// Creates a new BTree. Returns an error if order is below 2.
     pub fn new(order: usize) -> Result<Self, OrderError> {
         if order <= 1 {
             Err(OrderError)
@@ -18,10 +20,12 @@ impl BTree {
         }
     }
 
+    /// Returns the value of some key if it exists.
     pub fn get(&self, key: &[u8]) -> Option<Box<[u8]>> {
         self.root.as_ref()?.get(key)
     }
 
+    /// Inserts a key with the corresponding value into the BTree.
     pub fn insert(&mut self, key: &[u8], value: &[u8]) {
         match self.root.take() {
             None => {
@@ -34,15 +38,15 @@ impl BTree {
             Some(root) => {
                 if root.n == (2 * self.order - 1) {
                     // making a new node
-                    let mut s = Node::new(self.order, false);
-                    s.children[0] = Some(root);
-                    s.split_children(0);
-                    let mut index = 0;
-                    if key > &s.entries[0].as_ref().unwrap().key {
-                        index += 1;
-                    }
-                    s.children[index].as_mut().unwrap().insert_non_full(key, value);
-                    self.root = Some(s);
+                    let mut new_root = Node::new(self.order, false);
+                    new_root.children[0] = Some(root);
+                    new_root.split_children(0);
+
+                    // choose whether the second child receives the new key, if false the key is given to the first
+                    let second = key > &new_root.entries[0].as_ref().unwrap().key;
+                    new_root.children[second as usize].as_mut().unwrap().insert_non_full(key, value);
+
+                    self.root = Some(new_root);
                 } else {
                     // filling up the root node
                     self.root = Some(root);
@@ -52,6 +56,7 @@ impl BTree {
         }
     }
 
+    // temp function, will be removed
     pub fn print_tree(&self) {
         self.root.as_ref().unwrap().print_node(0);
     }

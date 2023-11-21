@@ -53,68 +53,66 @@ impl Node {
     }
 
     pub(crate) fn insert_non_full(&mut self, key: &[u8], value: &[u8]) {
-        let mut i = self.n as i64 - 1;
+        let mut curr_node_index = self.n as i64 - 1;
 
         if self.is_leaf {
-            while i >= 0 && key < &self.entries[i as usize].as_ref().unwrap().key {
-                self.entries[(i + 1) as usize] = self.entries[i as usize].clone();
-                i -= 1;
+            while curr_node_index >= 0 && key < &self.entries[curr_node_index as usize].as_ref().unwrap().key {
+                self.entries[(curr_node_index + 1) as usize] = self.entries[curr_node_index as usize].take();
+                curr_node_index -= 1;
             }
 
-            self.entries[(i + 1) as usize] = Some(Entry::from(key, value));
+            self.entries[(curr_node_index + 1) as usize] = Some(Entry::from(key, value));
             self.n += 1;
         } else {
-            while i >= 0 && key < &self.entries[i as usize].as_ref().unwrap().key {
-                i -= 1;
+            while curr_node_index >= 0 && key < &self.entries[curr_node_index as usize].as_ref().unwrap().key {
+                curr_node_index -= 1;
             }
 
-            if self.children[(i + 1) as usize].as_ref().unwrap().n == (2 * self.degree - 1) {
-                self.split_children((i + 1) as usize);
+            if self.children[(curr_node_index + 1) as usize].as_ref().unwrap().n == (2 * self.degree - 1) {
+                self.split_children((curr_node_index + 1) as usize);
 
-                if key > &self.entries[(i + 1) as usize].as_ref().unwrap().key {
-                    i += 1;
+                if key > &self.entries[(curr_node_index + 1) as usize].as_ref().unwrap().key {
+                    curr_node_index += 1;
                 }
             }
 
-            self.children[(i + 1) as usize].as_mut().unwrap().insert_non_full(key, value);
+            self.children[(curr_node_index + 1) as usize].as_mut().unwrap().insert_non_full(key, value);
         }
     }
 
-    pub(crate) fn split_children(&mut self, i: usize) {
-        //let mut y = Option::take(&mut self.children[i]).unwrap();
-        let y = self.children[i].clone().unwrap();
+    pub(crate) fn split_children(&mut self, split_child_index: usize) {
+        let child_to_be_split = self.children[split_child_index].as_mut().unwrap();
 
-        let mut z = Node::new(y.degree, y.is_leaf);
-        z.n = self.degree - 1;
+        let mut new_child = Node::new(child_to_be_split.degree, child_to_be_split.is_leaf);
+        new_child.n = self.degree - 1;
 
-        for j in 0..self.degree - 1 {
-            z.entries[j] = y.entries[j + self.degree].clone();
+        for i in 0..self.degree - 1 {
+            new_child.entries[i] = child_to_be_split.entries[i + self.degree].take();
         }
 
-        if !y.is_leaf {
-            for j in 0..self.degree {
-                z.children[j] = y.children[j + self.degree].clone();
+        if !child_to_be_split.is_leaf {
+            for i in 0..self.degree {
+                new_child.children[i] = child_to_be_split.children[i + self.degree].take();
             }
         }
 
-        // y.n = self.degree - 1; - wrong because y is copied, this needs to be done to the original y
-        self.children[i].as_mut().unwrap().n = self.degree - 1;
+        child_to_be_split.n = self.degree - 1;
 
-        for j in (i..=self.n).rev() {
-            self.children[j + 1] = self.children[j].clone();
+        // the entries were done firstly because then the y ref can be used for the last remaining purpose
+        // otherwise it would need to be borrowed again
+        // checked subtraction is used because the indices can be 0
+        for i in (split_child_index.checked_sub(1).unwrap_or(0)..=self.n.checked_sub(1).unwrap_or(0)).rev() {
+            self.entries[i + 1] = self.entries[i].clone();
+        }
+        self.entries[split_child_index] = child_to_be_split.entries[self.degree - 1].take();
+
+        for i in (split_child_index..=self.n).rev() {
+            self.children[i + 1] = self.children[i].clone();
         }
 
-        self.children[i + 1] = Some(z);
-
-        for j in (i.checked_sub(1).unwrap_or(0)..=self.n.checked_sub(1).unwrap_or(0)).rev() {
-            self.entries[j + 1] = self.entries[j].clone();
-        }
-
-        self.entries[i] = y.entries[self.degree - 1].clone();
-        //self.entries[i] = Option::take(&mut y.entries[self.degree - 1]);
+        self.children[split_child_index + 1] = Some(new_child);
 
         self.n += 1;
-        //self.children[i] = Some(y);
     }
 
     pub(crate) fn print_node(&self, mut level: usize) {

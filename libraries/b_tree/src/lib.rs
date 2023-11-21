@@ -9,6 +9,7 @@ mod tests {
     use rand::Rng;
     use crate::b_tree::BTree;
 
+    // will be removed, used for visualising the tree while still in production
     #[test]
     fn insert_test() {
         let mut b = BTree::new(3).unwrap();
@@ -29,7 +30,7 @@ mod tests {
             let mut rng = rand::thread_rng();
 
             for _ in 0..100000 {
-                let random_number: u128 = rng.gen_range(0..=10000000);
+                let random_number: u128 = rng.gen_range(0..=1000000000);
                 added_elements.push(random_number);
                 b.insert(&random_number.to_ne_bytes(), &(random_number * 2).to_ne_bytes());
             }
