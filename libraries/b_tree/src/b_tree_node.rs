@@ -132,4 +132,275 @@ impl Node {
             }
         }
     }
+
+    ///Utility function, finds first index of a key greater or equal to given key
+    pub(crate) fn find_key(&self, key: &[u8]) -> usize {
+
+        let mut index = 0;
+        while index < self.n && key > &self.entries[index].as_ref().unwrap().key {
+            index += 1;
+        }
+
+        index
+    }
+
+    ///Function that removes a key from subtree rooted with this node
+    pub(crate) fn remove(&mut self, key: &[u8]) {
+
+        let index = self.find_key(key);
+
+        // if this node contains the key to be deleted
+        if index < self.n && key == self.entries[index].as_ref().unwrap().key.as_ref()
+        {
+            if self.is_leaf {
+                self.remove_from_leaf(index);
+            } else {
+                self.remove_from_non_leaf(index);
+            }
+        }
+        else
+        {
+            if self.is_leaf { return; }
+        }
+
+        // if true, key is located in the subtree rooted with the last child of curr node
+        let flag = if index == self.n { true } else { false };
+
+        //if child has less keys than order fill that child
+        if self.children[index].as_ref().unwrap().n < self.degree {
+            self.fill(index);
+        }
+
+        //if the last child has been merged, we need to look for a key in index-1 position
+        if flag && index > self.n {
+            self.children[index-1].as_mut().unwrap().remove(key);
+        } else {
+            self.children[index].as_mut().unwrap().remove(key);
+        }
+    }
+
+    pub(crate) fn remove_from_leaf(&mut self, index_to_del: usize) {
+
+        //move all the keys 1 position backwards to fill the gap of deleted key
+        for i in (index_to_del+1)..self.n {
+            self.entries[i - 1] = self.entries[i].take();
+        }
+
+        self.n -= 1;
+    }
+
+    pub(crate) fn remove_from_non_leaf(&mut self, index_to_del: usize) {
+
+        //TODO!! u ovoj funkciji se klonira ovaj kljuc sto dobijem od get_pred i get_succ
+        //TODO!! mozda kada bi u tim funkcijama takeova taj kljuc pa ne vracao clone
+        //TODO!! al onda i u njima mora da se update n za te nodeove i mozda jos nesto
+        //TODO!! nisam se previse udubljivao
+
+        //if a child that precedes key has more than minimum number of keys,
+        //swap key with its predecessor, and delete predecessor from children[index] node
+        if self.children[index_to_del].as_ref().unwrap().n >= self.degree
+        {
+            let pred_key = self.get_pred(index_to_del);
+            self.entries[index_to_del] = pred_key.clone();
+            self.children[index_to_del].as_mut().unwrap().remove(&pred_key.unwrap().key);
+        }
+
+        //same process with successor node of our key in children array
+        else if self.children[index_to_del + 1].as_ref().unwrap().n >= self.degree
+        {
+            let succ_key = self.get_succ(index_to_del);
+            self.entries[index_to_del] = succ_key.clone();
+            self.children[index_to_del + 1].as_mut().unwrap().remove(&succ_key.unwrap().key);
+        }
+
+        //if both successor and predecessor have less than degree keys, merge them and delete key
+        else
+        {
+            self.merge(index_to_del);
+            //TODO! nisam siguran da moze ket tek ovde da se uzme jer merge menja redosled al ako probam pre vrati err
+            //TODO! moze se lako fix sigurno samo ja sada nisam imao vremena
+            let key = &self.entries[index_to_del].as_ref().unwrap().key;
+            self.children[index_to_del].as_mut().unwrap().remove(key);
+        }
+    }
+
+    ///Function that returns predecessor of the index of a given key of a node
+    pub(crate) fn get_pred(&self, curr_key_index: usize) -> Option<Entry> {
+
+        let mut current_node = self.children[curr_key_index].as_ref().unwrap();
+
+        //find the the right-most child of left subtree rooted at this key
+        while !current_node.is_leaf {
+
+            let last_child = current_node.n;
+            current_node = current_node.children[last_child].as_ref().unwrap();
+        }
+
+        let key_position = current_node.n - 1;
+        current_node.entries[key_position].clone()
+
+    }
+
+    ///Function that returns successor of the index of a given key of a node
+    pub(crate) fn get_succ(&self, curr_key_index: usize) -> Option<Entry> {
+
+        let mut current_node = self.children[curr_key_index + 1].as_ref().unwrap();
+
+        //find the the left-most child of right subtree rooted at this key
+        while !current_node.is_leaf {
+
+            current_node = current_node.children[0].as_ref().unwrap();
+        }
+
+        current_node.entries[0].clone()
+    }
+
+    ///Function that fills up a child node of self located in the given position in a child array
+    /// Only if it has less than order - 1 keys
+    pub(crate) fn fill(&mut self, index_to_fill: usize) {
+
+        //take key from left sibling if exists and has enough keys
+        if index_to_fill != 0 && self.children[index_to_fill-1].as_ref().unwrap().n >= self.degree {
+            self.borrow_from_prev(index_to_fill);
+        }
+
+        //take key from right sibling if exists and has enough keys
+        else if index_to_fill != self.n && self.children[index_to_fill + 1].as_ref().unwrap().n >= self.degree {
+            self.borrow_from_next(index_to_fill);
+        }
+
+        //if neither left nor right sibling have enough keys, merge children[index] with next sibling
+        //or merge it with its previous sibling if the next doesnt exist
+        else
+        {
+            if index_to_fill == self.n {
+                self.merge(index_to_fill);
+            } else {
+                self.merge(index_to_fill - 1);
+            }
+        }
+    }
+
+    ///Function that borrows an entry from node located in child array at index-1 and gives it to the
+    /// node located at the children[index]
+    pub(crate) fn borrow_from_prev(&mut self, index: usize) {
+
+        //this is the entry that is going to go to child
+        let childs_entry = self.entries[index-1].take();
+
+        let sibling = self.children[index - 1].as_mut().unwrap();
+
+        //move entry from sibling to parent to fill the hole
+        self.entries[index - 1] = sibling.entries[sibling.n - 1].take();
+
+        //siblings last child will end up in child node of self
+        let mut siblings_last_child = None;
+        if !sibling.is_leaf {
+            siblings_last_child = sibling.children[sibling.n].take();
+        }
+        sibling.n -= 1;
+
+        let child = self.children[index].as_mut().unwrap();
+
+        //last key from sibling goes up to the parent and entry[index-1] of a parent goes to the child
+        // the entry gets inserted at the index 0 in child entry-set
+
+        //move all keys of child 1 step ahead
+        for i in (0..=(child.n-1)).rev() {
+            child.entries[i + 1] = child.entries[i].take();
+        }
+
+        //if child isn't leaf move all its pointers
+        if !child.is_leaf
+        {
+            for i in (0..=child.n).rev() {
+                child.children[i + 1] = child.children[i].take();
+            }
+            child.children[0] = siblings_last_child;
+        }
+
+        //move the key from parent to child
+        child.entries[0] = childs_entry;
+        child.n += 1;
+    }
+
+    pub(crate) fn borrow_from_next(&mut self, index: usize) {
+
+        //this is the entry that is going to go to child
+        let childs_entry = self.entries[index].take();
+
+        let sibling = self.children[index + 1].as_mut().unwrap();
+
+        //move entry from sibling to parent to fill the hole
+        self.entries[index] = sibling.entries[0].take();
+
+        //siblings first child will end up in child node of self
+        let mut siblings_first_child = None;
+        if !sibling.is_leaf {
+            siblings_first_child = sibling.children[0].take();
+        }
+
+        //move all the entries in sibling 1 step behind
+        for i in 1..sibling.n {
+            sibling.entries[i-1] = sibling.entries[i].take();
+        }
+
+        //move all the children of sibling 1 step behind
+        for i in 1..=sibling.n {
+            sibling.children[i-1] = sibling.children[i].take();
+        }
+
+        sibling.n -= 1;
+
+        let child = self.children[index].as_mut().unwrap();
+
+        //insert the entry at first available position
+        child.entries[child.n] = childs_entry;
+        if !child.is_leaf {
+            child.children[child.n+1] = siblings_first_child;
+        }
+
+        child.n += 1;
+    }
+
+    ///Function that merges children of self located at index and index+1 positions
+    pub(crate) fn merge(&mut self, index: usize) {
+
+        let sibling = self.children[index + 1].as_mut().unwrap();
+        let mut sibling_children = std::mem::replace(&mut sibling.children, Box::new([]));
+        let mut sibling_entries = std::mem::replace(&mut sibling.entries, Box::new([]));
+        let sibling_n = sibling.n;
+
+        let child = self.children[index].as_mut().unwrap();
+
+        //take the entry from current node and insert it in between current entries and siblings entries
+        child.entries[self.degree-1] = self.entries[index].take();
+
+        //copy the entries from sibling
+        for i in 0..sibling_n {
+            child.entries[i + self.degree] = sibling_entries[i].take();
+        }
+
+        //copy the children from sibling
+        if !child.is_leaf {
+            for i in 0..=sibling_n {
+                child.children[i + self.degree] = sibling_children[i].take();
+            }
+        }
+
+        //update n of child and self
+        self.n -= 1;
+        child.n += sibling_n;
+
+        //move all the keys 1 step to the left to fill the gap
+        for i in (index+1)..self.n {
+            self.entries[i-1] = self.entries[i].take();
+        }
+
+        //move child pointers to the right because node has 1 less child
+        for i in (index+2)..=self.n {
+            self.children[i-1] = self.children[i].take();
+        }
+    }
+
 }

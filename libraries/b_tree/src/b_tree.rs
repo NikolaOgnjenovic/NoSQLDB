@@ -56,6 +56,28 @@ impl BTree {
         }
     }
 
+    /// Removes a key from BTree if it exists
+    pub fn remove(&mut self, key: &[u8]) {
+
+        if self.root.is_none() {
+            return;
+        }
+
+        self.root.as_mut().unwrap().remove(key);
+
+        //if root has 0 keys make its first child new root
+        //if it doesn't have a child set it to None
+        if self.root.as_ref().unwrap().n == 0
+        {
+            if self.root.as_ref().unwrap().is_leaf {
+                self.root = None;
+            } else {
+                // TODO!! ovde kao treba postaviti za novi root rootovo dete na indexu 0 nije mi bas najjasnije
+            }
+        }
+
+    }
+
     // temp function, will be removed
     pub fn print_tree(&self) {
         self.root.as_ref().unwrap().print_node(0);
