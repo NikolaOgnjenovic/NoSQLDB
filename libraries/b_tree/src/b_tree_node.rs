@@ -161,21 +161,21 @@ impl Node {
         else
         {
             if self.is_leaf { return; }
-        }
 
-        // if true, key is located in the subtree rooted with the last child of curr node
-        let flag = if index == self.n { true } else { false };
+            // if true, key is located in the subtree rooted with the last child of curr node
+            let flag = if index == self.n { true } else { false };
 
-        //if child has less keys than order fill that child
-        if self.children[index].as_ref().unwrap().n < self.degree {
-            self.fill(index);
-        }
+            //if child has less keys than order fill that child
+            if self.children[index].as_ref().unwrap().n < self.degree {
+                self.fill(index);
+            }
 
-        //if the last child has been merged, we need to look for a key in index-1 position
-        if flag && index > self.n {
-            self.children[index-1].as_mut().unwrap().remove(key);
-        } else {
-            self.children[index].as_mut().unwrap().remove(key);
+            //if the last child has been merged, we need to look for a key in index-1 position
+            if flag && index > self.n {
+                self.children[index-1].as_mut().unwrap().remove(key);
+            } else {
+                self.children[index].as_mut().unwrap().remove(key);
+            }
         }
     }
 
@@ -185,16 +185,13 @@ impl Node {
         for i in (index_to_del+1)..self.n {
             self.entries[i - 1] = self.entries[i].take();
         }
-
         self.n -= 1;
     }
 
     pub(crate) fn remove_from_non_leaf(&mut self, index_to_del: usize) {
 
-        //TODO!! u ovoj funkciji se klonira ovaj kljuc sto dobijem od get_pred i get_succ
-        //TODO!! mozda kada bi u tim funkcijama takeova taj kljuc pa ne vracao clone
-        //TODO!! al onda i u njima mora da se update n za te nodeove i mozda jos nesto
-        //TODO!! nisam se previse udubljivao
+        let key = &self.entries[index_to_del].as_ref().unwrap().key.clone();
+        //TODO potencijalno izbeci cloneiranje key, predkey, succkey
 
         //if a child that precedes key has more than minimum number of keys,
         //swap key with its predecessor, and delete predecessor from children[index] node
@@ -217,12 +214,12 @@ impl Node {
         else
         {
             self.merge(index_to_del);
-            //TODO! nisam siguran da moze ket tek ovde da se uzme jer merge menja redosled al ako probam pre vrati err
-            //TODO! moze se lako fix sigurno samo ja sada nisam imao vremena
-            let key = &self.entries[index_to_del].as_ref().unwrap().key;
             self.children[index_to_del].as_mut().unwrap().remove(key);
         }
     }
+
+    //TODO potencijalno je moguce ne klonirati vrednosti vec takeovati i odmah tu fixati n od node
+    //TODO u get_pred i get_succ
 
     ///Function that returns predecessor of the index of a given key of a node
     pub(crate) fn get_pred(&self, curr_key_index: usize) -> Option<Entry> {
@@ -273,7 +270,7 @@ impl Node {
         //or merge it with its previous sibling if the next doesnt exist
         else
         {
-            if index_to_fill == self.n {
+            if index_to_fill != self.n {
                 self.merge(index_to_fill);
             } else {
                 self.merge(index_to_fill - 1);
@@ -390,7 +387,7 @@ impl Node {
 
         //update n of child and self
         self.n -= 1;
-        child.n += sibling_n;
+        child.n += sibling_n + 1;
 
         //move all the keys 1 step to the left to fill the gap
         for i in (index+1)..self.n {
@@ -401,6 +398,7 @@ impl Node {
         for i in (index+2)..=self.n {
             self.children[i-1] = self.children[i].take();
         }
+
     }
 
 }

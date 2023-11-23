@@ -72,7 +72,7 @@ impl BTree {
             if self.root.as_ref().unwrap().is_leaf {
                 self.root = None;
             } else {
-                // TODO!! ovde kao treba postaviti za novi root rootovo dete na indexu 0 nije mi bas najjasnije
+                self.root = self.root.as_mut().unwrap().children[0].take();
             }
         }
 
