@@ -40,4 +40,35 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn delete_test1() {
+        for i in 2..15 {
+            let mut b = BTree::new(2).unwrap();
+
+            let mut added_elements = Vec::new();
+            let mut rng = rand::thread_rng();
+
+            for _ in 0..10 {
+                let random_number: u128 = rng.gen_range(0..=1000000000);
+                added_elements.push(random_number);
+                b.insert(&random_number.to_ne_bytes(), &(random_number * 2).to_ne_bytes());
+            }
+
+            let mut removed_elements = Vec::new();
+
+            for j in 0..10 {
+                if rng.gen_bool(1.0) {
+                    let element_to_be_removed = added_elements[j];
+                    removed_elements.push(element_to_be_removed);
+
+                    b.remove(&element_to_be_removed.to_ne_bytes());
+                }
+            }
+
+            for random_number in removed_elements {
+                assert_eq!(b.get(&random_number.to_ne_bytes()), None);
+            }
+        }
+    }
 }

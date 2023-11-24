@@ -58,24 +58,21 @@ impl BTree {
 
     /// Removes a key from BTree if it exists
     pub fn remove(&mut self, key: &[u8]) {
-
         if self.root.is_none() {
             return;
         }
 
         self.root.as_mut().unwrap().remove(key);
 
-        //if root has 0 keys make its first child new root
-        //if it doesn't have a child set it to None
-        if self.root.as_ref().unwrap().n == 0
-        {
+        // if root has 0 keys make its first child new root
+        // if it doesn't have a child set it to None
+        if self.root.as_ref().unwrap().n == 0 {
             if self.root.as_ref().unwrap().is_leaf {
                 self.root = None;
             } else {
                 self.root = self.root.as_mut().unwrap().children[0].take();
             }
         }
-
     }
 
     // temp function, will be removed
