@@ -49,8 +49,7 @@ impl HLL {
         serialized_data.extend(self.constant.to_ne_bytes());
         serialized_data.extend(self.precision.to_ne_bytes());
         serialized_data.extend(self.buckets.len().to_ne_bytes());
-        serialized_data.extend(self.buckets.iter()
-            .flat_map(|bucket| bucket.to_ne_bytes()));
+        serialized_data.extend_from_slice(&self.buckets);
 
         serialized_data.into_boxed_slice()
     }
@@ -61,11 +60,9 @@ impl HLL {
         let precision = u32::from_ne_bytes(bytes[8..12].try_into().unwrap());
         let buckets_len = usize::from_ne_bytes(bytes[12..20].try_into().unwrap());
 
-        let mut buckets = Vec::<u8>::new();
-
-        for i in 20..(buckets_len + 20) {
-            buckets.push(u8::from_ne_bytes(bytes[i..(i + 1)].try_into().unwrap()));
-        }
+        let buckets = unsafe {
+            std::slice::from_raw_parts(bytes[20..].as_ptr(), buckets_len)
+        }.to_vec();
 
         HLL {
             buckets: buckets.into_boxed_slice(),
