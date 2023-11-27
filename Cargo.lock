@@ -7,6 +7,13 @@ name = "NoSQLDB"
 version = "0.0.1"
 
 [[package]]
+name = "b_tree"
+version = "0.0.0"
+dependencies = [
+ "rand",
+]
+
+[[package]]
 name = "bitvec"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -54,6 +61,13 @@ dependencies = [
  "cfg-if",
  "libc",
  "wasi",
+]
+
+[[package]]
+name = "hyperloglog"
+version = "0.0.0"
+dependencies = [
+ "twox-hash",
 ]
 
 [[package]]

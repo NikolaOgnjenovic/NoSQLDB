@@ -1,0 +1,11 @@
+[package]
+name = "b_tree"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors = ["Luka Bursać", "Mihajlo Orlović"]
+
+[dependencies]
+
+[dev-dependencies]
+rand = "0.8.5"
