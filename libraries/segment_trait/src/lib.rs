@@ -2,7 +2,7 @@
 pub trait SegmentTrait {
     fn insert(&mut self, key: &[u8], value: &[u8]);
     fn delete(&mut self, key: &[u8]) -> bool;
-    fn get(&self, key: &[u8]) -> MemoryEntry;
+    fn get(&self, key: &[u8]) -> Option<MemoryEntry>;
     fn empty(&mut self);
 }
 
