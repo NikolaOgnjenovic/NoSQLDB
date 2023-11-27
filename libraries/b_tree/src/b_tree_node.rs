@@ -1,18 +1,20 @@
+use segment_elements::{MemoryEntry, TimeStamp};
+
 #[derive(Clone, Debug)]
 pub(crate) struct Entry {
     pub(crate) key: Box<[u8]>,
-    pub(crate) value: Box<[u8]>
+    pub(crate) mem_entry: MemoryEntry
 }
 
 impl Entry {
-    pub(crate) fn from(key: &[u8], value: &[u8]) -> Self {
-        Entry { key: Box::from(key), value: Box::from(value) }
+    pub(crate) fn from(key: &[u8], value: &[u8], tombstone: bool, time_stamp: TimeStamp) -> Self {
+        Entry { key: Box::from(key), mem_entry: MemoryEntry::from(value, tombstone, time_stamp.get_time()) }
     }
 }
 
 impl std::fmt::Display for Entry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "({:?}, {:?})", self.key, self.value)
+        write!(f, "({:?}, {:?})", self.key, self.mem_entry.get_value())
     }
 }
 
@@ -44,7 +46,11 @@ impl Node {
         }
 
         if node_index < self.n && key == &*self.entries[node_index].as_ref().unwrap().key {
-            Some(Box::clone(&self.entries[node_index].as_ref().unwrap().value))
+            if !self.entries[node_index].as_ref().unwrap().mem_entry.get_tombstone() {
+                Some(self.entries[node_index].as_ref().unwrap().mem_entry.get_value())
+            } else {
+                None
+            }
         } else if self.is_leaf {
             None
         } else {
@@ -52,7 +58,7 @@ impl Node {
         }
     }
 
-    pub(crate) fn insert_non_full(&mut self, key: &[u8], value: &[u8]) {
+    pub(crate) fn insert_non_full(&mut self, key: &[u8], value: &[u8], tombstone: bool, time_stamp: TimeStamp) {
         let mut curr_node_index = self.n as i64 - 1;
 
         if self.is_leaf {
@@ -61,7 +67,7 @@ impl Node {
                 curr_node_index -= 1;
             }
 
-            self.entries[(curr_node_index + 1) as usize] = Some(Entry::from(key, value));
+            self.entries[(curr_node_index + 1) as usize] = Some(Entry::from(key, value, tombstone, time_stamp));
             self.n += 1;
         } else {
             while curr_node_index >= 0 && key < &self.entries[curr_node_index as usize].as_ref().unwrap().key {
@@ -76,7 +82,7 @@ impl Node {
                 }
             }
 
-            self.children[(curr_node_index + 1) as usize].as_mut().unwrap().insert_non_full(key, value);
+            self.children[(curr_node_index + 1) as usize].as_mut().unwrap().insert_non_full(key, value, tombstone, time_stamp);
         }
     }
 
@@ -133,7 +139,7 @@ impl Node {
         }
     }
 
-    /// Utility function, finds first index of a key greater or equal to given key
+    /// Utility function, finds first index of a key greater or equal to given key.
     pub(crate) fn find_key(&self, key: &[u8]) -> usize {
         let mut index = 0;
         while index < self.n && key > &self.entries[index].as_ref().unwrap().key {
@@ -143,7 +149,7 @@ impl Node {
         index
     }
 
-    /// Function that removes a key from subtree rooted with this node
+    /// Function that permanently removes a key from subtree rooted with this node.
     pub(crate) fn remove(&mut self, key: &[u8]) {
         let index = self.find_key(key);
 
@@ -207,7 +213,7 @@ impl Node {
     //TODO potencijalno je moguce ne klonirati vrednosti vec takeovati i odmah tu fixati n od node
     //TODO u get_pred i get_succ
 
-    /// Function that returns predecessor of the index of a given key of a node
+    /// Function that returns predecessor of the index of a given key of a node.
     pub(crate) fn get_pred(&self, curr_key_index: usize) -> Option<Entry> {
         let mut current_node = self.children[curr_key_index].as_ref().unwrap();
 
@@ -221,7 +227,7 @@ impl Node {
         current_node.entries[key_position].clone()
     }
 
-    /// Function that returns successor of the index of a given key of a node
+    /// Function that returns successor of the index of a given key of a node.
     pub(crate) fn get_succ(&self, curr_key_index: usize) -> Option<Entry> {
         let mut current_node = self.children[curr_key_index + 1].as_ref().unwrap();
 
@@ -234,7 +240,7 @@ impl Node {
     }
 
     /// Function that fills up a child node of self located in the given position in a child array
-    /// only if it has less than order - 1 keys
+    /// only if it has less than order - 1 keys.
     pub(crate) fn fill(&mut self, index_to_fill: usize) {
         if index_to_fill != 0 && self.children[index_to_fill-1].as_ref().unwrap().n >= self.degree {
             // take key from left sibling if exists and has enough keys
@@ -254,7 +260,7 @@ impl Node {
     }
 
     /// Function that borrows an entry from node located in child array at index-1 and gives it to the
-    /// node located at the children[index]
+    /// node located at the children[index].
     pub(crate) fn borrow_from_prev(&mut self, index: usize) {
         // this is the entry that is going to go to child
         let childs_entry = self.entries[index-1].clone();
@@ -332,13 +338,13 @@ impl Node {
         child.n += 1;
     }
 
-    /// Function that merges children of self located at index and index+1 positions
+    /// Function that merges children of self located at index and index+1 positions.
     pub(crate) fn merge(&mut self, index: usize) {
         let sibling = self.children[index + 1].as_mut().unwrap();
         let children_len = sibling.children.len();
         let entries_len = sibling.children.len();
-        let mut sibling_children = std::mem::replace(&mut sibling.children, vec![None; children_len].into_boxed_slice());
-        let mut sibling_entries = std::mem::replace(&mut sibling.entries, vec![None; entries_len].into_boxed_slice());
+        let sibling_children = std::mem::replace(&mut sibling.children, vec![None; children_len].into_boxed_slice());
+        let sibling_entries = std::mem::replace(&mut sibling.entries, vec![None; entries_len].into_boxed_slice());
         let sibling_n = sibling.n;
 
         let child = self.children[index].as_mut().unwrap();
