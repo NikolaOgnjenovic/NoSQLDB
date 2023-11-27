@@ -2,33 +2,8 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use std::cmp::Ordering;
 use rand::Rng;
-
-#[derive(Debug)]
-struct Node {
-	k: Option<Box<[u8]>>,
-	v: Option<Box<[u8]>>,
-	next: Vec<Link>,
-	level: usize,
-}
-
-impl Node {
-	pub fn new(k: Option<Box<[u8]>>, v: Option<Box<[u8]>>, level: usize, max_level: usize) -> Self {
-		Node {
-			k,
-			v,
-			next: vec![None; max_level],
-			level
-		}
-	}
-
-	pub fn get_key(&self) -> &[u8] {
-		self.k.as_ref().unwrap()
-	}
-
-	pub fn get_val(&self) -> &[u8] {
-		self.v.as_ref().unwrap()
-	}
-}
+use segment_elements::{MemoryEntry, TimeStamp};
+use crate::skip_list_node::{Node, Link};
 
 pub struct SkipList {
 	tail: Rc<RefCell<Node>>,
@@ -57,79 +32,7 @@ impl SkipList {
 		level
 	}
 
-	pub fn get(&self, key: &[u8]) -> Option<Box<[u8]>> {
-		let mut node = Rc::clone(&self.tail);
-
-		for i in (0..self.level).rev() {
-			while let Some(next) = &node.clone().borrow().next[i] {
-				let helper = next.borrow();
-				let node_key = helper.get_key();
-
-				match node_key.cmp(key) {
-					Ordering::Less => break,
-					Ordering::Equal => return Some(Box::from(helper.get_val())),
-					Ordering::Greater => node = next.clone()
-				}
-			}
-		}
-
-		None
-	}
-
-	pub fn insert(&mut self, key: &[u8], value: &[u8]) -> Option<Box<[u8]>> {
-		let mut node = Rc::clone(&self.tail);
-		let mut updates: Vec<Link> = vec![None; self.max_level];
-
-		for i in (0..self.level).rev() {
-			while let Some(next) = &Rc::clone(&node).borrow().next[i] {
-				let mut helper = next.borrow_mut();
-				let node_key = helper.get_key();
-
-				match node_key.cmp(key) {
-					Ordering::Less => break,
-					Ordering::Equal => {
-						let old_value = Box::from(helper.get_val());
-						helper.v = Some(Box::from(value));
-						return Some(old_value);
-					},
-					Ordering::Greater => node = next.clone()
-				}
-			}
-			updates[i] = Some(Rc::clone(&node));
-		}
-
-		let level = SkipList::random_gen(&self);
-		let node_to_insert = Rc::new(RefCell::new(Node::new(
-			Some(Box::from(key)),
-			Some(Box::from(value)),
-			level,
-			self.max_level
-		)));
-
-		if level > self.level {
-			for j in 0..level - self.level {
-				self.tail.borrow_mut().next[self.level + j] = Some(Rc::clone(&node_to_insert));
-			}
-			self.level = level;
-		}
-
-		for (index, prev_node) in updates.iter().enumerate().take(level) {
-			if let Some(prev_node) = prev_node {
-				let borrowed_prev = &mut prev_node.borrow_mut();
-				let next_node = &borrowed_prev.next[index];
-				if let Some(next_node) = next_node {
-					node_to_insert.borrow_mut().next[index] = Some(Rc::clone(&next_node));
-				}
-				borrowed_prev.next[index] = Some(Rc::clone(&node_to_insert));
-			}
-		}
-
-		self.length += 1;
-
-		None
-	}
-
-	pub fn delete(&mut self, key: &[u8]) -> Option<Box<[u8]>> {
+	pub fn delete_permanent(&mut self, key: &[u8]) -> Option<Box<[u8]>> {
 		let mut node = Rc::clone(&self.tail);
 		let mut updates: Vec<Link> = vec![None; self.max_level];
 		let mut node_to_delete: Link = None;
@@ -165,9 +68,97 @@ impl SkipList {
 
 			self.length -= 1;
 
-			return Some(Box::from(node_to_delete.borrow().get_val()));
+			return Some(node_to_delete.borrow().get_val().get_value());
 		}
+
 		None
+	}
+}
+
+impl segment_elements::SegmentTrait for SkipList {
+	fn insert(&mut self, key: &[u8], value: &[u8], time_stamp: TimeStamp) {
+		let mut node = Rc::clone(&self.tail);
+		let mut updates: Vec<Link> = vec![None; self.max_level];
+
+		for i in (0..self.level).rev() {
+			while let Some(next) = &Rc::clone(&node).borrow().next[i] {
+				let mut helper = next.borrow_mut();
+				let node_key = helper.get_key();
+
+				match node_key.cmp(key) {
+					Ordering::Less => break,
+					Ordering::Equal => {
+						helper.value = Some(MemoryEntry::from(value, false, time_stamp.get_time()));
+						return;
+					}
+					Ordering::Greater => node = next.clone()
+				}
+			}
+			updates[i] = Some(Rc::clone(&node));
+		}
+
+		let level = SkipList::random_gen(&self);
+		let node_to_insert = Rc::new(RefCell::new(Node::new(
+			Some(Box::from(key)),
+			Some(MemoryEntry::from(value, false, time_stamp.get_time())),
+			level,
+			self.max_level
+		)));
+
+		if level > self.level {
+			for j in 0..level - self.level {
+				self.tail.borrow_mut().next[self.level + j] = Some(Rc::clone(&node_to_insert));
+			}
+			self.level = level;
+		}
+
+		for (index, prev_node) in updates.iter().enumerate().take(level) {
+			if let Some(prev_node) = prev_node {
+				let borrowed_prev = &mut prev_node.borrow_mut();
+				let next_node = &borrowed_prev.next[index];
+				if let Some(next_node) = next_node {
+					node_to_insert.borrow_mut().next[index] = Some(Rc::clone(&next_node));
+				}
+				borrowed_prev.next[index] = Some(Rc::clone(&node_to_insert));
+			}
+		}
+
+		self.length += 1
+	}
+
+	// todo impl logical delete
+	// todo returns true if successfully deleted
+	fn delete(&mut self, key: &[u8], time_stamp: TimeStamp) -> bool {
+		true
+	}
+
+	fn get(&self, key: &[u8]) -> Option<Box<[u8]>> {
+		let mut node = Rc::clone(&self.tail);
+
+		for i in (0..self.level).rev() {
+			while let Some(next) = &node.clone().borrow().next[i] {
+				let helper = next.borrow();
+				let node_key = helper.get_key();
+
+				match node_key.cmp(key) {
+					Ordering::Less => break,
+					Ordering::Equal => {
+						return if !helper.get_val().get_tombstone() {
+							Some(helper.get_val().get_value())
+						} else {
+							None
+						};
+					},
+					Ordering::Greater => node = next.clone()
+				}
+			}
+		}
+
+		None
+	}
+
+	fn empty(&mut self) {
+		self.tail = Rc::new(RefCell::new(Node::new(None, None, 0, self.max_level)));
 	}
 }
 
@@ -185,7 +176,3 @@ impl Drop for SkipList {
 		}
 	}
 }
-
-
-
-type Link = Option<Rc<RefCell<Node>>>;
