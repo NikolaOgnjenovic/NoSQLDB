@@ -6,4 +6,6 @@ license.workspace = true
 authors = ["Luka Bursać"]
 
 [dependencies]
-segment_trait = { path = "../segment_trait" }
+segment_elements = { path = "../segment_elements" }
+skip_list = { path = "../skip_list" }
+b_tree = { path = "../b_tree" }
