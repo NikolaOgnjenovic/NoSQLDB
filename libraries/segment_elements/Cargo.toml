@@ -1,5 +1,5 @@
 [package]
-name = "segment_trait"
+name = "segment_elements"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
