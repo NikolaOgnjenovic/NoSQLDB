@@ -183,14 +183,13 @@ impl Node {
     pub(crate) fn remove_from_leaf(&mut self, index_to_del: usize) {
         // move all the keys 1 position backwards to fill the gap of deleted key
         for i in (index_to_del+1)..self.n {
-            self.entries[i - 1] = self.entries[i].clone();
+            self.entries[i - 1] = self.entries[i].take();
         }
         self.n -= 1;
     }
 
     pub(crate) fn remove_from_non_leaf(&mut self, index_to_del: usize) {
         let key = &self.entries[index_to_del].as_ref().unwrap().key.clone();
-        //TODO potencijalno izbeci cloneiranje key, predkey, succkey
 
         if self.children[index_to_del].as_ref().unwrap().n >= self.degree {
             // if a child that precedes key has more than minimum number of keys,
@@ -209,9 +208,6 @@ impl Node {
             self.children[index_to_del].as_mut().unwrap().remove(key);
         }
     }
-
-    //TODO potencijalno je moguce ne klonirati vrednosti vec takeovati i odmah tu fixati n od node
-    //TODO u get_pred i get_succ
 
     /// Function that returns predecessor of the index of a given key of a node.
     pub(crate) fn get_pred(&self, curr_key_index: usize) -> Option<Entry> {
@@ -263,17 +259,17 @@ impl Node {
     /// node located at the children[index].
     pub(crate) fn borrow_from_prev(&mut self, index: usize) {
         // this is the entry that is going to go to child
-        let childs_entry = self.entries[index-1].clone();
+        let childs_entry = self.entries[index-1].take();
 
         let sibling = self.children[index - 1].as_mut().unwrap();
 
         // move entry from sibling to parent to fill the hole
-        self.entries[index - 1] = sibling.entries[sibling.n - 1].clone();
+        self.entries[index - 1] = sibling.entries[sibling.n - 1].take();
 
         // siblings last child will end up in child node of self
         let mut siblings_last_child = None;
         if !sibling.is_leaf {
-            siblings_last_child = sibling.children[sibling.n].clone();
+            siblings_last_child = sibling.children[sibling.n].take();
         }
         sibling.n -= 1;
 
@@ -284,13 +280,13 @@ impl Node {
 
         // move all keys of child 1 step ahead
         for i in (0..=(child.n - 1)).rev() {
-            child.entries[i + 1] = child.entries[i].clone();
+            child.entries[i + 1] = child.entries[i].take();
         }
 
         // if child isn't leaf move all its pointers
         if !child.is_leaf {
             for i in (0..=child.n).rev() {
-                child.children[i + 1] = child.children[i].clone();
+                child.children[i + 1] = child.children[i].take();
             }
             child.children[0] = siblings_last_child;
         }
@@ -302,27 +298,27 @@ impl Node {
 
     pub(crate) fn borrow_from_next(&mut self, index: usize) {
         // this is the entry that is going to go to child
-        let childs_entry = self.entries[index].clone();
+        let childs_entry = self.entries[index].take();
 
         let sibling = self.children[index + 1].as_mut().unwrap();
 
         // move entry from sibling to parent to fill the hole
-        self.entries[index] = sibling.entries[0].clone();
+        self.entries[index] = sibling.entries[0].take();
 
         // siblings first child will end up in child node of self
         let mut siblings_first_child = None;
         if !sibling.is_leaf {
-            siblings_first_child = sibling.children[0].clone();
+            siblings_first_child = sibling.children[0].take();
         }
 
         // move all the entries in sibling 1 step behind
         for i in 1..sibling.n {
-            sibling.entries[i-1] = sibling.entries[i].clone();
+            sibling.entries[i-1] = sibling.entries[i].take();
         }
 
         // move all the children of sibling 1 step behind
         for i in 1..=sibling.n {
-            sibling.children[i-1] = sibling.children[i].clone();
+            sibling.children[i-1] = sibling.children[i].take();
         }
 
         sibling.n -= 1;
@@ -342,40 +338,42 @@ impl Node {
     pub(crate) fn merge(&mut self, index: usize) {
         let sibling = self.children[index + 1].as_mut().unwrap();
         let children_len = sibling.children.len();
-        let entries_len = sibling.children.len();
-        let sibling_children = std::mem::replace(&mut sibling.children, vec![None; children_len].into_boxed_slice());
-        let sibling_entries = std::mem::replace(&mut sibling.entries, vec![None; entries_len].into_boxed_slice());
+        let entries_len = sibling.entries.len();
+        let mut sibling_children = std::mem::replace(&mut sibling.children, vec![None; children_len].into_boxed_slice());
+        let mut sibling_entries = std::mem::replace(&mut sibling.entries, vec![None; entries_len].into_boxed_slice());
         let sibling_n = sibling.n;
 
         let child = self.children[index].as_mut().unwrap();
 
         // take the entry from current node and insert it in between current entries and siblings entries
-        child.entries[self.degree-1] = self.entries[index].clone();
+        child.entries[self.degree-1] = self.entries[index].take();
 
         // copy the entries from sibling
         for i in 0..sibling_n {
-            child.entries[i + self.degree] = sibling_entries[i].clone();
+            child.entries[i + self.degree] = sibling_entries[i].take();
         }
 
         // copy the children from sibling
         if !child.is_leaf {
             for i in 0..=sibling_n {
-                child.children[i + self.degree] = sibling_children[i].clone();
+                child.children[i + self.degree] = sibling_children[i].take();
             }
         }
 
-        // update n of child and self
-        self.n -= 1;
+        // update n of child
         child.n += sibling_n + 1;
 
         // move all the keys 1 step to the left to fill the gap
         for i in (index+1)..self.n {
-            self.entries[i-1] = self.entries[i].clone();
+            self.entries[i-1] = self.entries[i].take();
         }
 
         // move child pointers to the right because node has 1 less child
         for i in (index+2)..=self.n {
-            self.children[i-1] = self.children[i].clone();
+            self.children[i-1] = self.children[i].take();
         }
+
+        //update n of self
+        self.n -= 1;
     }
 }

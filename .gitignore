@@ -1,6 +1,6 @@
 /target
 **/tests/
 **/.idea/
-Cargo.lock
+**/Cargo.lock/
 **/.vs/
 
