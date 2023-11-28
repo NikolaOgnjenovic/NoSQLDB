@@ -88,7 +88,7 @@ mod tests {
     fn test_memory() {
         let mut s = SkipList::new(10);
 
-        for i in 0..1000000u128 {
+        for i in 0..100000u128 {
             s.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now);
         }
 

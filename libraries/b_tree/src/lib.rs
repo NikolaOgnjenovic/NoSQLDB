@@ -99,7 +99,7 @@ mod tests {
             b.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now);
         }
 
-        assert!(b.delete(&50u8.to_ne_bytes(), TimeStamp::Now));
+        assert!(b.delete(&50u128.to_ne_bytes(), TimeStamp::Now));
         assert_eq!(b.get(&50u128.to_ne_bytes()), None);
     }
 

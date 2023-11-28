@@ -82,7 +82,8 @@ impl segment_elements::SegmentTrait for BTree {
     // todo impl logical delete, with tombstone = true and time_stamp
     // todo returns true if successfully deleted
     fn delete(&mut self, key: &[u8], time_stamp: TimeStamp) -> bool {
-        true
+
+        self.root.as_mut().unwrap().logical_deletion(key, time_stamp)
     }
 
     /// Returns the value of some key if it exists.
@@ -94,5 +95,3 @@ impl segment_elements::SegmentTrait for BTree {
         self.root = None;
     }
 }
-
-// todo impl drop

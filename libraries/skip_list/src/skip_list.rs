@@ -129,7 +129,25 @@ impl segment_elements::SegmentTrait for SkipList {
 	// todo impl logical delete
 	// todo returns true if successfully deleted
 	fn delete(&mut self, key: &[u8], time_stamp: TimeStamp) -> bool {
-		true
+
+		let mut node = Rc::clone(&self.tail);
+
+		for i in (0..self.level).rev() {
+			while let Some(next) = &node.clone().borrow().next[i] {
+				let mut helper = next.borrow_mut();
+				let node_key = helper.get_key();
+
+				match node_key.cmp(key) {
+					Ordering::Less => break,
+					Ordering::Equal => {
+
+						return helper.update_entry(key, time_stamp);
+					},
+					Ordering::Greater => node = next.clone()
+				}
+			}
+		}
+		false
 	}
 
 	fn get(&self, key: &[u8]) -> Option<Box<[u8]>> {
