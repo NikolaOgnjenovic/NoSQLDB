@@ -62,13 +62,11 @@ impl Node {
         let mut curr_node_index = self.n as i64 - 1;
 
         if self.is_leaf {
+
             while curr_node_index >= 0 && key < &self.entries[curr_node_index as usize].as_ref().unwrap().key {
                 self.entries[(curr_node_index + 1) as usize] = self.entries[curr_node_index as usize].take();
                 curr_node_index -= 1;
             }
-            // if key.cmp(&self.entries[curr_node_index as usize].as_ref().unwrap().key) == Ordering::Equal {
-            //     self.entries[curr_node_index as usize] = Some(Entry::from(key, value, tombstone, time_stamp));
-            // }
 
             self.entries[(curr_node_index + 1) as usize] = Some(Entry::from(key, value, tombstone, time_stamp));
             self.n += 1;
@@ -396,6 +394,23 @@ impl Node {
                 return false;
             } else {
                 self.children[index].as_mut().unwrap().logical_deletion(key, time_stamp)
+            }
+        }
+    }
+
+    pub(crate) fn update(&mut self, key: &[u8], value: &[u8], time_stamp: TimeStamp) {
+        let mut index = 0;
+        while index < self.n && key > &self.entries[index].as_ref().unwrap().key {
+            index += 1;
+        }
+        if index < self.n && key ==  &*self.entries[index].as_ref().unwrap().key {
+
+            self.entries[index] = Some(Entry::from(key, value, false, time_stamp));
+        } else {
+            if self.is_leaf {
+                return;
+            } else {
+                self.children[index].as_mut().unwrap().update(key, value,time_stamp)
             }
         }
     }

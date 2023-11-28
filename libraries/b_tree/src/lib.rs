@@ -48,7 +48,7 @@ mod tests {
     }
 
     #[test]
-    fn insert_twice() {
+    fn insert_multiple_twice() {
         let mut b = BTree::new(4).unwrap();
 
         for i in 0..100u128 {
@@ -56,8 +56,22 @@ mod tests {
         }
 
         b.insert(&50u128.to_ne_bytes(), &0u128.to_ne_bytes(), TimeStamp::Now);
+        b.insert(&60u128.to_ne_bytes(), &1u128.to_ne_bytes(), TimeStamp::Now);
+        b.insert(&31u128.to_ne_bytes(), &2u128.to_ne_bytes(), TimeStamp::Now);
+        b.insert(&34u128.to_ne_bytes(), &3u128.to_ne_bytes(), TimeStamp::Now);
+        b.insert(&89u128.to_ne_bytes(), &4u128.to_ne_bytes(), TimeStamp::Now);
+        b.insert(&23u128.to_ne_bytes(), &5u128.to_ne_bytes(), TimeStamp::Now);
 
         assert_eq!(b.get(&50u128.to_ne_bytes()).unwrap(), Box::from(0u128.to_ne_bytes()));
+        assert_eq!(b.get(&60u128.to_ne_bytes()).unwrap(), Box::from(1u128.to_ne_bytes()));
+        assert_eq!(b.get(&31u128.to_ne_bytes()).unwrap(), Box::from(2u128.to_ne_bytes()));
+        assert_eq!(b.get(&34u128.to_ne_bytes()).unwrap(), Box::from(3u128.to_ne_bytes()));
+        assert_eq!(b.get(&89u128.to_ne_bytes()).unwrap(), Box::from(4u128.to_ne_bytes()));
+        assert_eq!(b.get(&23u128.to_ne_bytes()).unwrap(), Box::from(5u128.to_ne_bytes()));
+
+        assert_eq!(b.get(&70u128.to_ne_bytes()).unwrap(), Box::from(140u128.to_ne_bytes()));
+        assert_eq!(b.get(&80u128.to_ne_bytes()).unwrap(), Box::from(160u128.to_ne_bytes()));
+        assert_eq!(b.get(&90u128.to_ne_bytes()).unwrap(), Box::from(180u128.to_ne_bytes()));
     }
 
     #[test]

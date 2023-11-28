@@ -126,8 +126,6 @@ impl segment_elements::SegmentTrait for SkipList {
 		self.length += 1
 	}
 
-	// todo impl logical delete
-	// todo returns true if successfully deleted
 	fn delete(&mut self, key: &[u8], time_stamp: TimeStamp) -> bool {
 
 		let mut node = Rc::clone(&self.tail);

@@ -50,6 +50,12 @@ impl segment_elements::SegmentTrait for BTree {
     /// Inserts or updates a key with the corresponding value into the BTree.
     // todo add update functionality
     fn insert(&mut self, key: &[u8], value: &[u8], time_stamp: TimeStamp) {
+
+        if self.get(key).is_some() {
+            self.root.as_mut().unwrap().update(key, value, time_stamp);
+            return;
+        }
+
         match self.root.take() {
             None => {
                 let mut new_root = Node::new(self.order, true);
@@ -79,8 +85,6 @@ impl segment_elements::SegmentTrait for BTree {
         }
     }
 
-    // todo impl logical delete, with tombstone = true and time_stamp
-    // todo returns true if successfully deleted
     fn delete(&mut self, key: &[u8], time_stamp: TimeStamp) -> bool {
 
         self.root.as_mut().unwrap().logical_deletion(key, time_stamp)
