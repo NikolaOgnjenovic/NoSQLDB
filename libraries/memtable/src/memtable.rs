@@ -1,6 +1,10 @@
+use std::fs::read_dir;
+use std::io;
+use std::path::{Path, PathBuf};
 use b_tree::{BTree, OrderError};
 use skip_list::SkipList;
 use segment_elements::TimeStamp;
+use crate::record_iterator::RecordIterator;
 
 pub struct MemoryTable<T: segment_elements::SegmentTrait> {
     capacity: usize,
@@ -31,6 +35,35 @@ impl<T: segment_elements::SegmentTrait> MemoryTable<T> {
         // todo flush (...)
         self.inner_mem.empty();
     }
+
+    /// Loads from every log file in the given directory.
+    fn load_from_dir_generic(dir: &Path, mut table: MemoryTable<T>) -> io::Result<MemoryTable<T>> {
+        let mut files = read_dir(dir)?
+            .map(|file| file.unwrap().path())
+            .filter(|file| file.extension().unwrap() == ".log")
+            .collect::<Vec<PathBuf>>();
+        files.sort();
+
+        for file in files.iter() {
+            for entry in RecordIterator::new(file)?.into_iter() {
+                let entry = match entry {
+                    Ok(entry) => entry,
+                    Err(e) => {
+                        eprintln!("{}", e);
+                        continue
+                    }
+                };
+
+                if entry.tombstone {
+                    table.delete(&entry.key, TimeStamp::Custom(entry.timestamp));
+                } else {
+                    table.insert(&entry.key, &entry.value.unwrap(), TimeStamp::Custom(entry.timestamp));
+                }
+            }
+        }
+
+        Ok(table)
+    }
 }
 
 impl MemoryTable<SkipList> {
@@ -41,6 +74,12 @@ impl MemoryTable<SkipList> {
             inner_mem: SkipList::new(max_level)
         }
     }
+
+    pub fn load_from_dir(dir: &Path) -> io::Result<MemoryTable<SkipList>> {
+        // todo make cap and max level variable
+        let table = MemoryTable::<SkipList>::new(100, 100);
+        MemoryTable::load_from_dir_generic(dir, table)
+    }
 }
 
 impl MemoryTable<BTree> {
@@ -50,5 +89,11 @@ impl MemoryTable<BTree> {
             len: 0,
             inner_mem: BTree::new(order)?
         })
+    }
+
+    pub fn load_from_dir(dir: &Path) -> io::Result<MemoryTable<BTree>> {
+        // todo make cap and order variable
+        let table = MemoryTable::<BTree>::new(100, 100).unwrap();
+        MemoryTable::load_from_dir_generic(dir, table)
     }
 }

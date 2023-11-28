@@ -9,3 +9,5 @@ authors = ["Luka Bursać"]
 segment_elements = { path = "../segment_elements" }
 skip_list = { path = "../skip_list" }
 b_tree = { path = "../b_tree" }
+write_ahead_log = { path = "../write_ahead_log" }
+crc = "3.0.1"
