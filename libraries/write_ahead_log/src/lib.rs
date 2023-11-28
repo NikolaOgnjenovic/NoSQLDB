@@ -1,13 +1,15 @@
 mod write_ahead_log;
-mod wal_builder;
+
+pub use write_ahead_log::WriteAheadLog;
 
 #[cfg(test)]
 mod tests {
     use std::fs::{File, OpenOptions};
-    use std::io;
+    use std::{fs, io};
     use std::io::{BufReader, Read};
     use std::path::Path;
-    use crate::write_ahead_log::{TimeStamp, WriteAheadLog};
+    use segment_elements::TimeStamp;
+    use crate::write_ahead_log::WriteAheadLog;
 
     fn validate_entry(path: &Path, passed_key: &[u8], passed_value: Option<&[u8]>) -> bool {
         let file = OpenOptions::new().read(true).open(path).unwrap();
@@ -18,7 +20,7 @@ mod tests {
             if reader.read_exact(&mut crc_buffer).is_err() {
                 return false;
             }
-            u32::from_be_bytes(crc_buffer)
+            u32::from_ne_bytes(crc_buffer)
         };
 
         let timestamp = {
@@ -26,7 +28,7 @@ mod tests {
             if reader.read_exact(&mut timestamp_buffer).is_err() {
                 return false;
             }
-            u128::from_be_bytes(timestamp_buffer)
+            u128::from_ne_bytes(timestamp_buffer)
         };
 
         let tombstone = {
@@ -34,7 +36,7 @@ mod tests {
             if reader.read_exact(&mut tombstone_buffer).is_err() {
                 return false;
             }
-            u8::from_be_bytes(tombstone_buffer) != 0
+            u8::from_ne_bytes(tombstone_buffer) != 0
         };
 
         let key_size = {
@@ -42,7 +44,7 @@ mod tests {
             if reader.read_exact(&mut key_size_buffer).is_err() {
                 return false;
             }
-            usize::from_be_bytes(key_size_buffer)
+            usize::from_ne_bytes(key_size_buffer)
         };
 
         let value_size = {
@@ -50,7 +52,7 @@ mod tests {
             if reader.read_exact(&mut value_size_buffer).is_err() {
                 return false;
             }
-            usize::from_be_bytes(value_size_buffer)
+            usize::from_ne_bytes(value_size_buffer)
         };
 
         let mut key = vec![0u8; key_size].into_boxed_slice();
@@ -89,7 +91,12 @@ mod tests {
 
         wal1.flush().unwrap();
 
-        assert!(validate_entry(&wal1.file_path, k1, Some(v1)));
+        let paths = fs::read_dir("./wal_tests/").unwrap();
+
+        for path in paths {
+            let path = path.unwrap().path();
+            assert!(validate_entry(&path, k1, Some(v1)));
+        }
 
         Ok(())
     }

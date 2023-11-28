@@ -7,3 +7,4 @@ authors = ["Luka Bursać"]
 
 [dependencies]
 crc = "3.0.1"
+segment_elements = { path = "../segment_elements" }
