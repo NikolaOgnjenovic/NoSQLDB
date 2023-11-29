@@ -21,6 +21,10 @@ impl BTree {
         }
     }
 
+    pub fn in_order(&self) {
+        self.root.as_ref().unwrap().in_order();
+    }
+
     /// Permanently removes a key from BTree if it exists.
     pub fn delete_permanent(&mut self, key: &[u8]) {
         if self.root.is_none() {
@@ -88,7 +92,9 @@ impl segment_elements::SegmentTrait for BTree {
     }
 
     fn serialize(&self) -> Box<[u8]> {
-        todo!()
+        let mut b_tree_bytes = vec![];
+
+        b_tree_bytes.into_boxed_slice()
     }
 
     fn empty(&mut self) {

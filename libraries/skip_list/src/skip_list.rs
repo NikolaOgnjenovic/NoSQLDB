@@ -4,6 +4,7 @@ use std::cmp::Ordering;
 use rand::Rng;
 use segment_elements::{MemoryEntry, TimeStamp};
 use crate::skip_list_node::{Node, Link};
+use crc::{Crc, CRC_32_ISCSI};
 
 pub struct SkipList {
 	tail: Rc<RefCell<Node>>,
@@ -177,7 +178,38 @@ impl segment_elements::SegmentTrait for SkipList {
 	}
 
 	fn serialize(&self) -> Box<[u8]> {
-		todo!()
+		let mut skip_list_bytes = vec![];
+		let mut current = Rc::clone(&self.tail);
+		let crc_hasher = Crc::<u32>::new(&CRC_32_ISCSI);
+
+		loop {
+			let next = match current.borrow_mut().next[0].take() {
+				Some(node) => {
+					let mut node_bytes = vec![];
+
+					node_bytes.extend(node.borrow().value.as_ref().unwrap().get_timestamp().to_ne_bytes());
+					node_bytes.extend((node.borrow().value.as_ref().unwrap().get_tombstone() as u8).to_ne_bytes());
+					node_bytes.extend(node.borrow().key.as_ref().unwrap().len().to_ne_bytes());
+
+					if !node.borrow().value.as_ref().unwrap().get_tombstone() {
+						node_bytes.extend(node.borrow().value.as_ref().unwrap().get_value().len().to_ne_bytes());
+						node_bytes.extend(&**(node.borrow().key.as_ref().unwrap()));
+						node_bytes.extend(node.borrow().value.as_ref().unwrap().get_value().iter());
+					} else {
+						node_bytes.extend(0u64.to_ne_bytes().as_ref());
+						node_bytes.extend(&**(node.borrow().key.as_ref().unwrap()));
+					}
+
+					skip_list_bytes.extend(crc_hasher.checksum(&node_bytes).to_ne_bytes().as_ref());
+					skip_list_bytes.extend(node_bytes);
+
+					node
+				}
+				None => break,
+			};
+			current = next;
+		}
+		skip_list_bytes.into_boxed_slice()
 	}
 
 	fn empty(&mut self) {

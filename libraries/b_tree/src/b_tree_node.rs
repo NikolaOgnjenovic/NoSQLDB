@@ -38,6 +38,16 @@ impl Node {
         }
     }
 
+    pub(crate) fn in_order(&self) {
+        for i in 0..self.n {
+            if !self.is_leaf {
+                self.children[i].as_ref().unwrap().in_order();
+                println!("{:?}", self.entries[i].as_ref().unwrap().mem_entry.get_value());
+            }
+            println!("{:?}", self.entries[i].as_ref().unwrap().mem_entry.get_value());
+        }
+    }
+
     pub(crate) fn get(&self, key: &[u8]) -> Option<Box<[u8]>> {
         let mut node_index = 0;
 

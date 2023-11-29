@@ -8,6 +8,7 @@ authors = ["Mihajlo Orlović", "Luka Bursać"]
 [dependencies]
 segment_elements = { path = "../segment_elements" }
 rand = "0.8.5"
+crc = "3.0.1"
 
 [dev-dependencies]
 peak_alloc = "0.2.0"
