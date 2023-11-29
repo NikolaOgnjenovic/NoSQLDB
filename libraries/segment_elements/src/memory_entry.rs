@@ -29,10 +29,10 @@ impl MemoryEntry {
         self.timestamp
     }
 
-    pub fn set_value(&mut self, value: &[u8]) {self.value = Box::from(value); }
+    pub fn set_value(&mut self, value: &[u8]) { self.value = Box::from(value); }
 
-    pub fn set_tombstone(&mut self, tombstone: bool) {self.tombstone = tombstone; }
+    pub fn set_tombstone(&mut self, tombstone: bool) { self.tombstone = tombstone; }
 
-    pub fn set_timestamp(&mut self, time_stamp: TimeStamp) {self.timestamp = time_stamp.get_time(); }
+    pub fn set_timestamp(&mut self, time_stamp: TimeStamp) { self.timestamp = time_stamp.get_time(); }
 }
 

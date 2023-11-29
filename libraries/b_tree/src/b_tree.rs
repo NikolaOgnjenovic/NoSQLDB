@@ -39,18 +39,11 @@ impl BTree {
             }
         }
     }
-
-    // temp function, will be removed
-    pub fn print_tree(&self) {
-        self.root.as_ref().unwrap().print_node(0);
-    }
 }
 
 impl segment_elements::SegmentTrait for BTree {
     /// Inserts or updates a key with the corresponding value into the BTree.
-    // todo add update functionality
     fn insert(&mut self, key: &[u8], value: &[u8], time_stamp: TimeStamp) {
-
         if self.get(key).is_some() {
             self.root.as_mut().unwrap().update(key, value, time_stamp);
             return;
@@ -86,13 +79,15 @@ impl segment_elements::SegmentTrait for BTree {
     }
 
     fn delete(&mut self, key: &[u8], time_stamp: TimeStamp) -> bool {
-
         self.root.as_mut().unwrap().logical_deletion(key, time_stamp)
     }
 
-    /// Returns the value of some key if it exists.
     fn get(&self, key: &[u8]) -> Option<Box<[u8]>> {
         self.root.as_ref()?.get(key)
+    }
+
+    fn serialize(&self) -> Box<[u8]> {
+        todo!()
     }
 
     fn empty(&mut self) {

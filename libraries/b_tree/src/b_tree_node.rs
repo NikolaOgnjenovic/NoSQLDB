@@ -122,24 +122,46 @@ impl Node {
         self.n += 1;
     }
 
-    pub(crate) fn print_node(&self, mut level: usize) {
-        print!("Level\t{}\t{}: ", level, self.n);
+    pub(crate) fn logical_deletion(&mut self, key: &[u8], time_stamp: TimeStamp) -> bool {
+        let mut index = 0;
 
-        for entry in self.entries.iter().take(self.n).filter(|entry| entry.is_some()).map(|entry| entry.as_ref().unwrap()) {
-            print!("{} ", entry);
+        while index < self.n && key > &self.entries[index].as_ref().unwrap().key {
+            index += 1;
         }
 
-        println!();
-
-        level += 1;
-
-        if self.children.len() > 0 {
-            for child in self.children.iter().filter(|entry| entry.is_some()).map(|child| child.as_ref().unwrap()) {
-                child.print_node(level);
+        if index < self.n && key ==  &*self.entries[index].as_ref().unwrap().key {
+            self.entries[index].as_mut().unwrap().mem_entry.set_timestamp(time_stamp);
+            self.entries[index].as_mut().unwrap().mem_entry.set_tombstone(true);
+            true
+        } else {
+            if self.is_leaf {
+                false
+            } else {
+                self.children[index].as_mut().unwrap().logical_deletion(key, time_stamp)
             }
         }
     }
 
+    pub(crate) fn update(&mut self, key: &[u8], value: &[u8], time_stamp: TimeStamp) {
+        let mut index = 0;
+        while index < self.n && key > &self.entries[index].as_ref().unwrap().key {
+            index += 1;
+        }
+        if index < self.n && key ==  &*self.entries[index].as_ref().unwrap().key {
+            self.entries[index] = Some(Entry::from(key, value, false, time_stamp));
+        } else {
+            if self.is_leaf {
+                return;
+            } else {
+                self.children[index].as_mut().unwrap().update(key, value,time_stamp)
+            }
+        }
+    }
+}
+
+// True deletion node impl. Separated because it provides additional and potentially unnecessary
+// functionality.
+impl Node {
     /// Utility function, finds first index of a key greater or equal to given key.
     pub(crate) fn find_key(&self, key: &[u8]) -> usize {
         let mut index = 0;
@@ -376,42 +398,5 @@ impl Node {
 
         //update n of self
         self.n -= 1;
-    }
-
-    pub(crate) fn logical_deletion(&mut self, key: &[u8], time_stamp: TimeStamp) -> bool {
-
-        let mut index = 0;
-        while index < self.n && key > &self.entries[index].as_ref().unwrap().key {
-            index += 1;
-        }
-        if index < self.n && key ==  &*self.entries[index].as_ref().unwrap().key {
-
-            self.entries[index].as_mut().unwrap().mem_entry.set_timestamp(time_stamp);
-            self.entries[index].as_mut().unwrap().mem_entry.set_tombstone(true);
-            return true;
-        } else {
-            if self.is_leaf {
-                return false;
-            } else {
-                self.children[index].as_mut().unwrap().logical_deletion(key, time_stamp)
-            }
-        }
-    }
-
-    pub(crate) fn update(&mut self, key: &[u8], value: &[u8], time_stamp: TimeStamp) {
-        let mut index = 0;
-        while index < self.n && key > &self.entries[index].as_ref().unwrap().key {
-            index += 1;
-        }
-        if index < self.n && key ==  &*self.entries[index].as_ref().unwrap().key {
-
-            self.entries[index] = Some(Entry::from(key, value, false, time_stamp));
-        } else {
-            if self.is_leaf {
-                return;
-            } else {
-                self.children[index].as_mut().unwrap().update(key, value,time_stamp)
-            }
-        }
     }
 }

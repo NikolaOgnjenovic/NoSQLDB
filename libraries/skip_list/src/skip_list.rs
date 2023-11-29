@@ -127,7 +127,6 @@ impl segment_elements::SegmentTrait for SkipList {
 	}
 
 	fn delete(&mut self, key: &[u8], time_stamp: TimeStamp) -> bool {
-
 		let mut node = Rc::clone(&self.tail);
 
 		for i in (0..self.level).rev() {
@@ -138,13 +137,16 @@ impl segment_elements::SegmentTrait for SkipList {
 				match node_key.cmp(key) {
 					Ordering::Less => break,
 					Ordering::Equal => {
+						helper.value.as_mut().unwrap().set_timestamp(time_stamp);
+						helper.value.as_mut().unwrap().set_tombstone(true);
 
-						return helper.update_entry(key, time_stamp);
+						return true;
 					},
 					Ordering::Greater => node = next.clone()
 				}
 			}
 		}
+
 		false
 	}
 
@@ -171,6 +173,10 @@ impl segment_elements::SegmentTrait for SkipList {
 		}
 
 		None
+	}
+
+	fn serialize(&self) -> Box<[u8]> {
+		todo!()
 	}
 
 	fn empty(&mut self) {
