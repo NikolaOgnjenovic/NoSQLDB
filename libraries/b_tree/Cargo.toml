@@ -7,6 +7,7 @@ authors = ["Luka Bursać", "Mihajlo Orlović"]
 
 [dependencies]
 segment_elements = { path = "../segment_elements" }
+crc = "3.0.1"
 
 [dev-dependencies]
 rand = "0.8.5"

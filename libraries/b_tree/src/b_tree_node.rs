@@ -1,4 +1,5 @@
 use segment_elements::{MemoryEntry, TimeStamp};
+use crc::{Crc, CRC_32_ISCSI};
 
 #[derive(Clone, Debug)]
 pub(crate) struct Entry {
@@ -38,16 +39,33 @@ impl Node {
         }
     }
 
-    pub(crate) fn in_order(&self) {
-        for i in 0..self.n {
+    pub(crate) fn in_order(&self, b_tree_bytes: &mut Vec<u8>) {
+        let crc_hasher = Crc::<u32>::new(&CRC_32_ISCSI);
+        for i in 0..=self.n {
             if !self.is_leaf {
-                self.children[i].as_ref().unwrap().in_order();
-                println!("{:?}", self.entries[i].as_ref().unwrap().mem_entry.get_value());
+                self.children[i].as_ref().unwrap().in_order(b_tree_bytes);
             }
-            println!("{:?}", self.entries[i].as_ref().unwrap().mem_entry.get_value());
+            if i < self.n {
+                let mut node_bytes = vec![];
+
+                node_bytes.extend(self.entries[i].as_ref().unwrap().mem_entry.get_timestamp().to_ne_bytes());
+                node_bytes.extend((self.entries[i].as_ref().unwrap().mem_entry.get_tombstone() as u8).to_ne_bytes());
+                node_bytes.extend(self.entries[i].as_ref().unwrap().key.as_ref().len().to_ne_bytes());
+
+                if !self.entries[i].as_ref().unwrap().mem_entry.get_tombstone() {
+                    node_bytes.extend(self.entries[i].as_ref().unwrap().mem_entry.get_value().len().to_ne_bytes());
+                    node_bytes.extend(self.entries[i].as_ref().unwrap().key.as_ref().iter());
+                    node_bytes.extend(self.entries[i].as_ref().unwrap().mem_entry.get_value().iter());
+                } else {
+                    node_bytes.extend(0u64.to_ne_bytes().as_ref());
+                    node_bytes.extend(self.entries[i].as_ref().unwrap().key.as_ref().iter());
+                }
+
+                b_tree_bytes.extend(crc_hasher.checksum(&node_bytes).to_ne_bytes().as_ref());
+                b_tree_bytes.extend(node_bytes);
+            }
         }
     }
-
     pub(crate) fn get(&self, key: &[u8]) -> Option<Box<[u8]>> {
         let mut node_index = 0;
 

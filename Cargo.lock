@@ -45,6 +45,7 @@ dependencies = [
 name = "b_tree"
 version = "0.0.0"
 dependencies = [
+ "crc",
  "peak_alloc",
  "rand",
  "segment_elements",
