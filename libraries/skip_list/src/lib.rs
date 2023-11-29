@@ -84,6 +84,18 @@ mod tests {
     }
 
     #[test]
+    fn test_insert_return_value() {
+        let max_level = 16;
+        let mut skip_list = SkipList::new(max_level);
+
+        assert!(skip_list.insert(&[1], &[1], TimeStamp::Now));
+        assert!(skip_list.insert(&[2], &[2], TimeStamp::Now));
+        assert!(!skip_list.insert(&[1], &[3], TimeStamp::Now));
+
+        assert_eq!(Some(Box::from([3].to_vec())), skip_list.get(&[1]));
+    }
+
+    #[test]
     #[ignore]
     fn test_memory() {
         let mut s = SkipList::new(10);

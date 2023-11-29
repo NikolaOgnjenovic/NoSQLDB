@@ -24,7 +24,6 @@ mod tests {
             b.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now);
         }
 
-        b.print_tree();
     }
 
     #[test]
@@ -126,6 +125,18 @@ mod tests {
         }
 
         assert!(!b.delete(&1000u128.to_ne_bytes(), TimeStamp::Now));
+    }
+
+    #[test]
+    fn test_insert_return_value() {
+        let mut b = BTree::new(5).unwrap();
+
+        for i in 0..100u128 {
+            assert!(b.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now));
+        }
+
+        assert!(!b.insert(&50u128.to_ne_bytes(), &[50], TimeStamp::Now));
+
     }
 
     #[test]

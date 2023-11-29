@@ -43,10 +43,10 @@ impl BTree {
 
 impl segment_elements::SegmentTrait for BTree {
     /// Inserts or updates a key with the corresponding value into the BTree.
-    fn insert(&mut self, key: &[u8], value: &[u8], time_stamp: TimeStamp) {
+    fn insert(&mut self, key: &[u8], value: &[u8], time_stamp: TimeStamp) -> bool {
         if self.get(key).is_some() {
             self.root.as_mut().unwrap().update(key, value, time_stamp);
-            return;
+            return false;
         }
 
         match self.root.take() {
@@ -76,6 +76,7 @@ impl segment_elements::SegmentTrait for BTree {
                 }
             }
         }
+        true
     }
 
     fn delete(&mut self, key: &[u8], time_stamp: TimeStamp) -> bool {

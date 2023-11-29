@@ -76,7 +76,7 @@ impl SkipList {
 }
 
 impl segment_elements::SegmentTrait for SkipList {
-	fn insert(&mut self, key: &[u8], value: &[u8], time_stamp: TimeStamp) {
+	fn insert(&mut self, key: &[u8], value: &[u8], time_stamp: TimeStamp) -> bool {
 		let mut node = Rc::clone(&self.tail);
 		let mut updates: Vec<Link> = vec![None; self.max_level];
 
@@ -89,7 +89,7 @@ impl segment_elements::SegmentTrait for SkipList {
 					Ordering::Less => break,
 					Ordering::Equal => {
 						helper.value = Some(MemoryEntry::from(value, false, time_stamp.get_time()));
-						return;
+						return false;
 					}
 					Ordering::Greater => node = next.clone()
 				}
@@ -123,7 +123,8 @@ impl segment_elements::SegmentTrait for SkipList {
 			}
 		}
 
-		self.length += 1
+		self.length += 1;
+		true
 	}
 
 	fn delete(&mut self, key: &[u8], time_stamp: TimeStamp) -> bool {
