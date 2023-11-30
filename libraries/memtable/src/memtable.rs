@@ -1,25 +1,22 @@
-use std::fs::read_dir;
-use std::io;
-use std::path::{Path, PathBuf};
 use b_tree::{BTree, OrderError};
 use skip_list::SkipList;
 use segment_elements::TimeStamp;
-use crate::record_iterator::RecordIterator;
 
-pub struct MemoryTable<T: segment_elements::SegmentTrait> {
-    capacity: usize,
-    len: usize,
-    inner_mem: T
+pub(crate) struct MemoryTable<T: segment_elements::SegmentTrait> {
+    pub(crate) capacity: usize,
+    pub(crate) len: usize,
+    pub(crate) inner_mem: T,
 }
 
 impl<T: segment_elements::SegmentTrait> MemoryTable<T> {
-    pub fn insert(&mut self, key: &[u8], value: &[u8], time_stamp: TimeStamp) {
-        self.inner_mem.insert(key, value, time_stamp);
-
-        self.len += 1;
-        if self.len == self.capacity {
-            // todo mempool swap, not implemented currently
+    /// Inserts or updates a key value pair into the memory table. Returns true
+    /// if the memory table capacity is reached.
+    pub fn insert(&mut self, key: &[u8], value: &[u8], time_stamp: TimeStamp) -> bool {
+        if self.inner_mem.insert(key, value, time_stamp) {
+            self.len += 1;
         }
+
+        self.len == self.capacity
     }
 
     pub fn delete(&mut self, key: &[u8], time_stamp: TimeStamp) -> bool {
@@ -30,39 +27,12 @@ impl<T: segment_elements::SegmentTrait> MemoryTable<T> {
         self.inner_mem.get(key)
     }
 
-    pub fn flush(&mut self) {
+    pub fn flush(&mut self) -> Box<[u8]> {
         self.len = 0;
-        // todo flush (...)
+        let mem_bytes = self.inner_mem.serialize();
         self.inner_mem.empty();
-    }
 
-    /// Loads from every log file in the given directory.
-    fn load_from_dir_generic(dir: &Path, mut table: MemoryTable<T>) -> io::Result<MemoryTable<T>> {
-        let mut files = read_dir(dir)?
-            .map(|file| file.unwrap().path())
-            .filter(|file| file.extension().unwrap() == ".log")
-            .collect::<Vec<PathBuf>>();
-        files.sort();
-
-        for file in files.iter() {
-            for entry in RecordIterator::new(file)?.into_iter() {
-                let entry = match entry {
-                    Ok(entry) => entry,
-                    Err(e) => {
-                        eprintln!("{}", e);
-                        continue
-                    }
-                };
-
-                if entry.tombstone {
-                    table.delete(&entry.key, TimeStamp::Custom(entry.timestamp));
-                } else {
-                    table.insert(&entry.key, &entry.value.unwrap(), TimeStamp::Custom(entry.timestamp));
-                }
-            }
-        }
-
-        Ok(table)
+        mem_bytes
     }
 }
 
@@ -71,14 +41,8 @@ impl MemoryTable<SkipList> {
         MemoryTable {
             capacity,
             len: 0,
-            inner_mem: SkipList::new(max_level)
+            inner_mem: SkipList::new(max_level),
         }
-    }
-
-    pub fn load_from_dir(dir: &Path) -> io::Result<MemoryTable<SkipList>> {
-        // todo make cap and max level variable
-        let table = MemoryTable::<SkipList>::new(100, 100);
-        MemoryTable::load_from_dir_generic(dir, table)
     }
 }
 
@@ -87,13 +51,7 @@ impl MemoryTable<BTree> {
         Ok(MemoryTable {
             capacity,
             len: 0,
-            inner_mem: BTree::new(order)?
+            inner_mem: BTree::new(order)?,
         })
-    }
-
-    pub fn load_from_dir(dir: &Path) -> io::Result<MemoryTable<BTree>> {
-        // todo make cap and order variable
-        let table = MemoryTable::<BTree>::new(100, 100).unwrap();
-        MemoryTable::load_from_dir_generic(dir, table)
     }
 }
