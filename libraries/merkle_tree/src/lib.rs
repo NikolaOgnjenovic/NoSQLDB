@@ -80,7 +80,7 @@ mod tests {
         let original_data = &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
         let merkle_tree = MerkleTree::new(original_data);
         let serialized_data = merkle_tree.serialize();
-        let deserialized_tree = MerkleTree::deserialize(serialized_data);
+        let deserialized_tree = MerkleTree::deserialize(&serialized_data);
 
         assert_eq!(
             merkle_tree.get_different_chunks_indices(&deserialized_tree),

@@ -162,7 +162,7 @@ impl MerkleTree {
     }
 
     /// Deserializes the Merkle tree from a boxed slice of bytes.
-    pub fn deserialize(data: Box<[u8]>) -> MerkleTree {
+    pub fn deserialize(data: &[u8]) -> MerkleTree {
         let mut tree = MerkleTree { root: None };
 
         let nodes: Vec<Node> = data
