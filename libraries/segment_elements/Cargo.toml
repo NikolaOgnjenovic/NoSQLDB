@@ -3,6 +3,7 @@ name = "segment_elements"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-authors = ["Luka Bursać"]
+authors = ["Luka Bursać", "Mihajlo Orlović"]
 
 [dependencies]
+crc = "3.0.1"

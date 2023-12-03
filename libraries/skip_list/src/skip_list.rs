@@ -5,6 +5,7 @@ use rand::Rng;
 use segment_elements::{MemoryEntry, TimeStamp};
 use crate::skip_list_node::{Node, Link};
 use crc::{Crc, CRC_32_ISCSI};
+use crate::skip_list_iterator::SkipListIterator;
 
 pub struct SkipList {
 	tail: Rc<RefCell<Node>>,
@@ -43,7 +44,7 @@ impl SkipList {
 				let helper = next.borrow();
 				let node_key = helper.get_key();
 
-				match node_key.cmp(key) {
+				match key.cmp(node_key) {
 					Ordering::Less => break,
 					Ordering::Equal => {
 						node_to_delete = Some(Rc::clone(&next));
@@ -74,6 +75,11 @@ impl SkipList {
 
 		None
 	}
+	pub fn iter(&self) -> SkipListIterator {
+		SkipListIterator{
+			current: Some(Rc::clone(&self.tail)),
+		}
+	}
 }
 
 impl segment_elements::SegmentTrait for SkipList {
@@ -86,7 +92,7 @@ impl segment_elements::SegmentTrait for SkipList {
 				let mut helper = next.borrow_mut();
 				let node_key = helper.get_key();
 
-				match node_key.cmp(key) {
+				match key.cmp(node_key) {
 					Ordering::Less => break,
 					Ordering::Equal => {
 						helper.value = Some(MemoryEntry::from(value, false, time_stamp.get_time()));
@@ -136,7 +142,7 @@ impl segment_elements::SegmentTrait for SkipList {
 				let mut helper = next.borrow_mut();
 				let node_key = helper.get_key();
 
-				match node_key.cmp(key) {
+				match key.cmp(node_key) {
 					Ordering::Less => break,
 					Ordering::Equal => {
 						helper.value.as_mut().unwrap().set_timestamp(time_stamp);
@@ -160,7 +166,7 @@ impl segment_elements::SegmentTrait for SkipList {
 				let helper = next.borrow();
 				let node_key = helper.get_key();
 
-				match node_key.cmp(key) {
+				match key.cmp(node_key) {
 					Ordering::Less => break,
 					Ordering::Equal => {
 						return if !helper.get_val().get_tombstone() {
@@ -231,3 +237,5 @@ impl Drop for SkipList {
 		}
 	}
 }
+
+

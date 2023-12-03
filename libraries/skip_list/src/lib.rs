@@ -1,5 +1,6 @@
 mod skip_list;
 mod skip_list_node;
+mod skip_list_iterator;
 
 pub use skip_list::SkipList;
 
@@ -93,6 +94,30 @@ mod tests {
         assert!(!skip_list.insert(&[1], &[3], TimeStamp::Now));
 
         assert_eq!(Some(Box::from([3].to_vec())), skip_list.get(&[1]));
+    }
+
+    #[test]
+    fn iterator_test() {
+        let max_level = 8;
+        let mut skip_list = SkipList::new(max_level);
+
+        skip_list.insert(&[4], &[1], TimeStamp::Now);
+        skip_list.insert(&[22], &[2], TimeStamp::Now);
+        skip_list.insert(&[11], &[3], TimeStamp::Now);
+
+        let mut iterator = skip_list.iter();
+        assert_eq!(&[4], iterator.next().unwrap().borrow().get_key());
+        assert_eq!(&[11], iterator.next().unwrap().borrow().get_key());
+        assert_eq!(&[22], iterator.next().unwrap().borrow().get_key());
+    }
+
+    #[test]
+    fn empty_iterator_test() {
+        let max_level = 8;
+        let mut skip_list = SkipList::new(max_level);
+
+        let mut iterator = skip_list.iter();
+        assert_eq!(iterator.next(), None)
     }
 
     #[test]

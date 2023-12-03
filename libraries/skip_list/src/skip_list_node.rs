@@ -4,8 +4,8 @@ use segment_elements::MemoryEntry;
 
 pub(crate) type Link = Option<Rc<RefCell<Node>>>;
 
-#[derive(Debug)]
-pub(crate) struct Node {
+#[derive(Debug, PartialOrd, PartialEq)]
+pub struct Node {
     pub(crate) key: Option<Box<[u8]>>,
     pub(crate) value: Option<MemoryEntry>,
     pub(crate) next: Vec<Link>,
