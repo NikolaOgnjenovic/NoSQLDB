@@ -1,11 +1,13 @@
-use segment_elements::TimeStamp;
+use segment_elements::{SegmentTrait, TimeStamp};
 use crate::b_tree_node::{Node, Entry};
 use crate::order_error::OrderError;
+use bloom_filter::BloomFilter;
 
 /// BTree for keeping arbitrary key and value bytes.
 pub struct BTree {
     root: Option<Node>,
-    order: usize
+    order: usize,
+    length: usize,
 }
 
 impl BTree {
@@ -16,7 +18,8 @@ impl BTree {
         } else {
             Ok(BTree {
                 root: None,
-                order
+                order,
+                length:0,
             })
         }
     }
@@ -26,9 +29,10 @@ impl BTree {
         if self.root.is_none() {
             return;
         }
-
-        self.root.as_mut().unwrap().remove(key);
-
+        if self.get(key).is_some() {
+            self.root.as_mut().unwrap().remove(key);
+            self.length -= 1;
+        }
         // if root has 0 keys make it's first child new root
         // if it doesn't have a child set it to None
         if self.root.as_ref().unwrap().n == 0 {
@@ -76,6 +80,7 @@ impl segment_elements::SegmentTrait for BTree {
                 }
             }
         }
+        self.length += 1;
         true
     }
 
@@ -88,10 +93,23 @@ impl segment_elements::SegmentTrait for BTree {
     }
 
     fn serialize(&self) -> Box<[u8]> {
-        let mut b_tree_bytes = vec![];
-        self.root.as_ref().unwrap().in_order(&mut b_tree_bytes);
+        let mut ss_table_bytes = vec![];
+        let mut data_bytes = vec![];
+        let mut index_bytes = vec![];
+        let mut offset = 0;
+        let mut filter = BloomFilter::new(0.01, self.length);
+        self.root.as_ref().unwrap().in_order(&mut data_bytes, &mut index_bytes, &mut offset, &mut filter);
 
-        b_tree_bytes.into_boxed_slice()
+        let filter_bytes = filter.serialize();
+
+        ss_table_bytes.extend(usize::to_ne_bytes(data_bytes.len()));
+        ss_table_bytes.extend(data_bytes);
+        ss_table_bytes.extend(usize::to_ne_bytes(index_bytes.len()));
+        ss_table_bytes.extend(index_bytes);
+        ss_table_bytes.extend(usize::to_ne_bytes(filter_bytes.len()));
+        ss_table_bytes.extend(filter_bytes.iter());
+
+        ss_table_bytes.into_boxed_slice()
     }
 
     fn empty(&mut self) {

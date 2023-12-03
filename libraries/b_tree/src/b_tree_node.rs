@@ -1,5 +1,5 @@
 use segment_elements::{MemoryEntry, TimeStamp};
-use crc::{Crc, CRC_32_ISCSI};
+use bloom_filter::BloomFilter;
 
 #[derive(Clone, Debug)]
 pub(crate) struct Entry {
@@ -10,6 +10,14 @@ pub(crate) struct Entry {
 impl Entry {
     pub(crate) fn from(key: &[u8], value: &[u8], tombstone: bool, time_stamp: TimeStamp) -> Self {
         Entry { key: Box::from(key), mem_entry: MemoryEntry::from(value, tombstone, time_stamp.get_time()) }
+    }
+
+    pub(crate) fn get_key(&self) -> &[u8] {
+        &self.key
+    }
+
+    pub(crate) fn get_mem_entry(&self) -> &MemoryEntry {
+        &self.mem_entry
     }
 }
 
@@ -39,30 +47,25 @@ impl Node {
         }
     }
 
-    pub(crate) fn in_order(&self, b_tree_bytes: &mut Vec<u8>) {
-        let crc_hasher = Crc::<u32>::new(&CRC_32_ISCSI);
+    pub(crate) fn in_order(&self, data_bytes: &mut Vec<u8>, index_bytes: &mut Vec<u8>, offset: &mut usize, filter: &mut BloomFilter) {
         for i in 0..=self.n {
             if !self.is_leaf {
-                self.children[i].as_ref().unwrap().in_order(b_tree_bytes);
+                self.children[i].as_ref().unwrap().in_order(data_bytes, index_bytes, offset, filter);
             }
             if i < self.n {
-                let mut node_bytes = vec![];
+                let entry = self.entries[i].as_ref().unwrap();
+                let key = entry.get_key();
+                let memory_entry = entry.get_mem_entry();
+                let memory_entry_bytes = memory_entry.serialize(key);
+                data_bytes.extend(memory_entry_bytes.iter());
 
-                node_bytes.extend(self.entries[i].as_ref().unwrap().mem_entry.get_timestamp().to_ne_bytes());
-                node_bytes.extend((self.entries[i].as_ref().unwrap().mem_entry.get_tombstone() as u8).to_ne_bytes());
-                node_bytes.extend(self.entries[i].as_ref().unwrap().key.as_ref().len().to_ne_bytes());
+                index_bytes.extend(usize::to_ne_bytes(key.len()));
+                index_bytes.extend(key);
+                index_bytes.extend(usize::to_ne_bytes(*offset));
 
-                if !self.entries[i].as_ref().unwrap().mem_entry.get_tombstone() {
-                    node_bytes.extend(self.entries[i].as_ref().unwrap().mem_entry.get_value().len().to_ne_bytes());
-                    node_bytes.extend(self.entries[i].as_ref().unwrap().key.as_ref().iter());
-                    node_bytes.extend(self.entries[i].as_ref().unwrap().mem_entry.get_value().iter());
-                } else {
-                    node_bytes.extend(0u64.to_ne_bytes().as_ref());
-                    node_bytes.extend(self.entries[i].as_ref().unwrap().key.as_ref().iter());
-                }
+                filter.add(key);
 
-                b_tree_bytes.extend(crc_hasher.checksum(&node_bytes).to_ne_bytes().as_ref());
-                b_tree_bytes.extend(node_bytes);
+                *offset += data_bytes.len();
             }
         }
     }

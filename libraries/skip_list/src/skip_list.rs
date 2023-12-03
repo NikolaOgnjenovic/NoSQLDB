@@ -217,7 +217,7 @@ impl segment_elements::SegmentTrait for SkipList {
 		ss_table_bytes.extend(index_bytes);
 		ss_table_bytes.extend(usize::to_ne_bytes(filter_bytes.len()));
 		ss_table_bytes.extend(filter_bytes.iter());
-		
+
 		ss_table_bytes.into_boxed_slice()
 	}
 
