@@ -4,8 +4,8 @@ use std::cmp::Ordering;
 use rand::Rng;
 use segment_elements::{MemoryEntry, TimeStamp};
 use crate::skip_list_node::{Node, Link};
-use crc::{Crc, CRC_32_ISCSI};
 use crate::skip_list_iterator::SkipListIterator;
+use bloom_filter::BloomFilter;
 
 pub struct SkipList {
 	tail: Rc<RefCell<Node>>,
@@ -182,40 +182,43 @@ impl segment_elements::SegmentTrait for SkipList {
 
 		None
 	}
-
+	///Function that serializes skip list and creates data_block, index file and filter for SSTable
 	fn serialize(&self) -> Box<[u8]> {
-		let mut skip_list_bytes = vec![];
-		let mut current = Rc::clone(&self.tail);
-		let crc_hasher = Crc::<u32>::new(&CRC_32_ISCSI);
+		//todo! how to make index summary?
+		let mut ss_table_bytes = vec![];
+		let mut data_bytes:Vec<u8> = vec![];
+		let mut index_bytes = vec![];
+		let mut offset = 0;
+		let mut filter = BloomFilter::new(0.01, self.length);
 
-		loop {
-			let next = match current.borrow_mut().next[0].take() {
-				Some(node) => {
-					let mut node_bytes = vec![];
+		for node in self.iter() {
 
-					node_bytes.extend(node.borrow().value.as_ref().unwrap().get_timestamp().to_ne_bytes());
-					node_bytes.extend((node.borrow().value.as_ref().unwrap().get_tombstone() as u8).to_ne_bytes());
-					node_bytes.extend(node.borrow().key.as_ref().unwrap().len().to_ne_bytes());
+			let borrowed = node.borrow();
+			let key = borrowed.get_key();
+			let entry = borrowed.get_val();
+			let entry_bytes = entry.serialize(key);
+			data_bytes.extend(entry_bytes.iter());
 
-					if !node.borrow().value.as_ref().unwrap().get_tombstone() {
-						node_bytes.extend(node.borrow().value.as_ref().unwrap().get_value().len().to_ne_bytes());
-						node_bytes.extend(&**(node.borrow().key.as_ref().unwrap()));
-						node_bytes.extend(node.borrow().value.as_ref().unwrap().get_value().iter());
-					} else {
-						node_bytes.extend(0u64.to_ne_bytes().as_ref());
-						node_bytes.extend(&**(node.borrow().key.as_ref().unwrap()));
-					}
+			//index structure contains key_len(8 bytes), key and offset in data block(8 bytes)
+			index_bytes.extend(usize::to_ne_bytes(key.len()));
+			index_bytes.extend(key);
+			index_bytes.extend(usize::to_ne_bytes(offset));
 
-					skip_list_bytes.extend(crc_hasher.checksum(&node_bytes).to_ne_bytes().as_ref());
-					skip_list_bytes.extend(node_bytes);
+			filter.add(key);
 
-					node
-				}
-				None => break,
-			};
-			current = next;
+			offset += entry_bytes.len();
 		}
-		skip_list_bytes.into_boxed_slice()
+
+		let filter_bytes = filter.serialize();
+
+		ss_table_bytes.extend(usize::to_ne_bytes(data_bytes.len()));
+		ss_table_bytes.extend(data_bytes);
+		ss_table_bytes.extend(usize::to_ne_bytes(index_bytes.len()));
+		ss_table_bytes.extend(index_bytes);
+		ss_table_bytes.extend(usize::to_ne_bytes(filter_bytes.len()));
+		ss_table_bytes.extend(filter_bytes.iter());
+		
+		ss_table_bytes.into_boxed_slice()
 	}
 
 	fn empty(&mut self) {

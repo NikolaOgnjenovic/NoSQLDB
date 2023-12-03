@@ -10,7 +10,7 @@ impl Iterator for SkipListIterator {
     type Item = Rc<RefCell<Node>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(next_node) = self.current.clone().unwrap().borrow_mut().next[0].take() {
+        if let Some(next_node) = self.current.take().unwrap().borrow_mut().next[0].take() {
             self.current = Some(next_node.clone());
             return Option::from(next_node);
         } else {
