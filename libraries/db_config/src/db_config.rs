@@ -4,7 +4,7 @@ use std::fs::File;
 
 
 /// Options for the implementation of memory table
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum MemoryTableType {
     SkipList,
     HashMap,  // todo, dodato na osnovu specifikacije?
@@ -14,7 +14,7 @@ pub enum MemoryTableType {
 
 // todo, novo gradivo, nije još implementirano, dodato na osnovu specifikacije
 /// Options for the compression algorithm type
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum CompressionAlgorithmType {
     SizeTiered,
     Leveled,
@@ -22,7 +22,7 @@ pub enum CompressionAlgorithmType {
 
 
 /// Configuration parameters
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 #[serde(default)]
 pub struct DBConfig {
     pub bloom_filter_probability: f64,

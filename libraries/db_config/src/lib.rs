@@ -1,6 +1,8 @@
 mod db_config;
 
 pub use db_config::DBConfig;
+pub use db_config::MemoryTableType;
+pub use db_config::CompressionAlgorithmType;
 
 #[cfg(test)]
 mod tests {

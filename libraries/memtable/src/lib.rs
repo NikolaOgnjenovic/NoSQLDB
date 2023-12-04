@@ -8,13 +8,13 @@ pub use mem_pool::MemoryPool;
 
 #[cfg(test)]
 mod tests {
-    use b_tree::BTree;
+    use db_config::DBConfig;
     use segment_elements::TimeStamp;
     use crate::MemoryPool;
 
     #[test]
     fn test_async_flush() {
-        let mut mem_pool = MemoryPool::<BTree>::new(10, 1000, 10).unwrap();
+        let mut mem_pool = MemoryPool::new(&DBConfig::default()).unwrap();
 
         for i in 0..10000000u128 {
             print!("{} ", i);
