@@ -1,10 +1,9 @@
-use std::cell::RefCell;
-use std::rc::Rc;
 use segment_elements::MemoryEntry;
+use std::sync::{ Arc, Mutex };
 
-pub(crate) type Link = Option<Rc<RefCell<Node>>>;
+pub(crate) type Link = Option<Arc<Mutex<Node>>>;
 
-#[derive(Debug, PartialOrd, PartialEq)]
+#[derive(Debug)]
 pub struct Node {
     pub(crate) key: Option<Box<[u8]>>,
     pub(crate) value: Option<MemoryEntry>,

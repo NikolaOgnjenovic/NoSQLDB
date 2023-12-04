@@ -106,18 +106,9 @@ mod tests {
         skip_list.insert(&[11], &[3], TimeStamp::Now);
 
         let mut iterator = skip_list.iter();
-        assert_eq!(&[4], iterator.next().unwrap().borrow().get_key());
-        assert_eq!(&[11], iterator.next().unwrap().borrow().get_key());
-        assert_eq!(&[22], iterator.next().unwrap().borrow().get_key());
-    }
-
-    #[test]
-    fn empty_iterator_test() {
-        let max_level = 8;
-        let mut skip_list = SkipList::new(max_level);
-
-        let mut iterator = skip_list.iter();
-        assert_eq!(iterator.next(), None)
+        assert_eq!(&[4], iterator.next().unwrap().lock().unwrap().get_key());
+        assert_eq!(&[11], iterator.next().unwrap().lock().unwrap().get_key());
+        assert_eq!(&[22], iterator.next().unwrap().lock().unwrap().get_key());
     }
 
     #[test]

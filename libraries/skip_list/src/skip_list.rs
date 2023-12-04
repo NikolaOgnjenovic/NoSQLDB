@@ -1,5 +1,4 @@
-use std::rc::Rc;
-use std::cell::RefCell;
+use std::sync::{ Arc, Mutex };
 use std::cmp::Ordering;
 use rand::Rng;
 use segment_elements::{MemoryEntry, TimeStamp};
@@ -8,7 +7,7 @@ use crate::skip_list_iterator::SkipListIterator;
 use bloom_filter::BloomFilter;
 
 pub struct SkipList {
-	tail: Rc<RefCell<Node>>,
+	tail: Arc<Mutex<Node>>,
 	level: usize,
 	max_level: usize,
 	length: usize,
@@ -17,7 +16,7 @@ pub struct SkipList {
 impl SkipList {
 	pub fn new(max_level: usize) -> Self {
 		SkipList {
-			tail: Rc::new(RefCell::new(Node::new(None, None, 0, max_level))),
+			tail: Arc::new(Mutex::new(Node::new(None, None, 0, max_level))),
 			level: 0,
 			max_level,
 			length: 0,
@@ -35,61 +34,62 @@ impl SkipList {
 	}
 
 	pub fn delete_permanent(&mut self, key: &[u8]) -> Option<Box<[u8]>> {
-		let mut node = Rc::clone(&self.tail);
+		let mut node = Arc::clone(&self.tail);
 		let mut updates: Vec<Link> = vec![None; self.max_level];
 		let mut node_to_delete: Link = None;
 
 		for i in (0..self.level).rev() {
-			while let Some(next) = &Rc::clone(&node).borrow().next[i] {
-				let helper = next.borrow();
+			while let Some(next) = &Arc::clone(&node).lock().unwrap().next[i] {
+				let helper = next.lock().unwrap();
 				let node_key = helper.get_key();
 
 				match key.cmp(node_key) {
 					Ordering::Less => break,
 					Ordering::Equal => {
-						node_to_delete = Some(Rc::clone(&next));
+						node_to_delete = Some(Arc::clone(&next));
 						break;
 					},
 					Ordering::Greater => node = next.clone()
 				}
 			}
-			updates[i] = Some(Rc::clone(&node));
+			updates[i] = Some(Arc::clone(&node));
 		}
 
 		if let Some(node_to_delete) = node_to_delete {
-			for (index, prev_node) in updates.iter().enumerate().take(node_to_delete.borrow().level) {
+			let node_to_delete_lock = node_to_delete.lock().unwrap();
+			for (index, prev_node) in updates.iter().enumerate().take(node_to_delete_lock.level) {
 				if let Some(prev_node) = prev_node {
-					let next = &node_to_delete.borrow().next[index];
+					let next = &node_to_delete_lock.next[index];
 					if next.is_some() {
-						prev_node.borrow_mut().next[index] = Some(Rc::clone(&next.as_ref().unwrap()));
+						prev_node.lock().unwrap().next[index] = Some(Arc::clone(&next.as_ref().unwrap()));
 					} else {
-						prev_node.borrow_mut().next[index] = None;
+						prev_node.lock().unwrap().next[index] = None;
 					}
 				}
 			}
 
 			self.length -= 1;
 
-			return Some(node_to_delete.borrow().get_val().get_value());
+			return Some(node_to_delete_lock.get_val().get_value());
 		}
 
 		None
 	}
 	pub fn iter(&self) -> SkipListIterator {
 		SkipListIterator{
-			current: Some(Rc::clone(&self.tail)),
+			current: Some(Arc::clone(&self.tail)),
 		}
 	}
 }
 
 impl segment_elements::SegmentTrait for SkipList {
 	fn insert(&mut self, key: &[u8], value: &[u8], time_stamp: TimeStamp) -> bool {
-		let mut node = Rc::clone(&self.tail);
+		let mut node = Arc::clone(&self.tail);
 		let mut updates: Vec<Link> = vec![None; self.max_level];
 
 		for i in (0..self.level).rev() {
-			while let Some(next) = &Rc::clone(&node).borrow().next[i] {
-				let mut helper = next.borrow_mut();
+			while let Some(next) = &Arc::clone(&node).lock().unwrap().next[i] {
+				let mut helper = next.lock().unwrap();
 				let node_key = helper.get_key();
 
 				match key.cmp(node_key) {
@@ -101,11 +101,11 @@ impl segment_elements::SegmentTrait for SkipList {
 					Ordering::Greater => node = next.clone()
 				}
 			}
-			updates[i] = Some(Rc::clone(&node));
+			updates[i] = Some(Arc::clone(&node));
 		}
 
 		let level = SkipList::random_gen(&self);
-		let node_to_insert = Rc::new(RefCell::new(Node::new(
+		let node_to_insert = Arc::new(Mutex::new(Node::new(
 			Some(Box::from(key)),
 			Some(MemoryEntry::from(value, false, time_stamp.get_time())),
 			level,
@@ -114,19 +114,19 @@ impl segment_elements::SegmentTrait for SkipList {
 
 		if level > self.level {
 			for j in 0..level - self.level {
-				self.tail.borrow_mut().next[self.level + j] = Some(Rc::clone(&node_to_insert));
+				self.tail.lock().unwrap().next[self.level + j] = Some(Arc::clone(&node_to_insert));
 			}
 			self.level = level;
 		}
 
 		for (index, prev_node) in updates.iter().enumerate().take(level) {
 			if let Some(prev_node) = prev_node {
-				let borrowed_prev = &mut prev_node.borrow_mut();
+				let borrowed_prev = &mut prev_node.lock().unwrap();
 				let next_node = &borrowed_prev.next[index];
 				if let Some(next_node) = next_node {
-					node_to_insert.borrow_mut().next[index] = Some(Rc::clone(&next_node));
+					node_to_insert.lock().unwrap().next[index] = Some(Arc::clone(&next_node));
 				}
-				borrowed_prev.next[index] = Some(Rc::clone(&node_to_insert));
+				borrowed_prev.next[index] = Some(Arc::clone(&node_to_insert));
 			}
 		}
 
@@ -135,11 +135,11 @@ impl segment_elements::SegmentTrait for SkipList {
 	}
 
 	fn delete(&mut self, key: &[u8], time_stamp: TimeStamp) -> bool {
-		let mut node = Rc::clone(&self.tail);
+		let mut node = Arc::clone(&self.tail);
 
 		for i in (0..self.level).rev() {
-			while let Some(next) = &node.clone().borrow().next[i] {
-				let mut helper = next.borrow_mut();
+			while let Some(next) = &node.clone().lock().unwrap().next[i] {
+				let mut helper = next.lock().unwrap();
 				let node_key = helper.get_key();
 
 				match key.cmp(node_key) {
@@ -159,11 +159,11 @@ impl segment_elements::SegmentTrait for SkipList {
 	}
 
 	fn get(&self, key: &[u8]) -> Option<Box<[u8]>> {
-		let mut node = Rc::clone(&self.tail);
+		let mut node = Arc::clone(&self.tail);
 
 		for i in (0..self.level).rev() {
-			while let Some(next) = &node.clone().borrow().next[i] {
-				let helper = next.borrow();
+			while let Some(next) = &node.clone().lock().unwrap().next[i] {
+				let helper = next.lock().unwrap();
 				let node_key = helper.get_key();
 
 				match key.cmp(node_key) {
@@ -193,7 +193,7 @@ impl segment_elements::SegmentTrait for SkipList {
 
 		for node in self.iter() {
 
-			let borrowed = node.borrow();
+			let borrowed = node.lock().unwrap();
 			let key = borrowed.get_key();
 			let entry = borrowed.get_val();
 			let entry_bytes = entry.serialize(key);
@@ -222,16 +222,16 @@ impl segment_elements::SegmentTrait for SkipList {
 	}
 
 	fn empty(&mut self) {
-		self.tail = Rc::new(RefCell::new(Node::new(None, None, 0, self.max_level)));
+		self.tail = Arc::new(Mutex::new(Node::new(None, None, 0, self.max_level)));
 	}
 }
 
 impl Drop for SkipList {
 	fn drop(&mut self) {
-		let mut current = Rc::clone(&self.tail);
+		let mut current = Arc::clone(&self.tail);
 
 		loop {
-			let next = match current.borrow_mut().next[0].take() {
+			let next = match current.lock().unwrap().next[0].take() {
 				Some(node) => node,
 				None => break,
 			};
