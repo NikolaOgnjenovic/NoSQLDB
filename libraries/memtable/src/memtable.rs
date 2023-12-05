@@ -7,12 +7,12 @@ use segment_elements::TimeStamp;
 pub(crate) struct MemoryTable {
     pub(crate) capacity: usize,
     pub(crate) len: usize,
-    pub(crate) inner_mem: Box<dyn segment_elements::SegmentTrait>,
+    pub(crate) inner_mem: Box<dyn segment_elements::SegmentTrait + Send>,
 }
 
 impl MemoryTable {
     pub(crate) fn new(dbconfig: &DBConfig) -> Result<Self, Box<dyn Error>> {
-        let inner_mem: Box<dyn segment_elements::SegmentTrait> = match dbconfig.memory_table_type {
+        let inner_mem: Box<dyn segment_elements::SegmentTrait + Send> = match dbconfig.memory_table_type {
             MemoryTableType::SkipList => Box::new(SkipList::new(dbconfig.skip_list_max_level)),
             MemoryTableType::HashMap => unimplemented!(),
             MemoryTableType::BTree => Box::new(BTree::new(dbconfig.b_tree_order)?)
@@ -32,7 +32,7 @@ impl MemoryTable {
             self.len += 1;
         }
 
-        self.len == self.capacity
+        self.len as f64 > 0.8 * self.capacity as f64
     }
 
     pub(crate) fn delete(&mut self, key: &[u8], time_stamp: TimeStamp) -> bool {
