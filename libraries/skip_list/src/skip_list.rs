@@ -182,7 +182,8 @@ impl segment_elements::SegmentTrait for SkipList {
 
 		None
 	}
-	///Function that serializes skip list and creates data_block, index file and filter for SSTable
+
+	/// Function that serializes skip list and creates data_block, index file and filter for SSTable
 	fn serialize(&self) -> Box<[u8]> {
 		//todo! how to make index summary?
 		let mut ss_table_bytes = vec![];
@@ -192,7 +193,6 @@ impl segment_elements::SegmentTrait for SkipList {
 		let mut filter = BloomFilter::new(0.01, self.length);
 
 		for node in self.iter() {
-
 			let borrowed = node.lock().unwrap();
 			let key = borrowed.get_key();
 			let entry = borrowed.get_val();

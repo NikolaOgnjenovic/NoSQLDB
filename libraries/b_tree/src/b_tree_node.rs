@@ -160,9 +160,8 @@ impl Node {
             index += 1;
         }
 
-        if index < self.n && key ==  &*self.entries[index].as_ref().unwrap().key {
-            self.entries[index].as_mut().unwrap().mem_entry.set_timestamp(time_stamp);
-            self.entries[index].as_mut().unwrap().mem_entry.set_tombstone(true);
+        if index < self.n && key == &*self.entries[index].as_ref().unwrap().key {
+            self.entries[index] = Some(Entry::from(key, &[], true, time_stamp));
             true
         } else {
             if self.is_leaf {

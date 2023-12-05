@@ -26,7 +26,6 @@ mod tests {
 
     }
 
-
     #[test]
     fn get_test() {
         for i in 2..15 {
