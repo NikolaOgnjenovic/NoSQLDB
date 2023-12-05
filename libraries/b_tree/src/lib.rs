@@ -112,7 +112,7 @@ mod tests {
             b.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now);
         }
 
-        assert!(b.delete(&50u128.to_ne_bytes(), TimeStamp::Now));
+        assert!(!b.delete(&50u128.to_ne_bytes(), TimeStamp::Now));
         assert_eq!(b.get(&50u128.to_ne_bytes()), None);
     }
 
@@ -124,7 +124,7 @@ mod tests {
             b.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now);
         }
 
-        assert!(!b.delete(&1000u128.to_ne_bytes(), TimeStamp::Now));
+        assert!(b.delete(&1000u128.to_ne_bytes(), TimeStamp::Now));
     }
 
     #[test]
@@ -137,6 +137,23 @@ mod tests {
 
         assert!(!b.insert(&50u128.to_ne_bytes(), &[50], TimeStamp::Now));
 
+    }
+
+    #[test]
+    fn test_insert_delete_len() {
+        let mut b = BTree::new(5).unwrap();
+
+        for i in 0..40u128 {
+            assert!(b.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now));
+        }
+
+        for i in 25..45u128 {
+            b.delete(&i.to_ne_bytes(), TimeStamp::Now);
+        }
+
+        assert_eq!(45, b.size());
+        assert_eq!(b.get(&20u128.to_ne_bytes()), Some(Box::from(40u128.to_ne_bytes())));
+        assert_eq!(b.get(&26u128.to_ne_bytes()), None);
     }
 
     #[test]

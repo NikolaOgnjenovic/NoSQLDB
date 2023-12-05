@@ -34,7 +34,7 @@ mod tests {
         skip_list.insert(&[2], &[20], TimeStamp::Now);
         skip_list.insert(&[3], &[30], TimeStamp::Now);
 
-        assert!(skip_list.delete(&[2], TimeStamp::Now));
+        assert!(!skip_list.delete(&[2], TimeStamp::Now));
         assert_eq!(skip_list.get(&[2]), None);
     }
 
@@ -44,7 +44,7 @@ mod tests {
 
         skip_list.insert(&[1], &[10], TimeStamp::Now);
 
-        assert!(!skip_list.delete(&[2], TimeStamp::Now));
+        assert!(skip_list.delete(&[2], TimeStamp::Now));
     }
 
     #[test]
@@ -62,7 +62,7 @@ mod tests {
         let mut skip_list = SkipList::new(4);
 
         assert_eq!(skip_list.get(&[1]), None);
-        assert!(!skip_list.delete(&[1], TimeStamp::Now));
+        assert!(skip_list.delete(&[1], TimeStamp::Now));
     }
 
     #[test]
@@ -94,6 +94,25 @@ mod tests {
         assert!(!skip_list.insert(&[1], &[3], TimeStamp::Now));
 
         assert_eq!(Some(Box::from([3].to_vec())), skip_list.get(&[1]));
+    }
+
+    #[test]
+    fn test_delete_insert_length() {
+        let max_level = 16;
+        let mut skip_list = SkipList::new(max_level);
+
+        for i in 0..40i32 {
+            let key = (i).to_ne_bytes();
+            let value = (i * 2).to_ne_bytes();
+            skip_list.insert(&key, &value, TimeStamp::Now);
+        }
+        
+        for i in 25..45i32 {
+            skip_list.delete(&(i).to_ne_bytes(), TimeStamp::Now);
+        }
+
+        assert_eq!(45, skip_list.get_length());
+        assert_eq!(skip_list.get(&20i32.to_ne_bytes()), Some(Box::from(40i32.to_ne_bytes())));
     }
 
     #[test]

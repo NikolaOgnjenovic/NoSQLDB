@@ -33,6 +33,10 @@ impl SkipList {
 		level
 	}
 
+	pub fn get_length(&self) -> usize {
+		self.length
+	}
+
 	pub fn delete_permanent(&mut self, key: &[u8]) -> Option<Box<[u8]>> {
 		let mut node = Arc::clone(&self.tail);
 		let mut updates: Vec<Link> = vec![None; self.max_level];
@@ -135,26 +139,28 @@ impl segment_elements::SegmentTrait for SkipList {
 	}
 
 	fn delete(&mut self, key: &[u8], time_stamp: TimeStamp) -> bool {
-		let mut node = Arc::clone(&self.tail);
+		if self.get(key).is_none() {
+			return self.insert(key, &[], time_stamp);
+		} else {
+			let mut node = Arc::clone(&self.tail);
 
-		for i in (0..self.level).rev() {
-			while let Some(next) = &node.clone().lock().unwrap().next[i] {
-				let mut helper = next.lock().unwrap();
-				let node_key = helper.get_key();
+			for i in (0..self.level).rev() {
+				while let Some(next) = &node.clone().lock().unwrap().next[i] {
+					let mut helper = next.lock().unwrap();
+					let node_key = helper.get_key();
 
-				match key.cmp(node_key) {
-					Ordering::Less => break,
-					Ordering::Equal => {
-						helper.value.as_mut().unwrap().set_timestamp(time_stamp);
-						helper.value.as_mut().unwrap().set_tombstone(true);
+					match key.cmp(node_key) {
+						Ordering::Less => break,
+						Ordering::Equal => {
+							helper.value = Some(MemoryEntry::from(&[], true, time_stamp.get_time()));
 
-						return true;
-					},
-					Ordering::Greater => node = next.clone()
+							return false;
+						},
+						Ordering::Greater => node = next.clone()
+					}
 				}
 			}
 		}
-
 		false
 	}
 

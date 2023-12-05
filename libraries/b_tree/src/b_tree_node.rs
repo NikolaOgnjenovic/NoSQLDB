@@ -162,10 +162,10 @@ impl Node {
 
         if index < self.n && key == &*self.entries[index].as_ref().unwrap().key {
             self.entries[index] = Some(Entry::from(key, &[], true, time_stamp));
-            true
+            false
         } else {
             if self.is_leaf {
-                false
+                true
             } else {
                 self.children[index].as_mut().unwrap().logical_deletion(key, time_stamp)
             }

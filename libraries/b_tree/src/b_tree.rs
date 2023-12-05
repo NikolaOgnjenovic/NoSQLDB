@@ -24,6 +24,10 @@ impl BTree {
         }
     }
 
+    pub fn size(&self) -> usize {
+        self.length
+    }
+
     /// Permanently removes a key from BTree if it exists.
     pub fn delete_permanent(&mut self, key: &[u8]) {
         if self.root.is_none() {
@@ -85,7 +89,13 @@ impl segment_elements::SegmentTrait for BTree {
     }
 
     fn delete(&mut self, key: &[u8], time_stamp: TimeStamp) -> bool {
-        self.root.as_mut().unwrap().logical_deletion(key, time_stamp)
+        if self.get(key).is_some(){
+            self.root.as_mut().unwrap().logical_deletion(key, time_stamp)
+        } else {
+            self.insert(key, &[], time_stamp);
+            true
+        }
+
     }
 
     fn get(&self, key: &[u8]) -> Option<Box<[u8]>> {

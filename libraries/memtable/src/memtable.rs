@@ -36,7 +36,11 @@ impl MemoryTable {
     }
 
     pub(crate) fn delete(&mut self, key: &[u8], time_stamp: TimeStamp) -> bool {
-        self.inner_mem.delete(key, time_stamp)
+        if self.inner_mem.delete(key, time_stamp) {
+            self.len += 1;
+        }
+
+        self.len as f64 > 0.8 * self.capacity as f64
     }
 
     pub(crate) fn get(&self, key: &[u8]) -> Option<Box<[u8]>> {

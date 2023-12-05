@@ -36,5 +36,19 @@ mod tests {
         assert_eq!(entry.get_timestamp(), new_entry.get_timestamp());
         assert_eq!(entry.get_tombstone(), new_entry.get_tombstone());
     }
+
+    #[test]
+    fn test_serialization_deleted_empty() {
+
+        let entry = MemoryEntry::from(&[], true, TimeStamp::Now.get_time());
+        let (key, new_entry) = match MemoryEntry::deserialize(&entry.serialize(&[1])) {
+            Ok(value) => value,
+            Err(_e) => return
+        };
+        assert_eq!(&[1], key.as_ref());
+        assert_eq!(entry.get_value(), new_entry.get_value());
+        assert_eq!(entry.get_timestamp(), new_entry.get_timestamp());
+        assert_eq!(entry.get_tombstone(), new_entry.get_tombstone());
+    }
 }
 
