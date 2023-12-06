@@ -6,6 +6,8 @@ pub use skip_list::SkipList;
 
 #[cfg(test)]
 mod tests {
+    use std::cmp::max;
+    use std::iter::Skip;
     use peak_alloc::PeakAlloc;
     use segment_elements::{SegmentTrait, TimeStamp};
     use super::*;
@@ -117,17 +119,23 @@ mod tests {
 
     #[test]
     fn iterator_test() {
-        let max_level = 8;
-        let mut skip_list = SkipList::new(max_level);
+        for max_level in 5..12 {
+            let mut skip_list = SkipList::new(max_level);
 
-        skip_list.insert(&[4], &[1], TimeStamp::Now);
-        skip_list.insert(&[22], &[2], TimeStamp::Now);
-        skip_list.insert(&[11], &[3], TimeStamp::Now);
+            for i in 0..111u32 {
+                assert!(skip_list.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now));
+            }
+            let iterator = skip_list.iter();
 
-        let mut iterator = skip_list.iter();
-        assert_eq!(&[4], iterator.next().unwrap().lock().unwrap().get_key());
-        assert_eq!(&[11], iterator.next().unwrap().lock().unwrap().get_key());
-        assert_eq!(&[22], iterator.next().unwrap().lock().unwrap().get_key());
+            let mut i:u32 = 0;
+            for entry in iterator {
+                let key = entry.0;
+                let entry = entry.1;
+                assert_eq!(<[u8; 4] as Into<Box<[u8]>>>::into(i.to_ne_bytes()), key);
+                i += 1;
+                println!("{:?}", key);
+            }
+        }
     }
 
     #[test]

@@ -128,21 +128,39 @@ impl segment_elements::SegmentTrait for BTree {
 
     fn serialize(&self) -> Box<[u8]> {
         let mut ss_table_bytes = vec![];
-        let mut data_bytes = vec![];
+        let mut data_bytes:Vec<u8> = vec![];
         let mut index_bytes = vec![];
         let mut offset = 0;
         let mut filter = BloomFilter::new(0.01, self.length);
-        self.root.as_ref().unwrap().in_order(&mut data_bytes, &mut index_bytes, &mut offset, &mut filter);
 
-        let filter_bytes = filter.serialize();
+        let iterable = self.iter();
+        if let Some(iterator) = iterable {
 
-        ss_table_bytes.extend(usize::to_ne_bytes(data_bytes.len()));
-        ss_table_bytes.extend(data_bytes);
-        ss_table_bytes.extend(usize::to_ne_bytes(index_bytes.len()));
-        ss_table_bytes.extend(index_bytes);
-        ss_table_bytes.extend(usize::to_ne_bytes(filter_bytes.len()));
-        ss_table_bytes.extend(filter_bytes.iter());
+            for entry in iterator {
+                let key = entry.0;
+                let memory_entry = entry.1;
+                let entry_bytes = memory_entry.serialize(&key);
+                data_bytes.extend(entry_bytes.iter());
 
+                //index structure contains key_len(8 bytes), key and offset in data block(8 bytes)
+                index_bytes.extend(usize::to_ne_bytes(key.len()));
+                index_bytes.extend(key.iter());
+                index_bytes.extend(usize::to_ne_bytes(offset));
+
+                filter.add(&key);
+
+                offset += entry_bytes.len();
+            }
+
+            let filter_bytes = filter.serialize();
+
+            ss_table_bytes.extend(usize::to_ne_bytes(data_bytes.len()));
+            ss_table_bytes.extend(data_bytes);
+            ss_table_bytes.extend(usize::to_ne_bytes(index_bytes.len()));
+            ss_table_bytes.extend(index_bytes);
+            ss_table_bytes.extend(usize::to_ne_bytes(filter_bytes.len()));
+            ss_table_bytes.extend(filter_bytes.iter());
+        }
         ss_table_bytes.into_boxed_slice()
     }
 
