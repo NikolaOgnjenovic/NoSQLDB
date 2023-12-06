@@ -1,6 +1,7 @@
 mod b_tree;
 mod b_tree_node;
 mod order_error;
+mod b_tree_iterator;
 
 pub use b_tree::BTree;
 pub use order_error::OrderError;
@@ -154,6 +155,29 @@ mod tests {
         assert_eq!(45, b.size());
         assert_eq!(b.get(&20u128.to_ne_bytes()), Some(Box::from(40u128.to_ne_bytes())));
         assert_eq!(b.get(&26u128.to_ne_bytes()), None);
+    }
+
+    #[test]
+    fn iterator_test() {
+        for order in 2..15 {
+            let mut b = BTree::new(order).unwrap();
+
+            for i in 0..111u32 {
+                assert!(b.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now));
+            }
+            let iterable = b.iter();
+            if let Some(iterator) = iterable {
+                let mut i:u32 = 0;
+                for target in iterator {
+                    let key = target.0;
+                    let entry = target.1;
+                    assert_eq!(<[u8; 4] as Into<Box<[u8]>>>::into(i.to_ne_bytes()), key);
+                    i += 1;
+                    println!("{:?}", key);
+                    println!("{:?}", entry);
+                }
+            }
+        }
     }
 
     #[test]

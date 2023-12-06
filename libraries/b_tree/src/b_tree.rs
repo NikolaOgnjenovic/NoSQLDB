@@ -1,5 +1,6 @@
 use segment_elements::{SegmentTrait, TimeStamp};
 use crate::b_tree_node::{Node, Entry};
+use crate::b_tree_iterator::BTreeIterator;
 use crate::order_error::OrderError;
 use bloom_filter::BloomFilter;
 
@@ -47,6 +48,29 @@ impl BTree {
             }
         }
     }
+
+    ///Returns Option<Iterator> for BTree that yields sorted (Key, MemEntry) pairs
+    /// The value is Some if length > 0 otherwise None
+    pub fn iter(&self) -> Option<BTreeIterator> {
+        if self.length > 0 {
+
+            let mut stack = Vec::new();
+            let mut entry_stack = Vec::new();
+            if let Some(root) = self.root.as_ref() {
+                stack.push(root);
+                entry_stack.push(0);
+            }
+            let mut iterator = BTreeIterator {
+                stack,
+                entry_stack,
+            };
+
+            iterator.find_leftmost_child();
+            return Some(iterator);
+        }
+        None
+    }
+
 }
 
 impl segment_elements::SegmentTrait for BTree {
