@@ -81,7 +81,7 @@ impl SkipList {
 	}
 	pub fn iter(&self) -> SkipListIterator {
 		SkipListIterator{
-			current: Some(Arc::clone(&self.tail)),
+			current: Some(Arc::clone(&self.tail))
 		}
 	}
 }
@@ -227,6 +227,10 @@ impl segment_elements::SegmentTrait for SkipList {
 
 	fn empty(&mut self) {
 		self.tail = Arc::new(Mutex::new(Node::new(None, None, 0, self.max_level)));
+	}
+
+	fn iterator(&self) -> Box<dyn Iterator<Item = (Box<[u8]>, MemoryEntry)>> {
+		Box::new(self.iter())
 	}
 }
 

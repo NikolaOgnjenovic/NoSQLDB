@@ -8,6 +8,7 @@ use crate::insert_error::InsertError;
 use crate::memtable::MemoryTable;
 use crate::record_iterator::RecordIterator;
 use db_config::DBConfig;
+use sstable::SSTable;
 
 pub struct MemoryPool {
     read_write_table: MemoryTable,
@@ -35,8 +36,9 @@ impl MemoryPool {
                 &mut self.read_write_table, unsafe { MemoryTable::new(&self.config).unwrap_unchecked() }
             );
 
-            self.read_only_tables.push_front(old_read_write);
-
+            //self.read_only_tables.push_front(old_read_write);
+            // todo: uncomment
+            self.flush_concurrent(old_read_write);
             if self.read_only_tables.len() == self.config.memory_table_pool_num {
                 // unwrap allowed because if condition will never be true when unwrap can panic
                 let to_be_flushed = unsafe { self.read_only_tables.pop_back().unwrap_unchecked() };
@@ -68,9 +70,13 @@ impl MemoryPool {
 
     fn flush_concurrent(&mut self, mut table: MemoryTable) {
         let handle = std::thread::spawn(move || {
-            // todo SSTable::from should be called here
-
-            let _serialized_data = table.flush();
+            // TODO: error handling, dbconfig
+            if let Err(err) = SSTable::new(Path::new("../../data/sstables/1/table"), &table.inner_mem) {
+                eprintln!("Error: {}" , err);
+            }
+            let mut sstable = SSTable::new(Path::new("../../data/sstables/1/table"), &table.inner_mem).unwrap();
+            sstable.flush(5);
+            //let _serialized_data = table.flush();
         });
 
         self.join_handles.push(handle);

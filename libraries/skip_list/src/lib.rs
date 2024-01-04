@@ -3,11 +3,9 @@ mod skip_list_node;
 mod skip_list_iterator;
 
 pub use skip_list::SkipList;
-
+use segment_elements::SegmentTrait;
 #[cfg(test)]
 mod tests {
-    use std::cmp::max;
-    use std::iter::Skip;
     use peak_alloc::PeakAlloc;
     use segment_elements::{SegmentTrait, TimeStamp};
     use super::*;
