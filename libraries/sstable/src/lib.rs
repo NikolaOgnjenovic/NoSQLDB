@@ -32,9 +32,9 @@ mod tests {
         }
 
         // Create an SSTable from the MemoryPool's inner_mem
-        let mut sstable = SSTable::new(temp_dir.path(), &inner_mem)
+        let mut sstable = SSTable::new(temp_dir.path(), &inner_mem, false)
             .expect("Failed to create SSTable");
-        sstable.flush(dbconfig.summary_density as usize).expect("Failed to flush sstable");
+        sstable.flush(dbconfig.summary_density).expect("Failed to flush sstable");
 
         // Retrieve and validate data from the SSTable
         for i in 0..10 {
