@@ -6,7 +6,7 @@ use crc::{Crc, CRC_32_ISCSI};
 pub struct MemoryEntry {
     value: Box<[u8]>,
     tombstone: bool,
-    timestamp: u128
+    pub timestamp: u128
 }
 
 impl MemoryEntry {
