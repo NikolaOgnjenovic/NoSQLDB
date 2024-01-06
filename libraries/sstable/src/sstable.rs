@@ -345,7 +345,7 @@ impl<'a> SSTable<'a> {
             MemoryTableType::BTree => Box::new(BTree::new(dbconfig.b_tree_order).unwrap())
         };
         for (key, entry) in merged_data {
-            inner_mem.insert(&key, &entry.get_value(), TimeStamp::Custom(entry.timestamp));
+            inner_mem.insert(&key, &entry.get_value(), TimeStamp::Custom(entry.get_timestamp()));
         }
         let mut merged_sstable = SSTable::new(merged_base_path, &inner_mem, true)?;
 
@@ -394,7 +394,7 @@ impl<'a> SSTable<'a> {
 
             if compare_result == std::cmp::Ordering::Equal {
                 // If keys are equal, choose the entry with the newer timestamp
-                if e1.timestamp > e2.timestamp {
+                if e1.get_timestamp() > e2.get_timestamp() {
                     merged_entries.push((k1, e1));
                     entry1 = SSTable::read_entry_from_cursor(&mut cursor1)?;
                     entry2 = SSTable::read_entry_from_cursor(&mut cursor2)?;
