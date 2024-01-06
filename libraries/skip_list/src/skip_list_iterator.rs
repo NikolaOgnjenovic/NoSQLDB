@@ -3,7 +3,7 @@ use std::sync::{ Arc, Mutex };
 use segment_elements::MemoryEntry;
 
 pub struct SkipListIterator {
-    pub(crate) current: Option<Arc<Mutex<Node>>>,
+    pub(crate) current: Option<Arc<Mutex<Node>>>
 }
 
 impl Iterator for SkipListIterator {

@@ -36,11 +36,11 @@ pub struct DBConfig {
     pub memory_table_capacity: usize,
     pub memory_table_type: MemoryTableType,
     pub memory_table_pool_num: usize,
+    pub summary_density: usize,
+    pub sstable_single_file: bool,
 
     // todo, novo gradivo, nije još implementirano,
     // todo, dodato ono šta je poznato na osnovu specifikacije
-    pub summary_density: u32,
-    pub sstable_single_file: bool,
     pub lsm_max_level: usize,
     pub compression_enabled: bool,
     pub compression_algorithm_type: CompressionAlgorithmType,
@@ -65,10 +65,10 @@ impl Default for DBConfig {
             memory_table_capacity: 1000,
             memory_table_type: MemoryTableType::BTree,
             memory_table_pool_num: 10,
+            summary_density: 10,
 
             // todo, novo gradivo, nije još implementirano,
             // todo, dodato ono šta je poznato na osnovu specifikacije
-            summary_density: 0,
             sstable_single_file: false,
             lsm_max_level: 0,
             compression_enabled: false,

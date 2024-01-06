@@ -1,4 +1,4 @@
-use segment_elements::{SegmentTrait, TimeStamp};
+use segment_elements::{MemoryEntry, SegmentTrait, TimeStamp};
 use crate::b_tree_node::{Node, Entry};
 use crate::b_tree_iterator::BTreeIterator;
 use crate::order_error::OrderError;
@@ -53,7 +53,6 @@ impl BTree {
     /// The value is Some if length > 0 otherwise None
     pub fn iter(&self) -> Option<BTreeIterator> {
         if self.length > 0 {
-
             let mut stack = Vec::new();
             let mut entry_stack = Vec::new();
             if let Some(root) = self.root.as_ref() {
@@ -73,7 +72,7 @@ impl BTree {
 
 }
 
-impl segment_elements::SegmentTrait for BTree {
+impl SegmentTrait for BTree {
     /// Inserts or updates a key with the corresponding value into the BTree.
     fn insert(&mut self, key: &[u8], value: &[u8], time_stamp: TimeStamp) -> bool {
         if self.get(key).is_some() {
@@ -135,7 +134,6 @@ impl segment_elements::SegmentTrait for BTree {
 
         let iterable = self.iter();
         if let Some(iterator) = iterable {
-
             for entry in iterator {
                 let key = entry.0;
                 let memory_entry = entry.1;
@@ -166,5 +164,9 @@ impl segment_elements::SegmentTrait for BTree {
 
     fn empty(&mut self) {
         self.root = None;
+    }
+
+    fn iterator(&self) -> Box<dyn Iterator<Item = (Box<[u8]>, MemoryEntry)> + '_> {
+        Box::new(self.iter().map(|iterator| iterator).into_iter().flatten())
     }
 }

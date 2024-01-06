@@ -1,4 +1,4 @@
-use crate::TimeStamp;
+use crate::{MemoryEntry, TimeStamp};
 
 /// Public trait that Memory table structures must implement.
 pub trait SegmentTrait {
@@ -14,4 +14,7 @@ pub trait SegmentTrait {
     fn serialize(&self) -> Box<[u8]>;
     /// Empties all inner elements of structure.
     fn empty(&mut self);
+    /// Returns an iterator over the elements of the structure.
+    //fn iterator(&self) -> Box<dyn Iterator<Item = (Box<[u8]>, MemoryEntry)> + '_>;
+    fn iterator(&self) -> Box<dyn Iterator<Item = (Box<[u8]>, MemoryEntry)> + '_>;
 }

@@ -11,4 +11,5 @@ skip_list = { path = "../skip_list" }
 b_tree = { path = "../b_tree" }
 write_ahead_log = { path = "../write_ahead_log" }
 db_config = { path = "../db_config" }
+sstable = { path = "../sstable"}
 crc = "3.0.1"
