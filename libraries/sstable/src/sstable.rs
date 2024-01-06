@@ -112,7 +112,6 @@ impl<'a> SSTable<'a> {
         let mut data = Vec::new();
 
         let mut offset: u64 = 0;
-        // TODO: empty for btree?
         for (key, entry) in self.inner_mem.iterator() {
             let entry_data = entry.serialize(&key);
             let entry_len = entry_data.len().to_ne_bytes();
