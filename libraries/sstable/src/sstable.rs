@@ -1,6 +1,6 @@
 use std::fs::{create_dir_all, OpenOptions, remove_dir_all};
 use std::io;
-use std::io::{BufWriter, Cursor, Read, Seek, Write};
+use std::io::{BufWriter, Cursor, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use b_tree::BTree;
 use bloom_filter::BloomFilter;
@@ -341,7 +341,7 @@ impl<'a> SSTable<'a> {
 
         let mut inner_mem: Box<dyn SegmentTrait + Send> = match dbconfig.memory_table_type {
             MemoryTableType::SkipList => Box::new(SkipList::new(dbconfig.skip_list_max_level)),
-            MemoryTableType::HashMap => unimplemented!(),
+            MemoryTableType::HashMap => todo!(),
             MemoryTableType::BTree => Box::new(BTree::new(dbconfig.b_tree_order).unwrap())
         };
         for (key, entry) in merged_data {
@@ -640,31 +640,35 @@ impl<'a> SSTable<'a> {
     fn get_cursor_data(base_path: &Path, in_single_file: bool, path_postfix: &str, first_offset_index: usize, second_offset_index: usize) -> io::Result<Cursor<Vec<u8>>> {
         let mut buffer = Vec::new();
         let data = if in_single_file {
-            // Read the entire buffer into memory
-            let file = SSTable::open_buf_writer(base_path,".db", true)?;
-            file.get_ref().read_to_end(&mut buffer)?;
+            let mut file = SSTable::open_buf_writer(base_path,".db", true)?;
 
-            // Extract the first offset from the buffer
-            let first_offset = usize::from_ne_bytes(
-                buffer[first_offset_index * std::mem::size_of::<usize>()..(first_offset_index + 1) * std::mem::size_of::<usize>()]
-                    .try_into()
-                    .unwrap(),
-            );
+            // Seek to the first offset index
+            file.seek(SeekFrom::Start((first_offset_index * std::mem::size_of::<usize>()) as u64))?;
 
-            // If reading from the merkle tree, read from the first offset to the end
+            // Read the first offset value
+            let mut first_offset_bytes = [0u8; std::mem::size_of::<usize>()];
+            file.get_ref().read_exact(&mut first_offset_bytes)?;
+            let first_offset = usize::from_ne_bytes(first_offset_bytes);
+
+            // If reading from the merkle tree, seek to the first offset value and read to the end
             if second_offset_index == 5 {
-                buffer[first_offset..].to_vec()
+                file.seek(SeekFrom::Start(first_offset as u64))?;
+                file.get_ref().read_to_end(&mut buffer)?;
             } else {
-                let second_offset = usize::from_ne_bytes(
-                    buffer[second_offset_index * std::mem::size_of::<usize>()..(second_offset_index + 1) * std::mem::size_of::<usize>()]
-                        .try_into()
-                        .unwrap(),
-                );
+                // Seek to the second offset index
+                file.seek(SeekFrom::Start((second_offset_index * std::mem::size_of::<usize>()) as u64))?;
 
-                // Use the data from the specified range in the buffer
-                buffer[first_offset..second_offset].to_vec()
+                // Read the second offset value
+                let mut second_offset_bytes = [0u8; std::mem::size_of::<usize>()];
+                file.get_ref().read_exact(&mut second_offset_bytes)?;
+                let second_offset = usize::from_ne_bytes(second_offset_bytes);
+
+                // Seek to the first offset value and read the data between the offsets
+                file.seek(SeekFrom::Start(first_offset as u64))?;
+                file.get_ref().take((second_offset - first_offset) as u64).read_to_end(&mut buffer)?;
             }
 
+            buffer
         } else {
             // Open the file for reading
             let file = SSTable::open_buf_writer(base_path, path_postfix, true)?;
