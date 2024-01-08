@@ -17,7 +17,7 @@ mod tests {
         let dbconfig = DBConfig::default();
         let inner_mem: Box<dyn SegmentTrait + Send> = match memory_type {
             MemoryTableType::SkipList => Box::new(SkipList::new(dbconfig.skip_list_max_level)),
-            MemoryTableType::HashMap => unimplemented!(),
+            MemoryTableType::HashMap => todo!(),
             MemoryTableType::BTree => Box::new(BTree::new(dbconfig.b_tree_order).unwrap())
         };
 
