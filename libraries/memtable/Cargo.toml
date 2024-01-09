@@ -13,3 +13,4 @@ write_ahead_log = { path = "../write_ahead_log" }
 db_config = { path = "../db_config" }
 sstable = { path = "../sstable"}
 crc = "3.0.1"
+threadpool = "1.8.1"
