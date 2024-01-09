@@ -84,6 +84,8 @@ impl MemoryPool {
         self.thread_pool.execute(move || {
             // todo: LSM sturktura treba da pozove kreiranje nove sstabele i potencionalno da ona radi kompakcije i
             // todo mergeovanje ovde, a ako ne ovde onda se radi u main db strukturi
+
+            // todo obrisi svaki wal vezan za ovu tabelu
         });
     }
 

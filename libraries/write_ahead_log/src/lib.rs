@@ -87,7 +87,7 @@ mod tests {
         let k1 = b"key1";
         let v1 = b"value1";
 
-        wal1.set(k1, v1, TimeStamp::Now)?;
+        wal1.insert(k1, v1, TimeStamp::Now)?;
 
         wal1.flush().unwrap();
 

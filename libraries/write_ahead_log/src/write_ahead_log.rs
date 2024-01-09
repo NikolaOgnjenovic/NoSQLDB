@@ -31,17 +31,7 @@ impl WriteAheadLog {
         Ok(Self { crc_hasher: Crc::<u32>::new(&CRC_32_ISCSI), file })
     }
 
-    /// Opens a path as an append file and continues the WAL log there.
-    pub fn from_path(path: &Path) -> io::Result<WriteAheadLog> {
-        let file = BufWriter::new(OpenOptions::new()
-            .append(true)
-            .open(path)?
-        );
-
-        Ok(Self { crc_hasher: Crc::<u32>::new(&CRC_32_ISCSI), file })
-    }
-
-    pub fn set(&mut self, key: &[u8], value: &[u8], timestamp: TimeStamp) -> io::Result<()> {
+    pub fn insert(&mut self, key: &[u8], value: &[u8], timestamp: TimeStamp) -> io::Result<()> {
         let mut bytes: Vec<u8> = Vec::new();
 
         bytes.extend(timestamp.get_time().to_ne_bytes().as_ref());
