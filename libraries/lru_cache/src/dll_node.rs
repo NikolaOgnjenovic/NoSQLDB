@@ -13,7 +13,7 @@ impl Entry {
 }
 
 #[derive(Debug)]
-pub(crate) struct Node{
+pub(crate) struct Node {
     pub(crate) el: Entry,
     pub(crate) next: crate::doubly_linked_list::Link,
     pub(crate) prev: crate::doubly_linked_list::Link,
@@ -26,9 +26,5 @@ impl Node {
             next: None,
             prev: None,
         }
-    }
-
-    pub(crate) fn get_el(&self) -> &Entry {
-        &self.el
     }
 }

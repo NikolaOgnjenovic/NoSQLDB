@@ -9,6 +9,10 @@ license = "GPL-3.0"
 authors = ["Luka Bursać", "Momir Stanišić", "Mihajlo Orlović", "Nikola Ognjenović", "Viktor Srbljin"]
 
 [dependencies]
+db_config = { path = "libraries/db_config" }
+memtable = { path = "libraries/memtable" }
+segment_elements = { path = "libraries/segment_elements" }
+lru_cache = { path = "libraries/lru_cache" }
 
 # All the libraries the package is built with
 [workspace]

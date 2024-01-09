@@ -2,7 +2,7 @@ mod lru_cache;
 mod doubly_linked_list;
 mod dll_node;
 
-use lru_cache::LRUCache;
+pub use lru_cache::LRUCache;
 
 #[cfg(test)]
 mod tests {

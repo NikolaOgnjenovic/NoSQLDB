@@ -25,7 +25,7 @@ impl WriteAheadLog {
         let file = BufWriter::new(OpenOptions::new()
             .append(true)
             .create(true)
-            .open(&file_path)?
+            .open(file_path)?
         );
 
         Ok(Self { crc_hasher: Crc::<u32>::new(&CRC_32_ISCSI), file })

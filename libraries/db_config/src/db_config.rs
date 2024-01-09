@@ -55,7 +55,7 @@ impl Default for DBConfig {
     fn default() -> DBConfig {
         DBConfig {
             bloom_filter_probability: 0.1,
-            bloom_filter_cap: 100_00_00,
+            bloom_filter_cap: 1_000_000,
             skip_list_max_level: 10,
             hyperloglog_precision: 10,
             write_ahead_log_dir: "./wal/".to_string(),

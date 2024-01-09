@@ -1,14 +1,11 @@
-use segment_elements::{MemoryEntry, TimeStamp};
+use segment_elements::TimeStamp;
 use crate::dll_node::{ Entry, Node };
 use crate::doubly_linked_list::DoublyLinkedList;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::cell::RefCell;
 
-//todo capacity needs to be in config file
-
-
-pub(crate) struct LRUCache {
+pub struct LRUCache {
     pub(crate) list: DoublyLinkedList,
     pub(crate) map: HashMap<Box<[u8]>, Rc<RefCell<Node>>>,
     pub(crate) size: usize,
@@ -16,7 +13,6 @@ pub(crate) struct LRUCache {
 }
 
 impl LRUCache {
-
     pub fn new(capacity: usize) -> Self {
         LRUCache {
             list: DoublyLinkedList::new(),
@@ -25,10 +21,11 @@ impl LRUCache {
             capacity,
         }
     }
+
     pub fn read(&mut self, key: &[u8]) -> Option<Box<[u8]>> {
         if self.map.contains_key(key) {
             let node = self.map.get(key);
-            let value = node.unwrap().borrow().get_el().mem_entry.get_value();
+            let value = node.unwrap().borrow().el.mem_entry.get_value();
             let prev_node = &node.unwrap().as_ref().borrow().prev;
             let next_node = &node.unwrap().as_ref().borrow().next;
 
@@ -44,11 +41,12 @@ impl LRUCache {
                 self.list.tail = node.unwrap().as_ref().borrow().prev.clone();
             }
 
-            self.list.push_head(node.unwrap().borrow().get_el().clone());
+            self.list.push_head(node.unwrap().borrow().el.clone());
             self.list.size -= 1;
             return Some(value);
 
         }
+
         None
     }
 
@@ -61,7 +59,7 @@ impl LRUCache {
 
         if self.size >= self.capacity {
             let popped = self.list.pop_tail();
-            self.map.remove(popped.unwrap().borrow().get_el().key.as_ref());
+            self.map.remove(popped.unwrap().borrow().el.key.as_ref());
             self.size -= 1;
         }
     }
