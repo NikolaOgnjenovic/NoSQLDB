@@ -1,12 +1,10 @@
 pub mod merkle_tree;
 
-pub use merkle_tree::Node;
-use merkle_tree::MerkleTree;
-use sha256::digest;
-
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::merkle_tree::MerkleTree;
+    use sha256::digest;
+    use crate::merkle_tree::Node;
 
     /// Tests the hashing mechanism of the Merkle Tree.
     #[test]

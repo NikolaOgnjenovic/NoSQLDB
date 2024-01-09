@@ -1,8 +1,6 @@
 mod sstable;
 
 pub use sstable::SSTable;
-use skip_list::SkipList;
-use b_tree::BTree;
 
 #[cfg(test)]
 mod tests {
@@ -11,6 +9,8 @@ mod tests {
     use tempfile::TempDir;
     use segment_elements::{SegmentTrait, TimeStamp};
     use db_config::{DBConfig, MemoryTableType};
+    use skip_list::SkipList;
+    use b_tree::BTree;
 
     // Helper function to get default config and inner mem of memory type
     fn get_config_inner_mem(memory_type: &MemoryTableType) -> (DBConfig, Box<dyn SegmentTrait + Send>) {

@@ -15,6 +15,5 @@ pub trait SegmentTrait {
     /// Empties all inner elements of structure.
     fn empty(&mut self);
     /// Returns an iterator over the elements of the structure.
-    //fn iterator(&self) -> Box<dyn Iterator<Item = (Box<[u8]>, MemoryEntry)> + '_>;
     fn iterator(&self) -> Box<dyn Iterator<Item = (Box<[u8]>, MemoryEntry)> + '_>;
 }

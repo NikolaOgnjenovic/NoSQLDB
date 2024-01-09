@@ -10,9 +10,9 @@ crc = "3.0.1"
 segment_elements = { path = "../segment_elements" }
 bloom_filter = { path = "../bloom_filter" }
 merkle_tree = { path = "../merkle_tree" }
+skip_list = { path = "../skip_list" }
+b_tree = { path = "../b_tree" }
+db_config = { path = "../db_config" }
 
 [dev-dependencies]
 tempfile = "3.9.0"
-db_config = { path = "../db_config" }
-skip_list = { path = "../skip_list" }
-b_tree = { path = "../b_tree" }
