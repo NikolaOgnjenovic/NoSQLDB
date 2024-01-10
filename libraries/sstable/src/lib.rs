@@ -43,7 +43,7 @@ mod tests {
     }
 
     // Helper function to create an SSTable from the inner memory
-    fn create_sstable<'a>(base_path: &'a Path, inner_mem: &'a Box<dyn SegmentTrait + Send>, single_file: bool) -> SSTable<'a> {
+    fn create_sstable<'a>(base_path: &'a Path, inner_mem: &'a (dyn SegmentTrait + Send), single_file: bool) -> SSTable<'a> {
         let dbconfig = DBConfig::default();
         SSTable::new(base_path, inner_mem, single_file)
             .expect("Failed to create SSTable")
@@ -64,7 +64,7 @@ mod tests {
         insert_test_data(&mut inner_mem, range, multiplier);
 
         // Create an SSTable from the MemoryPool's inner_mem
-        let mut sstable = create_sstable(&temp_dir.path(), &inner_mem, in_single_file);
+        let mut sstable = create_sstable(&temp_dir.path(), &*inner_mem, in_single_file);
         sstable.flush(dbconfig.summary_density).expect("Failed to flush sstable");
 
         // Retrieve and validate data from the SSTable
@@ -107,7 +107,7 @@ mod tests {
         insert_test_data(&mut inner_mem, range, multiplier);
 
         // Create an SSTable from the MemoryPool's inner_mem
-        let mut sstable = create_sstable(&temp_dir.path(), &inner_mem, in_single_file);
+        let mut sstable = create_sstable(&temp_dir.path(), &*inner_mem, in_single_file);
         sstable.flush(dbconfig.summary_density).expect("Failed to flush sstable");
 
         // Get the merkle tree from the SSTable
@@ -137,14 +137,14 @@ mod tests {
         // Generate data for the first SSTable
         insert_test_data(&mut inner_mem1, range, multiplier);
         let sstable1_path = temp_dir.path().join("sstable1");
-        let mut sstable1 = create_sstable(&sstable1_path, &inner_mem1, sstable1_in_single_file);
+        let mut sstable1 = create_sstable(&sstable1_path, &*inner_mem1, sstable1_in_single_file);
         sstable1.flush(dbconfig.summary_density).expect("Failed to flush sstable");
 
         // Generate data * 2 for the second SSTable
-        let  (_, mut inner_mem2) = get_config_inner_mem(memory_type);
+        let (_, mut inner_mem2) = get_config_inner_mem(memory_type);
         insert_test_data(&mut inner_mem2, range, multiplier * 2);
         let sstable2_path = temp_dir.path().join("sstable2");
-        let mut sstable2 = create_sstable(&sstable2_path, &inner_mem2, sstable2_in_single_file);
+        let mut sstable2 = create_sstable(&sstable2_path, &*inner_mem2, sstable2_in_single_file);
         sstable2.flush(dbconfig.summary_density).expect("Failed to flush sstable");
 
         // Define the path for the merged SSTable
@@ -166,7 +166,7 @@ mod tests {
         let (dbconfig, inner_mem) = get_config_inner_mem(memory_type);
 
         // Create an SSTable from the merged SSTable path
-        let mut merged_sstable = SSTable::new(merged_sstable_path, &inner_mem, true)
+        let merged_sstable = SSTable::new(merged_sstable_path, &*inner_mem, true)
             .expect("Failed to create merged SSTable");
 
         // Retrieve and validate data from the merged SSTable

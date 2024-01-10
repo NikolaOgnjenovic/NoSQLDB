@@ -77,7 +77,7 @@ impl MerkleTree {
 
         let nodes: Vec<Node> = data
             .chunks(1024)
-            .map(|d| Node::new(d))
+            .map(Node::new)
             .collect();
 
         tree.build_tree(nodes);
@@ -144,19 +144,19 @@ impl MerkleTree {
     pub fn serialize(&self) -> Box<[u8]> {
         let mut data = Vec::new();
 
-        Self::get_data_blocks(self.root.as_ref(), &mut data);
+        Self::get_data_blocks(self.root.as_deref(), &mut data);
 
         data.into_boxed_slice()
     }
 
     /// Recursively collects the data blocks from the Merkle tree nodes.
-    fn get_data_blocks(root: Option<&Box<Node>>, data: &mut Vec<u8>) {
+    fn get_data_blocks(root: Option<&Node>, data: &mut Vec<u8>) {
         if let Some(node) = root {
             if node.is_leaf() {
                 data.extend(node.hash.as_bytes());
             } else {
-                Self::get_data_blocks(node.left_child.as_ref(), data);
-                Self::get_data_blocks(node.right_child.as_ref(), data);
+                Self::get_data_blocks(node.left_child.as_deref(), data);
+                Self::get_data_blocks(node.right_child.as_deref(), data);
             }
         }
     }

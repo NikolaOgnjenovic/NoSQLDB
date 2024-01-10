@@ -14,9 +14,10 @@ impl Iterator for SkipListIterator {
             let key = next_node.lock().as_ref().unwrap().key.clone().unwrap();
             let memory_entry = next_node.lock().as_ref().unwrap().value.clone().unwrap();
             self.current = Some(next_node);
-            return Option::from((key, memory_entry));
+
+            Option::from((key, memory_entry))
         } else {
-            return None;
+            None
         }
     }
 }

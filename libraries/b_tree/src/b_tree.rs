@@ -167,6 +167,6 @@ impl SegmentTrait for BTree {
     }
 
     fn iterator(&self) -> Box<dyn Iterator<Item = (Box<[u8]>, MemoryEntry)> + '_> {
-        Box::new(self.iter().map(|iterator| iterator).into_iter().flatten())
+        Box::new(self.iter().into_iter().flatten())
     }
 }

@@ -50,7 +50,7 @@ impl SkipList {
 				match key.cmp(node_key) {
 					Ordering::Less => break,
 					Ordering::Equal => {
-						node_to_delete = Some(Arc::clone(&next));
+						node_to_delete = Some(Arc::clone(next));
 						break;
 					},
 					Ordering::Greater => node = next.clone()
@@ -65,7 +65,7 @@ impl SkipList {
 				if let Some(prev_node) = prev_node {
 					let next = &node_to_delete_lock.next[index];
 					if next.is_some() {
-						prev_node.lock().unwrap().next[index] = Some(Arc::clone(&next.as_ref().unwrap()));
+						prev_node.lock().unwrap().next[index] = Some(Arc::clone(next.as_ref().unwrap()));
 					} else {
 						prev_node.lock().unwrap().next[index] = None;
 					}
@@ -108,7 +108,7 @@ impl segment_elements::SegmentTrait for SkipList {
 			updates[i] = Some(Arc::clone(&node));
 		}
 
-		let level = SkipList::random_gen(&self);
+		let level = SkipList::random_gen(self);
 		let node_to_insert = Arc::new(Mutex::new(Node::new(
 			Some(Box::from(key)),
 			Some(MemoryEntry::from(value, false, time_stamp.get_time())),
@@ -128,7 +128,7 @@ impl segment_elements::SegmentTrait for SkipList {
 				let borrowed_prev = &mut prev_node.lock().unwrap();
 				let next_node = &borrowed_prev.next[index];
 				if let Some(next_node) = next_node {
-					node_to_insert.lock().unwrap().next[index] = Some(Arc::clone(&next_node));
+					node_to_insert.lock().unwrap().next[index] = Some(Arc::clone(next_node));
 				}
 				borrowed_prev.next[index] = Some(Arc::clone(&node_to_insert));
 			}

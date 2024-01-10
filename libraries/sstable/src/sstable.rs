@@ -14,7 +14,7 @@ pub struct SSTable<'a> {
     // Base directory path where the SSTable files will be stored.
     base_path: &'a Path,
     // In-memory segment containing key-value pairs.
-    inner_mem: &'a Box<dyn SegmentTrait + Send>,
+    inner_mem: &'a (dyn SegmentTrait + Send),
     // Flag indicating whether to store data in a single file or multiple files.
     in_single_file: bool,
     // Offset for data file when storing in single file.
@@ -45,7 +45,7 @@ impl<'a> SSTable<'a> {
     /// # Errors
     ///
     /// Returns an `io::Error` if there is an issue when creating directories.
-    pub fn new(base_path: &'a Path, inner_mem: &'a Box<dyn SegmentTrait + Send>, in_single_file: bool) -> io::Result<SSTable<'a>> {
+    pub fn new(base_path: &'a Path, inner_mem: &'a (dyn SegmentTrait + Send), in_single_file: bool) -> io::Result<SSTable<'a>> {
         // Create directory if it doesn't exist
         create_dir_all(base_path)?;
 
@@ -86,7 +86,7 @@ impl<'a> SSTable<'a> {
         let serialized_merkle_tree = MerkleTree::new(&serialized_data).serialize();
 
         if self.in_single_file {
-            return self.write_to_single_file(&serialized_data, &serialized_index, &serialized_index_summary, &serialized_bloom_filter, &serialized_merkle_tree);
+            self.write_to_single_file(&serialized_data, &serialized_index, &serialized_index_summary, &serialized_bloom_filter, &serialized_merkle_tree)
         } else {
             self.write_to_file_with_postfix(&serialized_data, "-Data.db")?;
             self.write_to_file_with_postfix(&serialized_index, "-Index.db")?;
@@ -164,7 +164,7 @@ impl<'a> SSTable<'a> {
     ///
     /// None.
     fn get_serialized_summary(&self, index_builder: &[(Vec<u8>, u64)], summary_density: usize) -> Vec<u8> {
-        if index_builder.len() == 0 || summary_density < 1 {
+        if index_builder.is_empty() || summary_density < 1 {
             return Vec::new();
         }
 
@@ -212,7 +212,7 @@ impl<'a> SSTable<'a> {
     /// # Errors
     ///
     /// Returns an `io::Error` if the writing process fails.
-    fn write_to_single_file(&mut self, serialized_data: &[u8], serialized_index: &[u8], serialized_index_summary: &[u8], serialized_bloom_filter: &[u8], serialized_merkle_tree: &Box<[u8]>) -> io::Result<()> {
+    fn write_to_single_file(&mut self, serialized_data: &[u8], serialized_index: &[u8], serialized_index_summary: &[u8], serialized_bloom_filter: &[u8], serialized_merkle_tree: &[u8]) -> io::Result<()> {
         // Calculate the offset for each part of the file and write them into the buffer
         let mut total_offset = 5 * std::mem::size_of::<usize>();
         self.data_offset = total_offset;
@@ -347,7 +347,7 @@ impl<'a> SSTable<'a> {
         for (key, entry) in merged_data {
             inner_mem.insert(&key, &entry.get_value(), TimeStamp::Custom(entry.get_timestamp()));
         }
-        let mut merged_sstable = SSTable::new(merged_base_path, &inner_mem, true)?;
+        let mut merged_sstable = SSTable::new(merged_base_path, &*inner_mem, true)?;
 
         // Flush the new SSTable to disk
         merged_sstable.flush(dbconfig.summary_density)?;
@@ -551,7 +551,7 @@ impl<'a> SSTable<'a> {
         }
 
         let previous_offset = u64::from_ne_bytes(previous_offset_bytes);
-        return self.read_data_offset_from_index_file(previous_offset, key);
+        self.read_data_offset_from_index_file(previous_offset, key)
     }
 
     /// Reads the data offset from the index file based on the seek offset and key.
@@ -579,7 +579,7 @@ impl<'a> SSTable<'a> {
 
             let mut offset_bytes = [0u8; 8]; //u64
             index_reader.read_exact(&mut offset_bytes).unwrap();
-            if key == &current_key_bytes {
+            if key == current_key_bytes {
                 return Some(u64::from_ne_bytes(offset_bytes));
             }
 
@@ -721,6 +721,6 @@ impl<'a> SSTable<'a> {
             open_options.read(true);
         }
 
-        Ok(BufWriter::new(open_options.open(&file_path)?))
+        Ok(BufWriter::new(open_options.open(file_path)?))
     }
 }
