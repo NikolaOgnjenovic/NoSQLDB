@@ -59,6 +59,7 @@ impl Default for DBConfig {
             skip_list_max_level: 10,
             hyperloglog_precision: 10,
             write_ahead_log_dir: "./wal/".to_string(),
+            // todo postaviti ovo da ne sme da bude vise od memory_table_capacity
             write_ahead_log_num_of_logs: 1000,  // todo, dodato na osnovu specifikacije?
             write_ahead_log_size: 1048576,      // todo, dodato na osnovu specifikacije?
             b_tree_order: 10,

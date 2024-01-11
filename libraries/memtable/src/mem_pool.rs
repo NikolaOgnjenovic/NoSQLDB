@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::error::Error;
-use std::fs::read_dir;
-use std::path::PathBuf;
+use std::io;
+use std::path::Path;
 use threadpool::ThreadPool;
 use segment_elements::TimeStamp;
 use crate::memtable::MemoryTable;
@@ -26,28 +26,42 @@ impl MemoryPool {
     }
 
     /// Inserts the key with the corresponding value in the read write memory table.
-    pub fn insert(&mut self, key: &[u8], value: &[u8], time_stamp: TimeStamp) {
-        if self.read_write_table.insert(key, value, time_stamp) {
+    pub fn insert(&mut self, key: &[u8], value: &[u8], time_stamp: TimeStamp) -> io::Result<()> {
+        if self.read_write_table.insert(key, value, time_stamp, true)? {
             self.swap();
         }
+
+        Ok(())
     }
 
     /// Logically deletes an element in-place, and updates the number of elements if
     /// the delete is "adding" a new element.
-    pub fn delete(&mut self, key: &[u8], time_stamp: TimeStamp) {
-        if self.read_write_table.delete(key, time_stamp) {
+    pub fn delete(&mut self, key: &[u8], time_stamp: TimeStamp) -> io::Result<()> {
+        if self.read_write_table.delete(key, time_stamp, true)? {
             self.swap();
         }
+
+        Ok(())
     }
 
     /// Tries to retrieve key's data from all memory tables currently loaded in memory.
     /// Does not go into on-disk structures.
     pub fn get(&self, key: &[u8]) -> Option<Box<[u8]>> {
+        // todo popraviti bag gde ako je kljuc obrisan tombstonom, treba i dalje
+        // todo vrati none, a ne da tera dalje
+        if self.read_write_table.is_empty() {
+            return None;
+        }
+
         if let Some(data) = self.read_write_table.get(key) {
             return Some(data);
         }
 
         for table in &self.read_only_tables {
+            if table.is_empty() {
+                continue;
+            }
+
             if let Some(data) = table.get(key) {
                 return Some(data);
             }
@@ -84,38 +98,32 @@ impl MemoryPool {
         self.thread_pool.execute(move || {
             // todo: LSM sturktura treba da pozove kreiranje nove sstabele i potencionalno da ona radi kompakcije i
             // todo mergeovanje ovde, a ako ne ovde onda se radi u main db strukturi
+            println!("FLUSH");
 
-            // todo obrisi svaki wal vezan za ovu tabelu
+            match table.finalize() {
+                Ok(_) => (),
+                Err(e) => eprintln!("WAL couldn't be deleted. Error: {}", e)
+            };
         });
     }
 
     /// Loads from every log file in the given directory.
-    // todo add low water mark wal logs removal index
     pub fn load_from_dir(config: &DBConfig) -> Result<MemoryPool, Box<dyn Error>> {
-        let mut files = read_dir(&config.write_ahead_log_dir)?
-            .map(|dir_entry| dir_entry.unwrap().path())
-            .filter(|file| file.extension().unwrap() == ".log")
-            .collect::<Vec<PathBuf>>();
-
-        files.sort();
-
         let mut pool = MemoryPool::new(config)?;
 
-        for file in files.iter() {
-            for entry in RecordIterator::new(file)?.into_iter() {
-                let entry = match entry {
-                    Ok(entry) => entry,
-                    Err(e) => {
-                        eprintln!("{}", e);
-                        continue
-                    }
-                };
-
-                if entry.tombstone {
-                    pool.delete(&entry.key, TimeStamp::Custom(entry.timestamp));
-                } else {
-                    pool.insert(&entry.key, &entry.value.unwrap(), TimeStamp::Custom(entry.timestamp));
+        for entry in RecordIterator::new(Path::new(&config.write_ahead_log_dir))? {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(e) => {
+                    eprintln!("{}", e);
+                    continue
                 }
+            };
+
+            if entry.tombstone {
+                pool.read_write_table.delete(&entry.key, TimeStamp::Custom(entry.timestamp), false)?;
+            } else {
+                pool.read_write_table.insert(&entry.key, &entry.value.unwrap(), TimeStamp::Custom(entry.timestamp), false)?;
             }
         }
 

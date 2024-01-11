@@ -8,3 +8,4 @@ authors = ["Luka Bursać"]
 [dependencies]
 crc = "3.0.1"
 segment_elements = { path = "../segment_elements" }
+db_config = { path = "../db_config" }
