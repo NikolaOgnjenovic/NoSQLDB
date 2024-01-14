@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use segment_elements::{MemoryEntry, TimeStamp};
 
 #[derive(Clone, Debug)]
@@ -41,11 +42,11 @@ impl Node {
     pub(crate) fn get(&self, key: &[u8]) -> Option<Box<[u8]>> {
         let mut node_index = 0;
 
-        while node_index < self.n && key > &self.entries[node_index].as_ref().unwrap().key {
+        while node_index < self.n && compare_keys(key, &self.entries[node_index].as_ref().unwrap().key) == Ordering::Greater {
             node_index += 1;
         }
 
-        if node_index < self.n && key == &*self.entries[node_index].as_ref().unwrap().key {
+        if node_index < self.n && compare_keys(key, &*self.entries[node_index].as_ref().unwrap().key) == Ordering::Equal {
             if !self.entries[node_index].as_ref().unwrap().mem_entry.get_tombstone() {
                 Some(self.entries[node_index].as_ref().unwrap().mem_entry.get_value())
             } else {
@@ -63,7 +64,7 @@ impl Node {
 
         if self.is_leaf {
 
-            while curr_node_index >= 0 && key < &self.entries[curr_node_index as usize].as_ref().unwrap().key {
+            while curr_node_index >= 0 && compare_keys(key, &self.entries[curr_node_index as usize].as_ref().unwrap().key) == Ordering::Less {
                 self.entries[(curr_node_index + 1) as usize] = self.entries[curr_node_index as usize].take();
                 curr_node_index -= 1;
             }
@@ -71,14 +72,14 @@ impl Node {
             self.entries[(curr_node_index + 1) as usize] = Some(Entry::from(key, value, tombstone, time_stamp));
             self.n += 1;
         } else {
-            while curr_node_index >= 0 && key < &self.entries[curr_node_index as usize].as_ref().unwrap().key {
+            while curr_node_index >= 0 && compare_keys(key, &self.entries[curr_node_index as usize].as_ref().unwrap().key) == Ordering::Less {
                 curr_node_index -= 1;
             }
 
             if self.children[(curr_node_index + 1) as usize].as_ref().unwrap().n == (2 * self.degree - 1) {
                 self.split_children((curr_node_index + 1) as usize);
 
-                if key > &self.entries[(curr_node_index + 1) as usize].as_ref().unwrap().key {
+                if compare_keys(key, &self.entries[(curr_node_index + 1) as usize].as_ref().unwrap().key) == Ordering::Greater {
                     curr_node_index += 1;
                 }
             }
@@ -125,7 +126,7 @@ impl Node {
     pub(crate) fn logical_deletion(&mut self, key: &[u8], time_stamp: TimeStamp) -> bool {
         let mut index = 0;
 
-        while index < self.n && key > &self.entries[index].as_ref().unwrap().key {
+        while index < self.n && compare_keys(key, &self.entries[index].as_ref().unwrap().key) == Ordering::Greater {
             index += 1;
         }
 
@@ -143,7 +144,7 @@ impl Node {
 
     pub(crate) fn update(&mut self, key: &[u8], value: &[u8], time_stamp: TimeStamp) {
         let mut index = 0;
-        while index < self.n && key > &self.entries[index].as_ref().unwrap().key {
+        while index < self.n && compare_keys(key, &self.entries[index].as_ref().unwrap().key) == Ordering::Greater {
             index += 1;
         }
         if index < self.n && key ==  &*self.entries[index].as_ref().unwrap().key {
@@ -398,5 +399,34 @@ impl Node {
         //update n of self
         self.n -= 1;
     }
+
+    pub(crate) fn print_node(&self, mut level: usize) {
+        println!("Level\t{}\t{}: ", level, self.n);
+
+        for entry in self.entries.iter().take(self.n).filter(|entry| entry.is_some()).map(|entry| entry.as_ref().unwrap()) {
+            println!("{} ", entry);
+        }
+
+        println!();
+
+        level += 1;
+
+        if self.children.len() > 0 {
+            for child in self.children.iter().filter(|entry| entry.is_some()).map(|child| child.as_ref().unwrap()) {
+                child.print_node(level);
+            }
+        }
+    }
+}
+
+pub fn compare_keys(a: &[u8], b: &[u8]) -> Ordering {
+    for (&byte_a, &byte_b) in a.iter().rev().zip(b.iter().rev()) {
+        match byte_a.cmp(&byte_b) {
+            std::cmp::Ordering::Less => return std::cmp::Ordering::Less,
+            std::cmp::Ordering::Greater => return std::cmp::Ordering::Greater,
+            std::cmp::Ordering::Equal => continue,
+        }
+    }
+    Ordering::Equal
 }
 
