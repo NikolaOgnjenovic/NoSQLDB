@@ -63,13 +63,13 @@ impl Default for DBConfig {
             write_ahead_log_size: 1048576,      // todo, dodato na osnovu specifikacije?
             b_tree_order: 10,
             memory_table_capacity: 1000,
-            memory_table_type: MemoryTableType::BTree,
+            memory_table_type: MemoryTableType::SkipList,
             memory_table_pool_num: 10,
-            summary_density: 10,
+            summary_density: 3,
+            sstable_single_file: false,
 
             // todo, novo gradivo, nije još implementirano,
             // todo, dodato ono šta je poznato na osnovu specifikacije
-            sstable_single_file: false,
             lsm_max_level: 0,
             compression_enabled: false,
             compression_algorithm_type: CompressionAlgorithmType::SizeTiered,

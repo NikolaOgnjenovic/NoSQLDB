@@ -167,6 +167,21 @@ impl SegmentTrait for BTree {
     }
 
     fn iterator(&self) -> Box<dyn Iterator<Item = (Box<[u8]>, MemoryEntry)> + '_> {
-        Box::new(self.iter().map(|iterator| iterator).into_iter().flatten())
+        if let Some(root) = self.root.as_ref() {
+            let mut stack = Vec::new();
+            let mut entry_stack = Vec::new();
+            stack.push(root);
+            entry_stack.push(0);
+
+            let iterator = BTreeIterator {
+                stack,
+                entry_stack,
+            };
+
+            Box::new(iterator)
+        } else {
+            Box::new(std::iter::empty())
+        }
+        //Box::new(self.iter().map(|iterator| iterator).into_iter().flatten())
     }
 }
