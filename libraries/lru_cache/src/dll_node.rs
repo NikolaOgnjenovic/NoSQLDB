@@ -1,6 +1,6 @@
 use segment_elements::{MemoryEntry, TimeStamp};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Entry {
     pub(crate) key: Box<[u8]>,
     pub(crate) mem_entry: MemoryEntry
@@ -12,8 +12,8 @@ impl Entry {
     }
 }
 
-#[derive(Debug)]
-pub(crate) struct Node {
+#[derive(Debug, PartialEq)]
+pub struct Node {
     pub(crate) el: Entry,
     pub(crate) next: crate::doubly_linked_list::Link,
     pub(crate) prev: crate::doubly_linked_list::Link,

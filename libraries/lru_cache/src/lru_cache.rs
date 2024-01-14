@@ -1,4 +1,4 @@
-use segment_elements::TimeStamp;
+use segment_elements::{MemoryEntry, TimeStamp};
 use crate::dll_node::{ Entry, Node };
 use crate::doubly_linked_list::DoublyLinkedList;
 use std::collections::HashMap;
@@ -22,27 +22,33 @@ impl LRUCache {
         }
     }
 
-    pub fn read(&mut self, key: &[u8]) -> Option<Box<[u8]>> {
+    pub fn get_size(&self) -> usize {
+        self.size
+    }
+
+    pub fn get_capacity(&self) -> usize {
+        self.capacity
+    }
+    pub fn read(&mut self, key: &[u8]) -> Option<MemoryEntry> {
         if self.map.contains_key(key) {
             let node = self.map.get(key);
-            let value = node.unwrap().borrow().el.mem_entry.get_value();
-            let prev_node = &node.unwrap().as_ref().borrow().prev;
-            let next_node = &node.unwrap().as_ref().borrow().next;
+            let value = node.unwrap().borrow().el.mem_entry.clone();
+            let prev_node = node.unwrap().as_ref().borrow_mut().prev.take();
+            let next_node = node.unwrap().as_ref().borrow_mut().next.take();
 
             if prev_node.is_some() {
-                prev_node.as_ref().unwrap().borrow_mut().next = node.unwrap().as_ref().borrow().next.clone();
+                prev_node.as_ref().unwrap().borrow_mut().next = next_node.clone();
             } else {
-                self.list.head = node.unwrap().as_ref().borrow().next.clone()
+                self.list.tail = next_node.clone();
             }
 
             if next_node.is_some() {
-                next_node.as_ref().unwrap().borrow_mut().prev = node.unwrap().as_ref().borrow().prev.clone();
+                next_node.as_ref().unwrap().borrow_mut().prev = prev_node;
             } else {
-                self.list.tail = node.unwrap().as_ref().borrow().prev.clone();
+                self.list.head = prev_node;
             }
 
             self.list.push_head(node.unwrap().borrow().el.clone());
-            self.list.size -= 1;
             return Some(value);
 
         }
@@ -51,23 +57,21 @@ impl LRUCache {
     }
 
     pub fn add(&mut self, key: &[u8], value: &[u8], tombstone: bool, time_stamp: TimeStamp) {
+        if self.map.contains_key(key) {
+            let node = self.map.get(key);
+            node.unwrap().borrow_mut().el = Entry::from(key, value, tombstone, time_stamp);
+            return;
+        }
         let entry = Entry::from(key, value, tombstone, time_stamp);
         self.list.push_head(entry);
         let node = self.list.peak_head();
         self.map.insert(Box::from(key), node.unwrap());
         self.size += 1;
 
-        if self.size >= self.capacity {
+        if self.size > self.capacity {
             let popped = self.list.pop_tail();
             self.map.remove(popped.unwrap().borrow().el.key.as_ref());
             self.size -= 1;
-        }
-    }
-
-    pub fn update(&mut self, key: &[u8], value: &[u8], tombstone: bool, time_stamp: TimeStamp) {
-        if self.map.contains_key(key) {
-            let node = self.map.get(key);
-            node.unwrap().borrow_mut().el = Entry::from(key, value, tombstone, time_stamp);
         }
     }
 }
