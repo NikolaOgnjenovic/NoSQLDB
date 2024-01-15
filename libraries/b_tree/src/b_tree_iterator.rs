@@ -8,13 +8,15 @@ pub struct BTreeIterator<'a> {
 
 impl<'a> BTreeIterator<'a> {
     pub fn find_leftmost_child(&mut self) {
-        let mut current_node = *self.stack.last().unwrap();
-        let mut index = *self.entry_stack.last().unwrap();
-        while let Some(left_child) = current_node.children[index].as_ref() {
-            current_node = left_child;
-            index = 0;
-            self.stack.push(current_node);
-            self.entry_stack.push(0);
+        if self.stack.len() > 0 {
+            let mut current_node = *self.stack.last().unwrap();
+            let mut index = *self.entry_stack.last().unwrap();
+            while let Some(left_child) = current_node.children[index].as_ref() {
+                current_node = left_child;
+                index = 0;
+                self.stack.push(current_node);
+                self.entry_stack.push(0);
+            }
         }
     }
 }

@@ -55,9 +55,9 @@ mod tests {
         let multiplier = 2;
 
         // TODO: fix random explicit panic for btree
-        for range in (0..=30).step_by(10) {
-            for memory_type in &[MemoryTableType::SkipList] {
-                //for memory_type in &[MemoryTableType::BTree] {
+        for range in (10..=1000).step_by(50) {
+            //for memory_type in &[MemoryTableType::SkipList] {
+            for memory_type in &[MemoryTableType::BTree] {
                 //for memory_type in &[MemoryTableType::SkipList, /*MemoryTableType::HashMap,*/MemoryTableType::BTree] {
                 check_flushed_table(true, &memory_type.clone(), range, multiplier);
                 check_flushed_table(false, &memory_type.clone(), range, multiplier);
@@ -73,7 +73,7 @@ mod tests {
         let mut sstable = create_sstable(&temp_dir.path(), &inner_mem, in_single_file);
         sstable.flush(summary_density).expect("Failed to flush sstable");
 
-        // Retrieve and validate data from the SSTable
+        //Retrieve and validate data from the SSTable
         for i in 0..range {
             let key: i32 = i;
             let expected_value: i32 = i * multiplier;
@@ -92,7 +92,7 @@ mod tests {
                 assert_eq!(actual_value, expected_value);
             } else {
                 // If the key is not found, fail the test
-                panic!();
+                panic!("{i}");
             }
         }
     }
@@ -131,8 +131,8 @@ mod tests {
 
         for range in (0..=30).step_by(10) {
             // TODO: Fix key 0 not found starting from first case for btree
-            for memory_type in &[MemoryTableType::SkipList] {
-            //for memory_type in &[MemoryTableType::BTree] {
+            //for memory_type in &[MemoryTableType::SkipList] {
+            for memory_type in &[MemoryTableType::BTree] {
                 //for memory_type in &[MemoryTableType::SkipList, /*MemoryTableType::HashMap,*/MemoryTableType::BTree] {
                 merge_sstables(true, true, &memory_type.clone(), range, multiplier, true);
                 merge_sstables(true, true, &memory_type.clone(), range, multiplier, false);
@@ -215,5 +215,5 @@ mod tests {
             }
         }
         remove_dir_all(merged_sstable_path);
+        }
     }
-}

@@ -165,7 +165,7 @@ mod tests {
             for i in 0..10000u32 {
                 assert!(b.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now));
             }
-            let iterator = b.iter();
+            let iterator = b.iterator();
 
             let mut i:u32 = 0;
             for target in iterator {

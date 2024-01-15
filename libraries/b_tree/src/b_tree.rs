@@ -98,7 +98,7 @@ impl SegmentTrait for BTree {
                     new_root.split_children(0);
 
                     // choose whether the second child receives the new key, if false the key is given to the first
-                    let second = compare_keys(key, &new_root.entries[0].as_ref().unwrap().key) == Ordering::Greater;
+                    let second = key.cmp(&new_root.entries[0].as_ref().unwrap().key) == Ordering::Greater;
                     new_root.children[second as usize].as_mut().unwrap().insert_non_full(key, value, false, time_stamp);
 
                     self.root = Some(new_root);

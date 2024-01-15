@@ -1,3 +1,4 @@
+use std::cmp::{min, Ordering};
 use std::collections::HashMap;
 use std::fs::{create_dir_all, File, OpenOptions, remove_dir_all};
 use std::io;
@@ -601,7 +602,7 @@ impl<'a> SSTable<'a> {
         total_entry_offset += max_key_len as u64;
 
         // Check if the key is within the range of the lowest and highest keys in the summary
-        if key < min_key.as_slice() || key > max_key.as_slice() {
+        if key.cmp(min_key.as_slice()) == Ordering::Less || key.cmp(max_key.as_slice()) == Ordering::Greater {
             return None;
         }
 
@@ -939,4 +940,15 @@ impl<'a> SSTable<'a> {
         // Return a mutable reference to the File in the map
         Ok(file_handle)
     }
+}
+
+pub fn compare_keys(a: &[u8], b: &[u8]) -> Ordering {
+    for (&byte_a, &byte_b) in a.iter().rev().zip(b.iter().rev()) {
+        match byte_a.cmp(&byte_b) {
+            Ordering::Less => return Ordering::Less,
+            Ordering::Greater => return Ordering::Greater,
+            Ordering::Equal => continue,
+        }
+    }
+    Ordering::Equal
 }
