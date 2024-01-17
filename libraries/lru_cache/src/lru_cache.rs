@@ -29,6 +29,7 @@ impl LRUCache {
     pub fn get_capacity(&self) -> usize {
         self.capacity
     }
+
     pub fn read(&mut self, key: &[u8]) -> Option<MemoryEntry> {
         if self.map.contains_key(key) {
             let node = self.map.get(key);

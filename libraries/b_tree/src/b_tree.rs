@@ -1,5 +1,6 @@
+use std::cmp::Ordering;
 use segment_elements::{MemoryEntry, SegmentTrait, TimeStamp};
-use crate::b_tree_node::{Node, Entry};
+use crate::b_tree_node::{Node, Entry, compare_keys};
 use crate::b_tree_iterator::BTreeIterator;
 use crate::order_error::OrderError;
 use bloom_filter::BloomFilter;
@@ -23,6 +24,10 @@ impl BTree {
                 length:0,
             })
         }
+    }
+
+    pub fn print_tree(&self) {
+        self.root.as_ref().unwrap().print_node(0);
     }
 
     pub fn size(&self) -> usize {
@@ -51,23 +56,20 @@ impl BTree {
 
     ///Returns Option<Iterator> for BTree that yields sorted (Key, MemEntry) pairs
     /// The value is Some if length > 0 otherwise None
-    pub fn iter(&self) -> Option<BTreeIterator> {
-        if self.length > 0 {
-            let mut stack = Vec::new();
-            let mut entry_stack = Vec::new();
-            if let Some(root) = self.root.as_ref() {
-                stack.push(root);
-                entry_stack.push(0);
-            }
-            let mut iterator = BTreeIterator {
-                stack,
-                entry_stack,
-            };
-
-            iterator.find_leftmost_child();
-            return Some(iterator);
+    pub fn iter(&self) -> BTreeIterator {
+        let mut stack = Vec::new();
+        let mut entry_stack = Vec::new();
+        if let Some(root) = self.root.as_ref() {
+            stack.push(root);
+            entry_stack.push(0);
         }
-        None
+        let mut iterator = BTreeIterator {
+            stack,
+            entry_stack,
+        };
+
+        iterator.find_leftmost_child();
+        return iterator;
     }
 
 }
@@ -96,7 +98,7 @@ impl SegmentTrait for BTree {
                     new_root.split_children(0);
 
                     // choose whether the second child receives the new key, if false the key is given to the first
-                    let second = key > &new_root.entries[0].as_ref().unwrap().key;
+                    let second = key.cmp(&new_root.entries[0].as_ref().unwrap().key) == Ordering::Greater;
                     new_root.children[second as usize].as_mut().unwrap().insert_non_full(key, value, false, time_stamp);
 
                     self.root = Some(new_root);
@@ -132,33 +134,31 @@ impl SegmentTrait for BTree {
         let mut offset = 0;
         let mut filter = BloomFilter::new(0.01, self.length);
 
-        let iterable = self.iter();
-        if let Some(iterator) = iterable {
-            for entry in iterator {
-                let key = entry.0;
-                let memory_entry = entry.1;
-                let entry_bytes = memory_entry.serialize(&key);
-                data_bytes.extend(entry_bytes.iter());
+        let iterator = self.iter();
+        for entry in iterator {
+            let key = entry.0;
+            let memory_entry = entry.1;
+            let entry_bytes = memory_entry.serialize(&key);
+            data_bytes.extend(entry_bytes.iter());
 
-                //index structure contains key_len(8 bytes), key and offset in data block(8 bytes)
-                index_bytes.extend(usize::to_ne_bytes(key.len()));
-                index_bytes.extend(key.iter());
-                index_bytes.extend(usize::to_ne_bytes(offset));
+            //index structure contains key_len(8 bytes), key and offset in data block(8 bytes)
+            index_bytes.extend(usize::to_ne_bytes(key.len()));
+            index_bytes.extend(key.iter());
+            index_bytes.extend(usize::to_ne_bytes(offset));
 
-                filter.add(&key);
+            filter.add(&key);
 
-                offset += entry_bytes.len();
-            }
-
-            let filter_bytes = filter.serialize();
-
-            ss_table_bytes.extend(usize::to_ne_bytes(data_bytes.len()));
-            ss_table_bytes.extend(data_bytes);
-            ss_table_bytes.extend(usize::to_ne_bytes(index_bytes.len()));
-            ss_table_bytes.extend(index_bytes);
-            ss_table_bytes.extend(usize::to_ne_bytes(filter_bytes.len()));
-            ss_table_bytes.extend(filter_bytes.iter());
+            offset += entry_bytes.len();
         }
+
+        let filter_bytes = filter.serialize();
+
+        ss_table_bytes.extend(usize::to_ne_bytes(data_bytes.len()));
+        ss_table_bytes.extend(data_bytes);
+        ss_table_bytes.extend(usize::to_ne_bytes(index_bytes.len()));
+        ss_table_bytes.extend(index_bytes);
+        ss_table_bytes.extend(usize::to_ne_bytes(filter_bytes.len()));
+        ss_table_bytes.extend(filter_bytes.iter());
         ss_table_bytes.into_boxed_slice()
     }
 
@@ -167,6 +167,7 @@ impl SegmentTrait for BTree {
     }
 
     fn iterator(&self) -> Box<dyn Iterator<Item = (Box<[u8]>, MemoryEntry)> + '_> {
-        Box::new(self.iter().into_iter().flatten())
+        Box::new(self.iter())
     }
 }
+

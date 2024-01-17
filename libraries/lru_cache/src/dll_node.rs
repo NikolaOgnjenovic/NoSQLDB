@@ -1,7 +1,7 @@
 use segment_elements::{MemoryEntry, TimeStamp};
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct Entry {
+pub struct Entry {
     pub(crate) key: Box<[u8]>,
     pub(crate) mem_entry: MemoryEntry
 }

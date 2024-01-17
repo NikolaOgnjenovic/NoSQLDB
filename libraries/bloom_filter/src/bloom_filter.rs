@@ -79,6 +79,13 @@ impl BloomFilter {
 
     /// Deserializes the bloom filter from a byte array.
     pub fn deserialize(input: &[u8]) -> Result<BloomFilter> {
+        if input.is_empty() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Bloom filter data is empty on deserialize",
+            ));
+        }
+
         // Read and validate the byte indicating the data is a bloom filter (0x01)
         if input[0] != 0x01 {
             return Err(std::io::Error::new(

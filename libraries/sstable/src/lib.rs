@@ -1,10 +1,12 @@
 mod sstable;
+mod sstable_element_type;
 
 pub use sstable::SSTable;
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
+    use std::fs::remove_dir_all;
+    use std::path::{Path};
     use super::*;
     use tempfile::TempDir;
     use segment_elements::{SegmentTrait, TimeStamp};
@@ -13,7 +15,7 @@ mod tests {
     use b_tree::BTree;
 
     // Helper function to get default config and inner mem of memory type
-    fn get_config_inner_mem(memory_type: &MemoryTableType) -> (DBConfig, Box<dyn SegmentTrait + Send>) {
+    fn get_density_and_inner_mem(memory_type: &MemoryTableType) -> (usize, Box<dyn SegmentTrait + Send>) {
         let dbconfig = DBConfig::default();
         let inner_mem: Box<dyn SegmentTrait + Send> = match memory_type {
             MemoryTableType::SkipList => Box::new(SkipList::new(dbconfig.skip_list_max_level)),
@@ -21,15 +23,15 @@ mod tests {
             MemoryTableType::BTree => Box::new(BTree::new(dbconfig.b_tree_order).unwrap())
         };
 
-        (dbconfig, inner_mem)
+        (dbconfig.summary_density, inner_mem)
     }
 
     // Helper function to set up the test environment
-    fn setup_test_environment(memory_type: &MemoryTableType) -> (TempDir, Box<dyn SegmentTrait + Send>, DBConfig) {
+    fn setup_test_environment(memory_type: &MemoryTableType) -> (TempDir, Box<dyn SegmentTrait + Send>, usize) {
         // Create a temporary directory for testing
         let temp_dir = TempDir::new().expect("Failed to create temp directory");
-        let (dbconfig, inner_mem) = get_config_inner_mem(memory_type);
-        (temp_dir, inner_mem, dbconfig)
+        let (summary_density, inner_mem) = get_density_and_inner_mem(memory_type);
+        (temp_dir, inner_mem, summary_density)
     }
 
     // Helper function to insert test data into the inner memory
@@ -43,31 +45,33 @@ mod tests {
     }
 
     // Helper function to create an SSTable from the inner memory
-    fn create_sstable<'a>(base_path: &'a Path, inner_mem: &'a (dyn SegmentTrait + Send), single_file: bool) -> SSTable<'a> {
-        let dbconfig = DBConfig::default();
+    fn create_sstable<'a>(base_path: &'a Path, inner_mem: &'a Box<dyn SegmentTrait + Send>, single_file: bool) -> SSTable<'a> {
         SSTable::new(base_path, inner_mem, single_file)
             .expect("Failed to create SSTable")
     }
 
     #[test]
     fn test_flushing() {
-        let range = 30;
         let multiplier = 2;
-        for memory_type in &[MemoryTableType::SkipList,/* MemoryTableType::HashMap,*/ MemoryTableType::BTree] {
-            check_flushed_table(true, &memory_type.clone(), range, multiplier);
-            check_flushed_table(false, &memory_type.clone(), range, multiplier);
+
+        for range in (10..=1000).step_by(50) {
+            // todo: uncomment hashmap when implemented
+            for memory_type in &[MemoryTableType::SkipList, /*MemoryTableType::HashMap,*/MemoryTableType::BTree] {
+                check_flushed_table(true, &memory_type.clone(), range, multiplier);
+                check_flushed_table(false, &memory_type.clone(), range, multiplier);
+            }
         }
     }
 
     fn check_flushed_table(in_single_file: bool, memory_type: &MemoryTableType, range: i32, multiplier: i32) {
-        let (temp_dir, mut inner_mem, dbconfig) = setup_test_environment(memory_type);
+        let (temp_dir, mut inner_mem, summary_density) = setup_test_environment(memory_type);
         insert_test_data(&mut inner_mem, range, multiplier);
 
         // Create an SSTable from the MemoryPool's inner_mem
-        let mut sstable = create_sstable(&temp_dir.path(), &*inner_mem, in_single_file);
-        sstable.flush(dbconfig.summary_density).expect("Failed to flush sstable");
+        let mut sstable = create_sstable(&temp_dir.path(), &inner_mem, in_single_file);
+        sstable.flush(summary_density).expect("Failed to flush sstable");
 
-        // Retrieve and validate data from the SSTable
+        //Retrieve and validate data from the SSTable
         for i in 0..range {
             let key: i32 = i;
             let expected_value: i32 = i * multiplier;
@@ -86,29 +90,30 @@ mod tests {
                 assert_eq!(actual_value, expected_value);
             } else {
                 // If the key is not found, fail the test
-                panic!();
+                panic!("{i}");
             }
         }
     }
 
     #[test]
     fn test_merkle() {
-        let range = 30;
         let multiplier = 2;
 
-        for memory_type in &[MemoryTableType::SkipList,/*MemoryTableType::HashMap,*/ MemoryTableType::BTree] {
-            check_merkle_tree(true, &memory_type.clone(), range, multiplier);
-            check_merkle_tree(false, &memory_type.clone(), range, multiplier);
+        for range in (1..=1000).step_by(50) {
+            for memory_type in &[MemoryTableType::SkipList, /*MemoryTableType::HashMap,*/MemoryTableType::BTree] {
+                check_merkle_tree(true, &memory_type.clone(), range, multiplier);
+                check_merkle_tree(false, &memory_type.clone(), range, multiplier);
+            }
         }
     }
 
     fn check_merkle_tree(in_single_file: bool, memory_type: &MemoryTableType, range: i32, multiplier: i32) {
-        let (temp_dir, mut inner_mem, dbconfig) = setup_test_environment(memory_type);
+        let (temp_dir, mut inner_mem, summary_density) = setup_test_environment(memory_type);
         insert_test_data(&mut inner_mem, range, multiplier);
 
         // Create an SSTable from the MemoryPool's inner_mem
-        let mut sstable = create_sstable(&temp_dir.path(), &*inner_mem, in_single_file);
-        sstable.flush(dbconfig.summary_density).expect("Failed to flush sstable");
+        let mut sstable = create_sstable(&temp_dir.path(), &inner_mem, in_single_file);
+        sstable.flush(summary_density).expect("Failed to flush sstable");
 
         // Get the merkle tree from the SSTable
         let merkle_tree = sstable.get_merkle().expect("Failed to get merkle tree");
@@ -120,53 +125,60 @@ mod tests {
 
     #[test]
     fn test_merge_sstables() {
-        let range = 30;
         let multiplier = 2;
 
-        for memory_type in &[MemoryTableType::SkipList,/*MemoryTableType::HashMap,*/ MemoryTableType::BTree] {
-            merge_sstables(true, true, &memory_type.clone(), range, multiplier);
-            merge_sstables(true, false, &memory_type.clone(), range, multiplier);
-            merge_sstables(false, true, &memory_type.clone(), range, multiplier);
-            merge_sstables(true, true, &memory_type.clone(), range, multiplier);
+        for range in (1..=300).step_by(50) {
+            // todo: uncomment hashmap when implemented
+            for memory_type in &[MemoryTableType::SkipList, /*MemoryTableType::HashMap,*/MemoryTableType::BTree] {
+                merge_sstables(true, true, &memory_type.clone(), range, multiplier, true);
+                merge_sstables(true, true, &memory_type.clone(), range, multiplier, false);
+
+                merge_sstables(true, false, &memory_type.clone(), range, multiplier, true);
+                merge_sstables(true, false, &memory_type.clone(), range, multiplier, false);
+
+                merge_sstables(false, true, &memory_type.clone(), range, multiplier, true);
+                merge_sstables(false, true, &memory_type.clone(), range, multiplier, false);
+
+                merge_sstables(false, false, &memory_type.clone(), range, multiplier, true);
+                merge_sstables(false, false, &memory_type.clone(), range, multiplier, false);
+            }
         }
     }
 
-    fn merge_sstables(sstable1_in_single_file: bool, sstable2_in_single_file: bool, memory_type: &MemoryTableType, range: i32, multiplier: i32) {
-        let (temp_dir, mut inner_mem1, dbconfig) = setup_test_environment(memory_type);
-
+    fn merge_sstables(sstable1_in_single_file: bool, sstable2_in_single_file: bool, memory_type: &MemoryTableType, range: i32, multiplier: i32, merged_in_single_file: bool) {
         // Generate data for the first SSTable
+        let (temp_dir, mut inner_mem1, summary_density) = setup_test_environment(memory_type);
         insert_test_data(&mut inner_mem1, range, multiplier);
         let sstable1_path = temp_dir.path().join("sstable1");
-        let mut sstable1 = create_sstable(&sstable1_path, &*inner_mem1, sstable1_in_single_file);
-        sstable1.flush(dbconfig.summary_density).expect("Failed to flush sstable");
+        let mut sstable1 = create_sstable(&sstable1_path, &inner_mem1, sstable1_in_single_file);
+        sstable1.flush(summary_density).expect("Failed to flush sstable");
 
         // Generate data * 2 for the second SSTable
-        let (_, mut inner_mem2) = get_config_inner_mem(memory_type);
+        let (_, mut inner_mem2) = get_density_and_inner_mem(memory_type);
         insert_test_data(&mut inner_mem2, range, multiplier * 2);
         let sstable2_path = temp_dir.path().join("sstable2");
-        let mut sstable2 = create_sstable(&sstable2_path, &*inner_mem2, sstable2_in_single_file);
-        sstable2.flush(dbconfig.summary_density).expect("Failed to flush sstable");
+        let mut sstable2 = create_sstable(&sstable2_path, &inner_mem2, sstable2_in_single_file);
+        sstable2.flush(summary_density).expect("Failed to flush sstable");
 
         // Define the path for the merged SSTable
         let merged_sstable_path = temp_dir.path().join("merged_sstable");
-
         // Define the database configuration
         let dbconfig = DBConfig::default();
 
         // Merge the two SSTables
-        SSTable::merge_sstables(&sstable1_path, &sstable2_path, &merged_sstable_path, sstable1_in_single_file, sstable2_in_single_file, &dbconfig)
+        SSTable::merge_sstables(&sstable1_path, &sstable2_path, &merged_sstable_path, sstable1_in_single_file, sstable2_in_single_file, &dbconfig, merged_in_single_file)
             .expect("Failed to merge SSTables");
 
         // Verify the merged SSTable contains the correct data
-        verify_merged_sstable(&merged_sstable_path, memory_type, range, multiplier);
+        verify_merged_sstable(&merged_sstable_path, memory_type, range, multiplier, merged_in_single_file);
     }
 
     // Helper function to verify that the merged SSTable contains the correct data
-    fn verify_merged_sstable(merged_sstable_path: &Path, memory_type: &MemoryTableType, range: i32, multiplier: i32) {
-        let (dbconfig, inner_mem) = get_config_inner_mem(memory_type);
+    fn verify_merged_sstable(merged_sstable_path: &Path, memory_type: &MemoryTableType, range: i32, multiplier: i32, merged_in_single_file: bool) {
+        let (_, inner_mem) = get_density_and_inner_mem(memory_type);
 
         // Create an SSTable from the merged SSTable path
-        let merged_sstable = SSTable::new(merged_sstable_path, &*inner_mem, true)
+        let mut merged_sstable = SSTable::new(merged_sstable_path, &inner_mem, merged_in_single_file)
             .expect("Failed to create merged SSTable");
 
         // Retrieve and validate data from the merged SSTable
@@ -188,8 +200,11 @@ mod tests {
                 assert_eq!(actual_value, expected_value);
             } else {
                 // If the key is not found, fail the test
-                panic!("Key not found in merged SSTable");
+                remove_dir_all(merged_sstable_path).expect("Failed to remove all dirs");
+
+                panic!("Key {:#?} not found in merged SSTable", key);
             }
         }
+        remove_dir_all(merged_sstable_path).expect("Failed to remove all dirs");
+        }
     }
-}

@@ -2,6 +2,7 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use crate::dll_iterator::DLLIterator;
 use crate::dll_node::{ Entry, Node };
+use crate::dll_iterator::DLLIterator;
 
 #[derive(Debug)]
 pub(crate) struct DoublyLinkedList {
@@ -21,7 +22,7 @@ impl DoublyLinkedList {
         self.tail == None
     }
 
-    pub(crate) fn push_tail(&mut self, el: Entry) {
+    fn push_tail(&mut self, el: Entry) {
         let node = Rc::new(RefCell::new(Node::new(el)));
         if let Some(prev_tail) = self.tail.take() {
             prev_tail.borrow_mut().prev = Some(Rc::clone(&node));
@@ -109,6 +110,7 @@ impl DoublyLinkedList {
         iterator
     }
 }
+
 
 impl Drop for DoublyLinkedList {
     fn drop(&mut self) {
