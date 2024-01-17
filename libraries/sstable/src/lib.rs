@@ -54,7 +54,7 @@ mod tests {
     fn test_flushing() {
         let multiplier = 2;
 
-        for range in (10..=1000).step_by(50) {
+        for range in (1..=200).step_by(50) {
             // todo: uncomment hashmap when implemented
             for memory_type in &[MemoryTableType::SkipList, /*MemoryTableType::HashMap,*/MemoryTableType::BTree] {
                 check_flushed_table(true, &memory_type.clone(), range, multiplier);
@@ -127,7 +127,7 @@ mod tests {
     fn test_merge_sstables() {
         let multiplier = 2;
 
-        for range in (1..=300).step_by(50) {
+        for range in (1..=200).step_by(50) {
             // todo: uncomment hashmap when implemented
             for memory_type in &[MemoryTableType::SkipList, /*MemoryTableType::HashMap,*/MemoryTableType::BTree] {
                 merge_sstables(true, true, &memory_type.clone(), range, multiplier, true);

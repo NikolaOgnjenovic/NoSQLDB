@@ -50,7 +50,7 @@ impl<'a> SSTable<'a> {
     /// # Errors
     ///
     /// Returns an `io::Error` if there is an issue when creating directories.
-    pub fn new(base_path: &'a Path, inner_mem: &'a (dyn SegmentTrait + Send), in_single_file: bool) -> io::Result<SSTable<'a>> {
+    pub fn new(base_path: &'a Path, inner_mem: &'a Box<dyn SegmentTrait + Send>, in_single_file: bool) -> io::Result<SSTable<'a>> {
         // Create directory if it doesn't exist
         create_dir_all(base_path)?;
 
