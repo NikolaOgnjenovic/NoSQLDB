@@ -54,11 +54,9 @@ mod tests {
     fn test_flushing() {
         let multiplier = 2;
 
-        // TODO: fix random explicit panic for btree
         for range in (10..=1000).step_by(50) {
-            //for memory_type in &[MemoryTableType::SkipList] {
-            for memory_type in &[MemoryTableType::BTree] {
-                //for memory_type in &[MemoryTableType::SkipList, /*MemoryTableType::HashMap,*/MemoryTableType::BTree] {
+            // todo: uncomment hashmap when implemented
+            for memory_type in &[MemoryTableType::SkipList, /*MemoryTableType::HashMap,*/MemoryTableType::BTree] {
                 check_flushed_table(true, &memory_type.clone(), range, multiplier);
                 check_flushed_table(false, &memory_type.clone(), range, multiplier);
             }
@@ -101,7 +99,7 @@ mod tests {
     fn test_merkle() {
         let multiplier = 2;
 
-        for range in (900..=1000).step_by(50) {
+        for range in (1..=1000).step_by(50) {
             for memory_type in &[MemoryTableType::SkipList, /*MemoryTableType::HashMap,*/MemoryTableType::BTree] {
                 check_merkle_tree(true, &memory_type.clone(), range, multiplier);
                 check_merkle_tree(false, &memory_type.clone(), range, multiplier);
@@ -129,11 +127,9 @@ mod tests {
     fn test_merge_sstables() {
         let multiplier = 2;
 
-        for range in (0..=30).step_by(10) {
-            // TODO: Fix key 0 not found starting from first case for btree
-            //for memory_type in &[MemoryTableType::SkipList] {
-            for memory_type in &[MemoryTableType::BTree] {
-                //for memory_type in &[MemoryTableType::SkipList, /*MemoryTableType::HashMap,*/MemoryTableType::BTree] {
+        for range in (1..=300).step_by(50) {
+            // todo: uncomment hashmap when implemented
+            for memory_type in &[MemoryTableType::SkipList, /*MemoryTableType::HashMap,*/MemoryTableType::BTree] {
                 merge_sstables(true, true, &memory_type.clone(), range, multiplier, true);
                 merge_sstables(true, true, &memory_type.clone(), range, multiplier, false);
 
@@ -150,11 +146,9 @@ mod tests {
     }
 
     fn merge_sstables(sstable1_in_single_file: bool, sstable2_in_single_file: bool, memory_type: &MemoryTableType, range: i32, multiplier: i32, merged_in_single_file: bool) {
-        let (temp_dir, mut inner_mem1, summary_density) = setup_test_environment(memory_type);
-
         // Generate data for the first SSTable
+        let (temp_dir, mut inner_mem1, summary_density) = setup_test_environment(memory_type);
         insert_test_data(&mut inner_mem1, range, multiplier);
-        //let sstable1_path = PathBuf::from(Path::new("../../data/sstable1"));
         let sstable1_path = temp_dir.path().join("sstable1");
         let mut sstable1 = create_sstable(&sstable1_path, &inner_mem1, sstable1_in_single_file);
         sstable1.flush(summary_density).expect("Failed to flush sstable");
@@ -163,14 +157,11 @@ mod tests {
         let (_, mut inner_mem2) = get_density_and_inner_mem(memory_type);
         insert_test_data(&mut inner_mem2, range, multiplier * 2);
         let sstable2_path = temp_dir.path().join("sstable2");
-        //let sstable2_path = PathBuf::from(Path::new("../../data/sstable2"));
-
         let mut sstable2 = create_sstable(&sstable2_path, &inner_mem2, sstable2_in_single_file);
         sstable2.flush(summary_density).expect("Failed to flush sstable");
 
         // Define the path for the merged SSTable
         let merged_sstable_path = temp_dir.path().join("merged_sstable");
-        //let merged_sstable_path = PathBuf::from(Path::new("../../data/merged"));
         // Define the database configuration
         let dbconfig = DBConfig::default();
 
@@ -209,11 +200,11 @@ mod tests {
                 assert_eq!(actual_value, expected_value);
             } else {
                 // If the key is not found, fail the test
-                remove_dir_all(merged_sstable_path);
+                remove_dir_all(merged_sstable_path).expect("Failed to remove all dirs");
 
                 panic!("Key {:#?} not found in merged SSTable", key);
             }
         }
-        remove_dir_all(merged_sstable_path);
+        remove_dir_all(merged_sstable_path).expect("Failed to remove all dirs");
         }
     }

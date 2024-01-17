@@ -1,4 +1,4 @@
-use std::cmp::{min, Ordering};
+use std::cmp::{Ordering};
 use std::collections::HashMap;
 use std::fs::{create_dir_all, File, OpenOptions, remove_dir_all};
 use std::io;
@@ -90,7 +90,6 @@ impl<'a> SSTable<'a> {
         let serialized_bloom_filter = bloom_filter.serialize();
 
         let serialized_merkle_tree = MerkleTree::new(&serialized_data).serialize();
-
         if self.in_single_file {
             return self.write_to_single_file(&serialized_data, &serialized_index, &serialized_index_summary, &serialized_bloom_filter, &serialized_merkle_tree);
         } else {
@@ -115,22 +114,18 @@ impl<'a> SSTable<'a> {
     /// None.
     fn build_data_and_index_and_filter(&self) -> (Vec<u8>, Vec<(Vec<u8>, u64)>, BloomFilter) {
         let mut index_builder = Vec::new();
-        let mut bloom_filter = BloomFilter::new(0.01, 10_000);
+        let mut bloom_filter = BloomFilter::new(0.01, 100_000);
         let mut data = Vec::new();
 
         let mut offset: u64 = 0;
         for (key, entry) in self.inner_mem.expect("SSTable has no inner_mem").iterator() {
-            //println!("itered");
             let entry_data = entry.serialize(&key);
-            let entry_len = entry_data.len().to_ne_bytes();
 
-            data.extend_from_slice(&entry_len);
             data.extend_from_slice(&entry_data);
             index_builder.push((key.to_vec(), offset));
             bloom_filter.add(&key);
-            //println!("inner mem: entry len: {:#?},  key: {:#?}, offset: {:#?}", entry_len, key, offset);
 
-            offset += entry_len.len() as u64 + entry_data.len() as u64;
+            offset += entry_data.len() as u64;
         }
 
         (data, index_builder, bloom_filter)
@@ -173,7 +168,6 @@ impl<'a> SSTable<'a> {
     ///
     /// None.
     fn get_serialized_summary(&self, index_builder: &[(Vec<u8>, u64)], summary_density: usize) -> Vec<u8> {
-        //println!("index builder size: {:#?}", index_builder.len());
         if index_builder.len() == 0 || summary_density < 1 {
             return Vec::new();
         }
@@ -279,7 +273,10 @@ impl<'a> SSTable<'a> {
     pub fn get(&mut self, key: &[u8]) -> Option<MemoryEntry> {
         if self.bloom_filter_contains_key(key).unwrap_or(false) {
             if let Some(offset) = self.get_data_offset_from_summary(key) {
-                return self.get_entry_from_data_file(offset);
+                return match self.get_entry_from_data_file(offset) {
+                    Some(entry) => Some(entry.0.1),
+                    None => None
+                };
             }
         }
 
@@ -358,11 +355,10 @@ impl<'a> SSTable<'a> {
             MemoryTableType::BTree => Box::new(BTree::new(dbconfig.b_tree_order).unwrap())
         };
         for (key, entry) in merged_data {
-            //println!("inserting key {:#?} to merged inner mem, entry: {:#?}\n\n", key, entry);
             inner_mem.insert(&key, &entry.get_value(), TimeStamp::Custom(entry.get_timestamp()));
         }
         let mut merged_sstable = SSTable::new(merged_base_path, &inner_mem, merged_in_single_file)?;
-        //println!("flushing merged\n\n\n\n\n");
+
         // Flush the new SSTable to disk
         merged_sstable.flush(dbconfig.summary_density)?;
 
@@ -421,23 +417,18 @@ impl<'a> SSTable<'a> {
             file_handles: HashMap::new()
         };
 
-        let mut cursor1 = file_ref_sstable1.get_cursor_data(sstable1_in_single_file, "-Data.db", SSTableElementType::Data, Some(total_entry_offset1))?;
-        let (mut entry1, entry_offset) = SSTable::read_entry_from_cursor(&mut cursor1)?;
-        total_entry_offset1 += entry_offset;
-
-        let mut cursor2 = file_ref_sstable2.get_cursor_data(sstable2_in_single_file, "-Data.db", SSTableElementType::Data, Some(total_entry_offset2))?;
-        let (mut entry2, entry_offset) = SSTable::read_entry_from_cursor(&mut cursor2)?;
-        total_entry_offset2 += entry_offset;
-
         // Merge sort based on keys and timestamps
         let mut merged_entries = Vec::new();
-        while let (Some((k1, e1)), Some((k2, e2))) = (entry1.clone(), entry2.clone()) {
+        while let (
+            Some(((k1, e1), e1_offset)),
+            Some(((k2, e2), e2_offset))
+        ) = (
+            file_ref_sstable1.get_entry_from_data_file(total_entry_offset1),
+            file_ref_sstable2.get_entry_from_data_file(total_entry_offset2)
+        ) {
             let compare_result = k1.cmp(&k2);
 
-            if compare_result == std::cmp::Ordering::Equal {
-                cursor1 = file_ref_sstable1.get_cursor_data(sstable1_in_single_file, "-Data.db", SSTableElementType::Data, Some(total_entry_offset1))?;
-                cursor2 = file_ref_sstable2.get_cursor_data(sstable2_in_single_file, "-Data.db", SSTableElementType::Data, Some(total_entry_offset2))?;
-
+            if compare_result == Ordering::Equal {
                 // If keys are equal, choose the entry with the newer timestamp
                 if e1.get_timestamp() > e2.get_timestamp() {
                     merged_entries.push((k1, e1));
@@ -445,94 +436,32 @@ impl<'a> SSTable<'a> {
                     merged_entries.push((k2, e2));
                 }
 
-                let (new_entry1, entry_offset) = SSTable::read_entry_from_cursor(&mut cursor1)?;
-                entry1 = new_entry1;
-                total_entry_offset1 += entry_offset;
-
-                let (new_entry2, entry_offset) = SSTable::read_entry_from_cursor(&mut cursor2)?;
-                entry2 = new_entry2;
-                total_entry_offset2 += entry_offset;
-            } else if compare_result == std::cmp::Ordering::Less {
+                total_entry_offset1 += e1_offset;
+                total_entry_offset2 += e2_offset;
+            } else if compare_result == Ordering::Less {
                 // If key1 < key2, append entry1 to merged entries
                 merged_entries.push((k1, e1));
-                cursor1 = file_ref_sstable1.get_cursor_data(sstable1_in_single_file, "-Data.db", SSTableElementType::Data, Some(total_entry_offset1))?;
-
-                let (new_entry1, entry_offset) = SSTable::read_entry_from_cursor(&mut cursor1)?;
-                entry1 = new_entry1;
-                total_entry_offset1 += entry_offset;
+                total_entry_offset1 += e1_offset;
             } else {
                 // If key1 > key2, append entry2 to merged entries
                 merged_entries.push((k2, e2));
-                cursor2 = file_ref_sstable2.get_cursor_data(sstable2_in_single_file, "-Data.db", SSTableElementType::Data, Some(total_entry_offset2))?;
-
-                let (new_entry2, entry_offset) = SSTable::read_entry_from_cursor(&mut cursor2)?;
-                entry2 = new_entry2;
-                total_entry_offset2 += entry_offset;
+                total_entry_offset2 += e2_offset;
             }
         }
 
         // Append remaining entries from SSTable1 if any
-        while let Some((k1, e1)) = entry1 {
-            //println!("pushed k1: {:#?}", k1);
+        while let Some(((k1, e1), e1_offset)) = file_ref_sstable1.get_entry_from_data_file(total_entry_offset1) {
             merged_entries.push((k1, e1));
-            cursor1 = file_ref_sstable1.get_cursor_data(sstable1_in_single_file, "-Data.db", SSTableElementType::Data, Some(total_entry_offset1))?;
-
-            let (new_entry1, entry_offset) = SSTable::read_entry_from_cursor(&mut cursor1)?;
-            entry1 = new_entry1;
-            total_entry_offset1 += entry_offset;
+            total_entry_offset1 += e1_offset;
         }
 
         // Append remaining entries from SSTable2 if any
-        while let Some((k2, e2)) = entry2 {
-            //println!("pushed k2: {:#?}", k2);
-
+        while let Some(((k2, e2), e2_offset)) = file_ref_sstable2.get_entry_from_data_file(total_entry_offset2) {
             merged_entries.push((k2, e2));
-            cursor2 = file_ref_sstable2.get_cursor_data(sstable2_in_single_file, "-Data.db", SSTableElementType::Data, Some(total_entry_offset2))?;
-
-            let (new_entry2, entry_offset) = SSTable::read_entry_from_cursor(&mut cursor2)?;
-            entry2 = new_entry2;
-            total_entry_offset2 += entry_offset;
+            total_entry_offset1 += e2_offset;
         }
 
         Ok(merged_entries)
-    }
-
-    /// Reads a serialized `MemoryEntry` from the provided cursor.
-    ///
-    /// # Arguments
-    ///
-    /// * `cursor` - A mutable reference to a `Cursor<Vec<u8>>` containing the serialized data.
-    ///
-    /// # Returns
-    ///
-    /// An `io::Result` containing either `Some((Box<[u8]>, MemoryEntry))` if a valid `MemoryEntry` is
-    /// successfully read, or `None` if the cursor has reached the end.
-    ///
-    /// # Errors
-    ///
-    /// Returns an `io::Error` if there's an issue when reading or deserializing the data.
-    fn read_entry_from_cursor(cursor: &mut Cursor<Vec<u8>>) -> io::Result<(Option<(Box<[u8]>, MemoryEntry)>, u64)> {
-        let mut total_entry_offset = 0u64;
-        let mut entry_len_bytes = [0u8; std::mem::size_of::<usize>()];
-        total_entry_offset += std::mem::size_of::<usize>() as u64;
-        if cursor.read_exact(&mut entry_len_bytes).is_err() {
-            // If we can't read the entry length, assume it's the end of the cursor
-            return Ok((None, total_entry_offset));
-        }
-
-        let entry_len = usize::from_ne_bytes(entry_len_bytes);
-
-        let mut entry_bytes = vec![0u8; entry_len];
-        cursor.read_exact(&mut entry_bytes)?;
-        total_entry_offset += entry_len as u64;
-
-        // Deserialize the entry bytes
-        match MemoryEntry::deserialize(&entry_bytes) {
-            Ok(entry) => Ok((Some(entry), total_entry_offset)),
-            Err(_) => {
-                Err(io::Error::new(io::ErrorKind::InvalidData, "Failed to deserialize memory entry"))
-            }
-        }
     }
 
     /// Checks if the given key is likely present in the Bloom filter.
@@ -684,21 +613,45 @@ impl<'a> SSTable<'a> {
     ///
     /// # Returns
     ///
-    /// An Option containing the MemoryEntry if successful, otherwise None.
-    fn get_entry_from_data_file(&mut self, offset: u64) -> Option<MemoryEntry> {
-        let total_entry_offset = offset;
-        let mut data_reader = self.get_cursor_data(self.in_single_file, "-Data.db", SSTableElementType::Data, Some(total_entry_offset)).ok()?;
+    /// An Option containing a pair of the key & MemoryEntry pair and the memory entry bytes length if successful, otherwise None.
+    fn get_entry_from_data_file(&mut self, offset: u64) -> Option<((Box<[u8]>, MemoryEntry), u64)> {
+        let mut data_reader = self.get_cursor_data(self.in_single_file, "-Data.db", SSTableElementType::Data, Some(offset)).ok()?;
 
-        let mut entry_len_bytes = [0u8; std::mem::size_of::<usize>()];
-        data_reader.read_exact(&mut entry_len_bytes).unwrap();
+        let mut entry_bytes = vec![];
 
-        let entry_len = usize::from_ne_bytes(entry_len_bytes);
+        let mut crc_bytes = [0u8; 4];
+        data_reader.read_exact(&mut crc_bytes).ok();
+        entry_bytes.extend_from_slice(&crc_bytes);
 
-        let mut entry_bytes = vec![0u8; entry_len];
-        data_reader.read_exact(&mut entry_bytes).unwrap();
+        let mut timestamp_bytes = [0u8; 16];
+        data_reader.read_exact(&mut timestamp_bytes).ok();
+        entry_bytes.extend_from_slice(&timestamp_bytes);
+
+        let mut tombstone_byte = [0u8; 1];
+        data_reader.read_exact(&mut tombstone_byte).ok();
+        entry_bytes.extend_from_slice(&tombstone_byte);
+
+        let mut key_len_bytes = [0u8; std::mem::size_of::<usize>()];
+        data_reader.read_exact(&mut key_len_bytes).ok();
+        entry_bytes.extend_from_slice(&key_len_bytes);
+        let key_len = usize::from_ne_bytes(key_len_bytes);
+
+        let mut value_len_bytes = [0u8; std::mem::size_of::<usize>()];
+        data_reader.read_exact(&mut value_len_bytes).ok();
+        entry_bytes.extend_from_slice(&value_len_bytes);
+        let value_len = usize::from_ne_bytes(value_len_bytes);
+
+        let mut key_bytes = vec![0u8; key_len];
+        data_reader.read_exact(&mut key_bytes).ok();
+        entry_bytes.extend_from_slice(&key_bytes);
+
+        let mut value_bytes = vec![0u8; value_len];
+        data_reader.read_exact(&mut value_bytes).ok();
+        entry_bytes.extend_from_slice(&value_bytes);
+
         // Deserialize the entry bytes
         match MemoryEntry::deserialize(&entry_bytes) {
-            Ok(entry) => Some(entry.1),
+            Ok(entry) => Some((entry, entry_bytes.len() as u64)),
             Err(_) => None,
         }
     }
@@ -737,9 +690,7 @@ impl<'a> SSTable<'a> {
 
             // Read the first offset value
             let mut file_element_offset_bytes = [0u8; std::mem::size_of::<usize>()];
-            if let Err(err) = file.read_exact(&mut file_element_offset_bytes) {
-                eprintln!("Error reading file: {}", err);
-            }
+            file.read_exact(&mut file_element_offset_bytes)?;
             usize::from_ne_bytes(file_element_offset_bytes) as u64
         } else {
             0
@@ -759,31 +710,49 @@ impl<'a> SSTable<'a> {
         match sstable_element_type {
             SSTableElementType::Data => {
                 let result = file.seek(SeekFrom::Start(file_element_offset + total_entry_offset));
+
                 if let Err(err) = result {
                     eprintln!("Error seeking in file: {}", err);
                     return Err(err.into());
                 }
 
-                // Read data len bytes, data len and data
-                let mut data_len_bytes = [0u8; std::mem::size_of::<usize>()];
-                let result = file.read_exact(&mut data_len_bytes);
                 if in_single_file {
                     if file_element_offset + total_entry_offset + std::mem::size_of::<usize>() as u64 >= next_file_element_offset {
                         return Ok(Cursor::new(Vec::new()));
                     }
-                } else {
-                    if result.is_err() {
+                }
+
+                // Read data entry metadata and then key and value len and bytes
+                let mut entry_metadata_bytes = vec![0u8; 21]; // CRC + tombstone + timestamp
+
+                // If no metadata bytes, EOF reached
+                match file.read_exact(&mut entry_metadata_bytes) {
+                    Ok(()) => {
+                        buffer.extend_from_slice(&entry_metadata_bytes);
+                    }
+                    Err(_) => {
+                        // If EOF, return empty vec
                         return Ok(Cursor::new(Vec::new()));
                     }
                 }
 
-                buffer.extend_from_slice(&data_len_bytes);
+                let mut key_len_bytes = [0u8; std::mem::size_of::<usize>()];
+                file.read_exact(&mut key_len_bytes)?;
+                buffer.extend_from_slice(&mut key_len_bytes);
+                let key_len = usize::from_ne_bytes(key_len_bytes);
 
-                let data_len = usize::from_ne_bytes(data_len_bytes);
+                let mut value_len_bytes = [0u8; std::mem::size_of::<usize>()];
+                file.read_exact(&mut value_len_bytes)?;
+                buffer.extend_from_slice(&value_len_bytes);
+                let value_len = usize::from_ne_bytes(value_len_bytes);
 
-                let mut data_bytes = vec![0u8; data_len];
-                file.read_exact(&mut data_bytes)?;
-                buffer.extend_from_slice(&data_bytes);
+                let mut key_bytes = vec![0u8; key_len];
+                file.read_exact(&mut key_bytes)?;
+                buffer.extend_from_slice(&key_bytes);
+
+                let mut value_bytes = vec![0u8; value_len];
+                file.read_exact(&mut value_bytes)?;
+                buffer.extend_from_slice(&value_bytes);
             },
             SSTableElementType::Index => {
                 file.seek(SeekFrom::Start(file_element_offset + total_entry_offset))?;
