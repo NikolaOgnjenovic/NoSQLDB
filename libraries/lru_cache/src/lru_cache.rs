@@ -75,11 +75,4 @@ impl LRUCache {
             self.size -= 1;
         }
     }
-
-    pub fn update(&mut self, key: &[u8], value: &[u8], tombstone: bool, time_stamp: TimeStamp) {
-        if self.map.contains_key(key) {
-            let node = self.map.get(key);
-            node.unwrap().borrow_mut().el = Entry::from(key, value, tombstone, time_stamp);
-        }
-    }
 }

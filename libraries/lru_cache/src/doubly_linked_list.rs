@@ -1,5 +1,6 @@
 use std::rc::Rc;
 use std::cell::RefCell;
+use crate::dll_iterator::DLLIterator;
 use crate::dll_node::{ Entry, Node };
 use crate::dll_iterator::DLLIterator;
 
@@ -20,7 +21,6 @@ impl DoublyLinkedList {
     fn is_empty(&self) -> bool {
         self.tail == None
     }
-
 
     fn push_tail(&mut self, el: Entry) {
         let node = Rc::new(RefCell::new(Node::new(el)));

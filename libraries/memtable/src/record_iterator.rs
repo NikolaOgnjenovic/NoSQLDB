@@ -1,7 +1,7 @@
-use std::fs::{File, OpenOptions};
+use std::fs::{OpenOptions, read_dir};
 use std::io;
-use std::io::{BufReader, Read};
-use std::path::Path;
+use std::io::Read;
+use std::path::{Path, PathBuf};
 use crc::{Crc, CRC_32_ISCSI};
 use crate::crc_error::CRCError;
 
@@ -13,16 +13,35 @@ pub(crate) struct Record {
 }
 
 pub(crate) struct RecordIterator {
-    reader: BufReader<File>,
-    crc_hasher: Crc<u32>
+    all_read_bytes: Vec<u8>,
+    crc_hasher: Crc<u32>,
+    data_pointer: usize
 }
 
 impl RecordIterator {
-    pub fn new(path: &Path) -> io::Result<RecordIterator> {
-        let file = OpenOptions::new().read(true).open(path)?;
+    pub fn new(dir: &Path) -> io::Result<RecordIterator> {
+        let mut files = read_dir(dir)?
+            .map(|dir_entry| dir_entry.unwrap().path())
+            .filter(|file| {
+                match file.extension() {
+                    Some(ext) => ext == "log",
+                    None => false
+                }
+            })
+            .collect::<Vec<PathBuf>>();
+
+        files.sort();
+
+        let mut all_read_bytes = Vec::new();
+
+        for file in files {
+            let mut file = OpenOptions::new().read(true).open(file)?;
+            file.read_to_end(&mut all_read_bytes)?;
+        }
 
         Ok(RecordIterator {
-            reader: BufReader::new(file),
+            all_read_bytes,
+            data_pointer: 0,
             crc_hasher: Crc::<u32>::new(&CRC_32_ISCSI)
         })
     }
@@ -32,42 +51,54 @@ impl Iterator for RecordIterator {
     type Item = Result<Record, CRCError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let crc = {
-            let mut crc_buffer = [0u8; 4];
-            self.reader.read_exact(&mut crc_buffer).ok()?;
-            u32::from_ne_bytes(crc_buffer)
+        if self.data_pointer >= self.all_read_bytes.len() {
+            return None;
+        }
+
+         let crc = {
+            let crc_buffer = &self.all_read_bytes[self.data_pointer..self.data_pointer + 4];
+            u32::from_ne_bytes(crc_buffer.try_into().ok()?)
         };
+
+        self.data_pointer += 4;
 
         let timestamp = {
-            let mut timestamp_buffer = [0u8; 16];
-            self.reader.read_exact(&mut timestamp_buffer).ok()?;
-            u128::from_ne_bytes(timestamp_buffer)
+            let timestamp_buffer = &self.all_read_bytes[self.data_pointer..self.data_pointer + 16];
+            u128::from_ne_bytes(timestamp_buffer.try_into().ok()?)
         };
+
+        self.data_pointer += 16;
 
         let tombstone = {
-            let mut tombstone_buffer = [0u8; 1];
-            self.reader.read_exact(&mut tombstone_buffer).ok()?;
-            u8::from_ne_bytes(tombstone_buffer) != 0
+            let tombstone_buffer = &self.all_read_bytes[self.data_pointer..self.data_pointer + 1];
+            u8::from_ne_bytes(tombstone_buffer.try_into().ok()?) != 0
         };
+
+        self.data_pointer += 1;
 
         let key_size = {
-            let mut key_size_buffer = [0u8; 8];
-            self.reader.read_exact(&mut key_size_buffer).ok()?;
-            usize::from_ne_bytes(key_size_buffer)
+            let key_size_buffer = &self.all_read_bytes[self.data_pointer..self.data_pointer + 8];
+            usize::from_ne_bytes(key_size_buffer.try_into().ok()?)
         };
+
+        self.data_pointer += 8;
 
         let value_size = {
-            let mut value_size_buffer = [0u8; 8];
-            self.reader.read_exact(&mut value_size_buffer).ok()?;
-            usize::from_ne_bytes(value_size_buffer)
+            let value_size_buffer = &self.all_read_bytes[self.data_pointer..self.data_pointer + 8];
+            usize::from_ne_bytes(value_size_buffer.try_into().ok()?)
         };
 
-        let mut key = vec![0u8; key_size].into_boxed_slice();
-        self.reader.read_exact(&mut key).ok()?;
+        self.data_pointer += 8;
+
+        let key = self.all_read_bytes[self.data_pointer..self.data_pointer + key_size].to_vec().into_boxed_slice();
+
+        self.data_pointer += key_size;
 
         let value = if !tombstone {
-            let mut value_buf = vec![0u8; value_size].into_boxed_slice();
-            self.reader.read_exact(&mut value_buf).ok()?;
+            let value_buf = self.all_read_bytes[self.data_pointer..self.data_pointer + value_size].to_vec().into_boxed_slice();
+
+            self.data_pointer += value_size;
+
             Some(value_buf)
         } else {
             None

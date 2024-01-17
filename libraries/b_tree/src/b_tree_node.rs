@@ -109,7 +109,7 @@ impl Node {
         // the entries were done firstly because then the y ref can be used for the last remaining purpose
         // otherwise it would need to be borrowed again
         // checked subtraction is used because the indices can be 0
-        for i in (split_child_index.checked_sub(1).unwrap_or(0)..=self.n.checked_sub(1).unwrap_or(0)).rev() {
+        for i in (split_child_index.saturating_sub(1)..=self.n.saturating_sub(1)).rev() {
             self.entries[i + 1] = self.entries[i].clone();
         }
         self.entries[split_child_index] = child_to_be_split.entries[self.degree - 1].take();
@@ -133,12 +133,10 @@ impl Node {
         if index < self.n && key == &*self.entries[index].as_ref().unwrap().key {
             self.entries[index] = Some(Entry::from(key, &[], true, time_stamp));
             false
+        } else if self.is_leaf {
+            true
         } else {
-            if self.is_leaf {
-                true
-            } else {
-                self.children[index].as_mut().unwrap().logical_deletion(key, time_stamp)
-            }
+            self.children[index].as_mut().unwrap().logical_deletion(key, time_stamp)
         }
     }
 
@@ -149,12 +147,10 @@ impl Node {
         }
         if index < self.n && key ==  &*self.entries[index].as_ref().unwrap().key {
             self.entries[index] = Some(Entry::from(key, value, false, time_stamp));
+        } else if self.is_leaf {
+            return;
         } else {
-            if self.is_leaf {
-                return;
-            } else {
-                self.children[index].as_mut().unwrap().update(key, value,time_stamp)
-            }
+            self.children[index].as_mut().unwrap().update(key, value,time_stamp)
         }
     }
 }
@@ -187,7 +183,7 @@ impl Node {
             if self.is_leaf { return; }
 
             // if true, key is located in the subtree rooted with the last child of curr node
-            let flag = if index == self.n { true } else { false };
+            let flag = index == self.n;
 
             //if child has less keys than order fill that child
             if self.children[index].as_ref().unwrap().n < self.degree {

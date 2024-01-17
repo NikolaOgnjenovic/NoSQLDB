@@ -4,3 +4,5 @@
 **/Cargo.lock/
 **/.vs/
 Cargo.lock
+**/config.json
+**/*.log
