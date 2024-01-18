@@ -1,8 +1,11 @@
 mod sim_hash;
 
+pub use sim_hash::{hamming_distance, sim_hash};
+
 #[cfg(test)]
 mod tests {
-    use crate::sim_hash::{hamming_distance, sim_hash};
+    use super::hamming_distance;
+    use super::sim_hash;
 
     #[test]
     fn test_value() {

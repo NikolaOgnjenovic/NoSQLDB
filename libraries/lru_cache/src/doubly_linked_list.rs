@@ -2,7 +2,6 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use crate::dll_iterator::DLLIterator;
 use crate::dll_node::{ Entry, Node };
-use crate::dll_iterator::DLLIterator;
 
 #[derive(Debug)]
 pub(crate) struct DoublyLinkedList {
