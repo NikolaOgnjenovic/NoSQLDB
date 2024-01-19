@@ -53,12 +53,14 @@ impl DB {
     }
 
     /// Inserts a new key value pair into the system.
-    pub fn insert(&mut self, key: &[u8], value: &[u8]) -> Result<(), Box<dyn Error>> {
-        for forbidden_key_prefix in self.reserved_key_prefixes {
-            if key.starts_with(forbidden_key_prefix) {
-                return Err(Box::new(ReservedKeyError {
-                    message: format!("Cannot insert key with system reserved prefix {}.", String::from_utf8_lossy(forbidden_key_prefix))
-                }));
+    pub fn insert(&mut self, key: &[u8], value: &[u8], check_reserved_prefixes: bool) -> Result<(), Box<dyn Error>> {
+        if check_reserved_prefixes {
+            for forbidden_key_prefix in self.reserved_key_prefixes {
+                if key.starts_with(forbidden_key_prefix) {
+                    return Err(Box::new(ReservedKeyError {
+                        message: format!("Cannot insert key with system reserved prefix {}.", String::from_utf8_lossy(forbidden_key_prefix))
+                    }));
+                }
             }
         }
 
@@ -125,7 +127,7 @@ impl DB {
 
         bloom_filter.add(value);
 
-        self.insert(&combined_key, bloom_filter.serialize().as_ref())
+        self.insert(&combined_key, bloom_filter.serialize().as_ref(), false)
     }
 
     /// Checks if the given value is likely present in the Bloom Filter associated with the key.
@@ -184,7 +186,7 @@ impl DB {
 
         count_min_sketch.increase_count(value);
 
-        self.insert(&combined_key, count_min_sketch.serialize().as_ref())
+        self.insert(&combined_key, count_min_sketch.serialize().as_ref(), false)
     }
 
     /// Gets the count associated with the given value in the Count-Min Sketch.
@@ -238,7 +240,7 @@ impl DB {
 
         hyperloglog.add_to_count(&value);
 
-        self.insert(&combined_key, hyperloglog.serialize().as_ref())
+        self.insert(&combined_key, hyperloglog.serialize().as_ref(), false)
     }
 
     /// Gets the count estimated by the HyperLogLog.
