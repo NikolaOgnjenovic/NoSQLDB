@@ -14,8 +14,8 @@ pub enum MemoryTableType {
 
 // todo, novo gradivo, nije još implementirano, dodato na osnovu specifikacije
 /// Options for the compression algorithm type
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
-pub enum CompressionAlgorithmType {
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
+pub enum CompactionAlgorithmType {
     SizeTiered,
     Leveled,
 }
@@ -42,8 +42,9 @@ pub struct DBConfig {
     // todo, novo gradivo, nije još implementirano,
     // todo, dodato ono šta je poznato na osnovu specifikacije
     pub lsm_max_level: usize,
-    pub compression_enabled: bool,
-    pub compression_algorithm_type: CompressionAlgorithmType,
+    pub lsm_max_per_level: usize,
+    pub compaction_enabled: bool,
+    pub compaction_algorithm_type: CompactionAlgorithmType,
     pub cache_max_size: usize,
     pub token_bucket_num: usize,
     pub token_bucket_interval: usize,
@@ -72,8 +73,9 @@ impl Default for DBConfig {
             // todo, novo gradivo, nije još implementirano,
             // todo, dodato ono šta je poznato na osnovu specifikacije
             lsm_max_level: 0,
-            compression_enabled: false,
-            compression_algorithm_type: CompressionAlgorithmType::SizeTiered,
+            lsm_max_per_level: 0,
+            compaction_enabled: false,
+            compaction_algorithm_type: CompactionAlgorithmType::SizeTiered,
             cache_max_size: 0,
             token_bucket_num: 0,
             token_bucket_interval: 0,

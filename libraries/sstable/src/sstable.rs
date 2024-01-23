@@ -67,6 +67,7 @@ impl<'a> SSTable<'a> {
         })
     }
 
+
     /// Flushes the in-memory segment to the SSTable files on disk.
     ///
     /// # Arguments

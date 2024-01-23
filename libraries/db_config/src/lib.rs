@@ -2,7 +2,7 @@ mod db_config;
 
 pub use db_config::DBConfig;
 pub use db_config::MemoryTableType;
-pub use db_config::CompressionAlgorithmType;
+pub use db_config::CompactionAlgorithmType;
 
 #[cfg(test)]
 mod tests {

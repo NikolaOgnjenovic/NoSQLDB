@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 use std::error::Error;
-use std::io;
+use std::{io, rc};
 use std::path::Path;
 use threadpool::ThreadPool;
 use segment_elements::TimeStamp;
@@ -12,7 +12,7 @@ pub struct MemoryPool {
     read_write_table: MemoryTable,
     read_only_tables: VecDeque<MemoryTable>,
     config: DBConfig,
-    thread_pool: ThreadPool
+    thread_pool: ThreadPool,
 }
 
 impl MemoryPool {
