@@ -3,7 +3,7 @@ name = "sstable"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-authors = ["Nikola Ognjenović"]
+authors = ["Nikola Ognjenović", "Mihajlo Orlovic"]
 
 [dependencies]
 crc = "3.0.1"

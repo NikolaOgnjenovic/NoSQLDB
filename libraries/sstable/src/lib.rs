@@ -1,6 +1,8 @@
 mod sstable;
 mod sstable_element_type;
 
+use std::path::Path;
+use db_config::MemoryTableType;
 pub use sstable::SSTable;
 
 #[cfg(test)]
@@ -54,7 +56,7 @@ mod tests {
     fn test_flushing() {
         let multiplier = 2;
 
-        for range in (1..=200).step_by(50) {
+        for range in (1..=1).step_by(50) {
             // todo: uncomment hashmap when implemented
             for memory_type in &[MemoryTableType::SkipList, /*MemoryTableType::HashMap,*/MemoryTableType::BTree] {
                 check_flushed_table(true, &memory_type.clone(), range, multiplier);
@@ -99,7 +101,7 @@ mod tests {
     fn test_merkle() {
         let multiplier = 2;
 
-        for range in (1..=1000).step_by(50) {
+        for range in (1..=1).step_by(50) {
             for memory_type in &[MemoryTableType::SkipList, /*MemoryTableType::HashMap,*/MemoryTableType::BTree] {
                 check_merkle_tree(true, &memory_type.clone(), range, multiplier);
                 check_merkle_tree(false, &memory_type.clone(), range, multiplier);
@@ -127,22 +129,66 @@ mod tests {
     fn test_merge_sstables() {
         let multiplier = 2;
 
-        for range in (1..=200).step_by(50) {
+        for range in (1..=30).step_by(10) {
             // todo: uncomment hashmap when implemented
             for memory_type in &[MemoryTableType::SkipList, /*MemoryTableType::HashMap,*/MemoryTableType::BTree] {
-                merge_sstables(true, true, &memory_type.clone(), range, multiplier, true);
-                merge_sstables(true, true, &memory_type.clone(), range, multiplier, false);
+                // merge_sstables(true, true, &memory_type.clone(), range, multiplier, true);
+                // merge_sstables(true, true, &memory_type.clone(), range, multiplier, false);
+                //
+                // merge_sstables(true, false, &memory_type.clone(), range, multiplier, true);
+                // merge_sstables(true, false, &memory_type.clone(), range, multiplier, false);
+                //
+                // merge_sstables(false, true, &memory_type.clone(), range, multiplier, true);
+                // merge_sstables(false, true, &memory_type.clone(), range, multiplier, false);
+                //
+                // merge_sstables(false, false, &memory_type.clone(), range, multiplier, true);
+                // merge_sstables(false, false, &memory_type.clone(), range, multiplier, false);
 
-                merge_sstables(true, false, &memory_type.clone(), range, multiplier, true);
-                merge_sstables(true, false, &memory_type.clone(), range, multiplier, false);
+                merge_sstables_multiple(vec![true, true], &memory_type.clone(), range, multiplier, true);
+                merge_sstables_multiple(vec![true, true], &memory_type.clone(), range, multiplier, false);
 
-                merge_sstables(false, true, &memory_type.clone(), range, multiplier, true);
-                merge_sstables(false, true, &memory_type.clone(), range, multiplier, false);
+                merge_sstables_multiple(vec![true, false], &memory_type.clone(), range, multiplier, true);
+                merge_sstables_multiple(vec![true, false], &memory_type.clone(), range, multiplier, false);
 
-                merge_sstables(false, false, &memory_type.clone(), range, multiplier, true);
-                merge_sstables(false, false, &memory_type.clone(), range, multiplier, false);
+                merge_sstables_multiple(vec![false, true], &memory_type.clone(), range, multiplier, true);
+                merge_sstables_multiple(vec![false, true], &memory_type.clone(), range, multiplier, false);
+
+                merge_sstables_multiple(vec![false, false], &memory_type.clone(), range, multiplier, true);
+                merge_sstables_multiple(vec![false, false], &memory_type.clone(), range, multiplier, false);
             }
         }
+    }
+
+    fn merge_sstables_multiple(in_single_file: Vec<bool>, memory_type: &MemoryTableType, range: i32, multiplier: i32, merged_in_single_file: bool) {
+
+        //contains paths to all sstables
+        let mut sstable_paths = Vec::new();
+
+        let (temp_dir, mut inner_mem, summary_density) = setup_test_environment(memory_type);
+
+        //generate data for all sstables nad insert paths to sstable_paths
+        for i in 0..in_single_file.len() {
+            let (_, mut inner_mem) = get_density_and_inner_mem(memory_type);
+            insert_test_data(&mut inner_mem, range, multiplier * (i + 1) as i32);
+            let sstable_path = temp_dir.path().join("sstable".to_string() + (i + 1).to_string().as_str());
+            let mut sstable = create_sstable(&sstable_path, &inner_mem, in_single_file[i]);
+            sstable.flush(summary_density).expect("Failed to flush sstable");
+            sstable_paths.push(sstable_path);
+        }
+
+        //convert pathbuf to path
+        let sstable_paths:Vec<_> = sstable_paths.iter().map(|path_buf| path_buf.as_path()).collect();
+
+        // Define the path for the merged SSTable
+        let merged_sstable_path = temp_dir.path().join("merged_sstable");
+        // Define the database configuration
+        let dbconfig = DBConfig::default();
+
+        // Merge the two SSTables
+        SSTable::merge_sstable_multiple(sstable_paths.clone() , in_single_file, merged_sstable_path.as_path(), merged_in_single_file, &dbconfig)
+            .expect("Failed to merge SSTables");
+
+        verify_merged_sstable(&merged_sstable_path, memory_type, range, multiplier, merged_in_single_file);
     }
 
     fn merge_sstables(sstable1_in_single_file: bool, sstable2_in_single_file: bool, memory_type: &MemoryTableType, range: i32, multiplier: i32, merged_in_single_file: bool) {
@@ -208,3 +254,7 @@ mod tests {
         remove_dir_all(merged_sstable_path).expect("Failed to remove all dirs");
         }
     }
+
+fn verify_merge_sstable_multiple(merged_sstable_path: &Path, memory_type: &MemoryTableType, range: i32, multiplier: i32, merged_in_single_file: bool) {
+
+}

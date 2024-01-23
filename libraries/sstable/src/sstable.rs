@@ -466,6 +466,178 @@ impl<'a> SSTable<'a> {
         Ok(merged_entries)
     }
 
+
+    /// Merges multiple SSTables into a new SSTable using merge sort on keys and timestamps.
+    /// Deletes the old SSTables and flushes the merged SSTable on completion.
+    ///
+    /// # Arguments
+    ///
+    /// * `sstable_paths` - Base paths to all SSTables.
+    /// * in_single_file - Vector of booleans indicating whether or not are corresponding SSTables stored in a single file
+    /// * `merged_base_path` - The base path where the merged SSTable files will be stored.
+    /// * `merged_in_single_file` - A boolean indicating whether the merged SSTable is stored in a single file.
+    /// * `dbconfig` - The configuration for the database.
+    ///
+    /// # Returns
+    ///
+    /// Returns An `io::Result` indicating success or an `io::Error`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an `io::Error` if the merging process fails.
+    pub(crate) fn merge_sstable_multiple(sstable_paths: Vec<&Path>, in_single_file: Vec<bool>, merged_base_path: &Path, merged_in_single_file: bool, dbconfig: &DBConfig) -> io::Result<()> {
+        create_dir_all(merged_base_path)?;
+
+        let merged_data = SSTable::merge_sorted_entries_multiple(sstable_paths.clone(), in_single_file)?;
+        let mut inner_mem: Box<dyn SegmentTrait + Send> = match dbconfig.memory_table_type {
+            MemoryTableType::SkipList => Box::new(SkipList::new(dbconfig.skip_list_max_level)),
+            MemoryTableType::HashMap => todo!(),
+            MemoryTableType::BTree => Box::new(BTree::new(dbconfig.b_tree_order).unwrap())
+        };
+        for (key, entry) in merged_data {
+            inner_mem.insert(&key, &entry.get_value(), TimeStamp::Custom(entry.get_timestamp()));
+        }
+
+        let mut merged_sstable = SSTable::new(merged_base_path, &inner_mem, merged_in_single_file)?;
+
+        // Flush the new SSTable to disk
+        merged_sstable.flush(dbconfig.summary_density)?;
+
+        let _ = sstable_paths
+            .iter()
+            .map(|path| remove_dir_all(path));
+
+        Ok(())
+    }
+
+
+    /// Merges multiple sorted SSTables into a new Vec of key-value pairs using merge sort based on keys and timestamps.
+    ///
+    /// The function reads entries from multiple SSTables identified by their base paths.
+    /// It performs a merge sort based on the keys and timestamps of the entries. The resulting Vec contains tuples, where each tuple
+    /// represents a key-value pair from the merged SSTables.
+    ///
+    /// # Arguments
+    ///
+    /// * `sstable_paths` - Base paths to all SSTables.
+    /// * in_single_file - Vector of booleans indicating whether or not are corresponding SSTables stored in a single file
+    ///
+    /// # Returns
+    ///
+    /// An `io::Result` containing a Vec of key-value pairs `(Box<[u8]>, MemoryEntry)` representing the merged entries.
+    ///
+    /// # Errors
+    ///
+    /// Returns an `io::Error` if there is an issue when reading from the SSTables or if deserialization fails.
+    fn merge_sorted_entries_multiple(sstable_paths: Vec<&'a Path>, in_single_file: Vec<bool>) -> io::Result<Vec<(Box<[u8]>, MemoryEntry)>> {
+        let number_of_tables = sstable_paths.len();
+        let mut total_entry_offsets = vec![0; number_of_tables];
+        let mut file_ref_sstables = Vec::with_capacity(number_of_tables);
+        for i in 0..number_of_tables {
+            file_ref_sstables.push( Self {
+                base_path: sstable_paths[i],
+                inner_mem: None,
+                in_single_file: in_single_file[i],
+                data_offset: 0,
+                index_offset: 0,
+                summary_offset: 0,
+                bloom_filter_offset: 0,
+                merkle_offset: 0,
+                file_handles: HashMap::new()
+            })
+        }
+        let mut merged_entries = Vec::new();
+        loop {
+            let option_entries: Vec<Option<_>> = file_ref_sstables
+                .iter_mut()
+                .zip(total_entry_offsets.iter())
+                .map(|(sstable, offset)| sstable.get_entry_from_data_file(*offset as u64))
+                .collect();
+
+            if option_entries.iter().all(Option::is_none) {
+                break;
+            }
+
+            let entries: Vec<_> = option_entries
+                .iter()
+                .enumerate()
+                .filter(|(index, elem)| elem.is_some())
+                .collect();
+
+            let min_key_indexes = SSTable::find_min_keys(&entries);
+            let min_entries: Vec<_> =  min_key_indexes
+                .iter()
+                .map(|index| entries[*index].clone())
+                .collect();
+
+            let _ = min_entries
+                .iter()
+                .for_each(|(index, element)| {
+                    total_entry_offsets[*index] += element.as_ref().unwrap().1.clone();
+                });
+
+            let max_index = SSTable::find_max_timestamp(&min_entries);
+            merged_entries.push(min_entries[max_index].1.as_ref().unwrap().0.clone());
+        }
+
+
+        Ok(merged_entries)
+    }
+
+
+    /// Finds the index of entry with biggest timestamp
+    ///
+    /// # Arguments
+    ///
+    /// * entries - vector containing entries with smallest keys
+    ///
+    /// # Returns
+    ///
+    /// An index of entry with biggest timestamp
+    fn find_max_timestamp(entries: &Vec<(usize, &Option<((Box<[u8]>, MemoryEntry), u64)>)>) -> usize {
+        let mut max_index = 0;
+        let mut max_timestamp = entries[max_index].1.as_ref().unwrap().0.1.get_timestamp();
+        for (index, element) in entries {
+            let timestamp = element.as_ref().unwrap().0.1.get_timestamp();
+            if timestamp > max_timestamp {
+                max_index = *index;
+                max_timestamp = timestamp;
+            }
+        }
+        max_index
+    }
+
+
+    /// Finds the indexes of entries with minimal keys
+    ///
+    /// # Arguments
+    ///
+    /// * entries - vector containing one entry from each sstable
+    ///
+    /// # Returns
+    ///
+    /// A Vector of indexes of entries with minimal keys
+    fn find_min_keys(entries: &Vec<(usize, &Option<((Box<[u8]>, MemoryEntry), u64)>)>) -> Vec<usize> {
+        let mut min_key = entries[0].1.as_ref().unwrap().0.0.clone();
+        let mut min_indexes = vec![];
+        for (index, element) in entries {
+            let element = element.as_ref().unwrap();
+            let key = &element.0.0;
+            let compare_result = min_key.cmp(key);
+            if compare_result == Ordering::Equal {
+                min_indexes.push(*index);
+            }
+            if compare_result == Ordering::Greater {
+                min_indexes.clear();
+                min_indexes.push(*index);
+                min_key = key.clone();
+            }
+
+        }
+
+        min_indexes
+    }
+
     /// Checks if the given key is likely present in the Bloom filter.
     ///
     /// # Arguments
