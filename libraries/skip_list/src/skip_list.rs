@@ -174,13 +174,7 @@ impl segment_elements::SegmentTrait for SkipList {
 
 				match key.cmp(node_key) {
 					Ordering::Less => break,
-					Ordering::Equal => {
-						return if !helper.get_val().get_tombstone() {
-							Some(helper.get_val().get_value())
-						} else {
-							None
-						};
-					},
+					Ordering::Equal => return Some(helper.get_val().get_value()),
 					Ordering::Greater => node = next.clone()
 				}
 			}

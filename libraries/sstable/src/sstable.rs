@@ -89,8 +89,8 @@ impl<'a> SSTable<'a> {
         let serialized_index = self.get_serialized_index(&index_builder);
         let serialized_index_summary = self.get_serialized_summary(&index_builder, summary_density);
         let serialized_bloom_filter = bloom_filter.serialize();
-
         let serialized_merkle_tree = MerkleTree::new(&serialized_data).serialize();
+
         if self.in_single_file {
             self.write_to_single_file(&serialized_data, &serialized_index, &serialized_index_summary, &serialized_bloom_filter, &serialized_merkle_tree)
         } else {
@@ -572,7 +572,7 @@ impl<'a> SSTable<'a> {
             // find the indexes of min keys
             let min_key_indexes = SSTable::find_min_keys(&entries);
 
-            //filter only the entries containing min key
+            // filter only the entries containing min key
             let min_entries: Vec<_> =  min_key_indexes
                 .iter()
                 .map(|index| entries[*index].clone())

@@ -35,7 +35,7 @@ mod tests {
         skip_list.insert(&[3], &[30], TimeStamp::Now);
 
         assert!(!skip_list.delete(&[2], TimeStamp::Now));
-        assert_eq!(skip_list.get(&[2]), None);
+        assert_eq!(skip_list.get(&[2]), Some(Box::from([])));
     }
 
     #[test]

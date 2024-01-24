@@ -69,4 +69,6 @@ impl MemoryTable {
     pub(crate) fn finalize(self) -> io::Result<()> {
         self.wal.finalize()
     }
+
+    // todo dodati iterator ovde, refaktorisati da bude sve u istom crate-u
 }

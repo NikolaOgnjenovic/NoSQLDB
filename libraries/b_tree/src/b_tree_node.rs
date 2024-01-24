@@ -47,11 +47,7 @@ impl Node {
         }
 
         if node_index < self.n && key.cmp(&*self.entries[node_index].as_ref().unwrap().key) == Ordering::Equal {
-            if !self.entries[node_index].as_ref().unwrap().mem_entry.get_tombstone() {
-                Some(self.entries[node_index].as_ref().unwrap().mem_entry.get_value())
-            } else {
-                None
-            }
+            Some(self.entries[node_index].as_ref().unwrap().mem_entry.get_value())
         } else if self.is_leaf {
             None
         } else {

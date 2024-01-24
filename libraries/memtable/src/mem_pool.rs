@@ -47,23 +47,29 @@ impl MemoryPool {
     /// Tries to retrieve key's data from all memory tables currently loaded in memory.
     /// Does not go into on-disk structures.
     pub fn get(&self, key: &[u8]) -> Option<Box<[u8]>> {
-        // todo popraviti bag gde ako je kljuc obrisan tombstonom, treba i dalje
-        // todo vrati none, a ne da tera dalje
         if self.read_write_table.is_empty() {
             return None;
         }
 
         if let Some(data) = self.read_write_table.get(key) {
-            return Some(data);
+            return if !data.is_empty() {
+                Some(data)
+            } else {
+                None
+            }
         }
 
         for table in &self.read_only_tables {
             if table.is_empty() {
-                continue;
+                return None;
             }
 
             if let Some(data) = table.get(key) {
-                return Some(data);
+                return if !data.is_empty() {
+                    Some(data)
+                } else {
+                    None
+                }
             }
         }
 
@@ -92,20 +98,20 @@ impl MemoryPool {
         }
     }
 
-    fn flush_concurrent(&mut self, table: MemoryTable) {
-        let density_move = self.config.summary_density;
-
-        self.thread_pool.execute(move || {
-            // todo: LSM sturktura treba da pozove kreiranje nove sstabele i potencionalno da ona radi kompakcije i
-            // todo mergeovanje ovde, a ako ne ovde onda se radi u main db strukturi
-            println!("FLUSH");
-
-            match table.finalize() {
-                Ok(_) => (),
-                Err(e) => eprintln!("WAL couldn't be deleted. Error: {}", e)
-            };
-        });
-    }
+    // fn flush_concurrent(&mut self, table: MemoryTable) {
+    //     let density_move = self.config.summary_density;
+    //
+    //     self.thread_pool.execute(move || {
+    //         // todo: LSM sturktura treba da pozove kreiranje nove sstabele i potencionalno da ona radi kompakcije i
+    //         // todo mergeovanje ovde, a ako ne ovde onda se radi u main db strukturi
+    //         println!("FLUSH");
+    //
+    //         match table.finalize() {
+    //             Ok(_) => (),
+    //             Err(e) => eprintln!("WAL couldn't be deleted. Error: {}", e)
+    //         };
+    //     });
+    // }
 
     /// Loads from every log file in the given directory.
     pub fn load_from_dir(config: &DBConfig) -> Result<MemoryPool, Box<dyn Error>> {
