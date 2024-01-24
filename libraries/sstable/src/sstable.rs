@@ -485,7 +485,7 @@ impl<'a> SSTable<'a> {
     /// # Errors
     ///
     /// Returns an `io::Error` if the merging process fails.
-    pub(crate) fn merge_sstable_multiple(sstable_paths: Vec<&Path>, in_single_file: Vec<bool>, merged_base_path: &Path, merged_in_single_file: bool, dbconfig: &DBConfig) -> io::Result<()> {
+    pub fn merge_sstable_multiple(sstable_paths: Vec<&Path>, in_single_file: Vec<bool>, merged_base_path: &Path, merged_in_single_file: bool, dbconfig: &DBConfig) -> io::Result<()> {
         create_dir_all(merged_base_path)?;
 
         let merged_data = SSTable::merge_sorted_entries_multiple(sstable_paths.clone(), in_single_file)?;
@@ -531,6 +531,8 @@ impl<'a> SSTable<'a> {
     /// Returns an `io::Error` if there is an issue when reading from the SSTables or if deserialization fails.
     fn merge_sorted_entries_multiple(sstable_paths: Vec<&'a Path>, in_single_file: Vec<bool>) -> io::Result<Vec<(Box<[u8]>, MemoryEntry)>> {
         let number_of_tables = sstable_paths.len();
+
+        // offsets for each sstable
         let mut total_entry_offsets = vec![0; number_of_tables];
         let mut file_ref_sstables = Vec::with_capacity(number_of_tables);
         for i in 0..number_of_tables {
@@ -548,34 +550,42 @@ impl<'a> SSTable<'a> {
         }
         let mut merged_entries = Vec::new();
         loop {
+            // contains a tuple (index, entry, offset) for each sstable
             let option_entries: Vec<Option<_>> = file_ref_sstables
                 .iter_mut()
                 .zip(total_entry_offsets.iter())
                 .map(|(sstable, offset)| sstable.get_entry_from_data_file(*offset as u64))
                 .collect();
 
+            // if all entries are none, there is no more data
             if option_entries.iter().all(Option::is_none) {
                 break;
             }
 
+            // remove the None values
             let entries: Vec<_> = option_entries
                 .iter()
                 .enumerate()
                 .filter(|(index, elem)| elem.is_some())
                 .collect();
 
+            // find the indexes of min keys
             let min_key_indexes = SSTable::find_min_keys(&entries);
+
+            //filter only the entries containing min key
             let min_entries: Vec<_> =  min_key_indexes
                 .iter()
                 .map(|index| entries[*index].clone())
                 .collect();
 
+            // update the offset only for entries with minimal keys
             let _ = min_entries
                 .iter()
                 .for_each(|(index, element)| {
                     total_entry_offsets[*index] += element.as_ref().unwrap().1.clone();
                 });
 
+            // insert entry with biggest timestamp
             let max_index = SSTable::find_max_timestamp(&min_entries);
             merged_entries.push(min_entries[max_index].1.as_ref().unwrap().0.clone());
         }
@@ -1084,15 +1094,4 @@ impl<'a> SSTable<'a> {
         // Return a mutable reference to the File in the map
         Ok(file_handle)
     }
-}
-
-pub fn compare_keys(a: &[u8], b: &[u8]) -> Ordering {
-    for (&byte_a, &byte_b) in a.iter().rev().zip(b.iter().rev()) {
-        match byte_a.cmp(&byte_b) {
-            Ordering::Less => return Ordering::Less,
-            Ordering::Greater => return Ordering::Greater,
-            Ordering::Equal => continue,
-        }
-    }
-    Ordering::Equal
 }
