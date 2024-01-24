@@ -3,7 +3,7 @@ use std::io;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use crc::{Crc, CRC_32_ISCSI};
-use crate::crc_error::CRCError;
+use crate::mem_pool::crc_error::CRCError;
 
 pub(crate) struct Record {
     pub(crate) timestamp: u128,

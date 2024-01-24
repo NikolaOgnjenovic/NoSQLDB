@@ -7,6 +7,7 @@ pub(crate) enum SSTableElementType {
     BloomFilter,
     MerkleTree,
 }
+
 impl SSTableElementType {
     /// Get the numeric identifier associated with each SSTableElementType.
     pub(crate) fn get_id(&self) -> usize {

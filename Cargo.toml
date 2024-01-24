@@ -10,7 +10,6 @@ authors = ["Luka Bursać", "Momir Stanišić", "Mihajlo Orlović", "Nikola Ognje
 
 [dependencies]
 db_config = { path = "libraries/db_config" }
-memtable = { path = "libraries/memtable" }
 segment_elements = { path = "libraries/segment_elements" }
 lru_cache = { path = "libraries/lru_cache" }
 bloom_filter = { path = "libraries/bloom_filter" }

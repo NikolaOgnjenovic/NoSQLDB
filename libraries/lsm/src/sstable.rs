@@ -1,3 +1,5 @@
+mod sstable_element_type;
+
 use std::cmp::{Ordering};
 use std::collections::HashMap;
 use std::fs::{create_dir_all, File, OpenOptions, remove_dir_all};
@@ -10,10 +12,10 @@ use db_config::{DBConfig, MemoryTableType};
 use segment_elements::{MemoryEntry, SegmentTrait, TimeStamp};
 use merkle_tree::merkle_tree::MerkleTree;
 use skip_list::SkipList;
-use crate::sstable_element_type::SSTableElementType;
+use crate::sstable::sstable_element_type::SSTableElementType;
 
 /// Struct representing an SSTable (Sorted String Table) for storing key-value pairs on disk.
-pub struct SSTable<'a> {
+pub(crate) struct SSTable<'a> {
     // Base directory path where the SSTable files will be stored.
     base_path: &'a Path,
     // In-memory segment containing key-value pairs.
@@ -50,7 +52,7 @@ impl<'a> SSTable<'a> {
     /// # Errors
     ///
     /// Returns an `io::Error` if there is an issue when creating directories.
-    pub fn new(base_path: &'a Path, inner_mem: &'a Box<dyn SegmentTrait + Send>, in_single_file: bool) -> io::Result<SSTable<'a>> {
+    pub(crate) fn new(base_path: &'a Path, inner_mem: &'a Box<dyn SegmentTrait + Send>, in_single_file: bool) -> io::Result<SSTable<'a>> {
         // Create directory if it doesn't exist
         create_dir_all(base_path)?;
 
@@ -81,7 +83,7 @@ impl<'a> SSTable<'a> {
     /// # Errors
     ///
     /// Returns an `io::Error` if there is an issue flushing the data or serializing components.
-    pub fn flush(&mut self, summary_density: usize) -> io::Result<()> {
+    pub(crate) fn flush(&mut self, summary_density: usize) -> io::Result<()> {
         // Build serialized data, index_builder, and bloom_filter
         let (serialized_data, index_builder, bloom_filter) = self.build_data_and_index_and_filter();
 
@@ -271,7 +273,7 @@ impl<'a> SSTable<'a> {
     /// # Errors
     ///
     /// None.
-    pub fn get(&mut self, key: &[u8]) -> Option<MemoryEntry> {
+    pub(crate) fn get(&mut self, key: &[u8]) -> Option<MemoryEntry> {
         if self.bloom_filter_contains_key(key).unwrap_or(false) {
             if let Some(offset) = self.get_data_offset_from_summary(key) {
                 return match self.get_entry_from_data_file(offset) {
@@ -297,7 +299,7 @@ impl<'a> SSTable<'a> {
     /// # Errors
     ///
     /// Returns an `io::Error` if the comparison process fails.
-    pub fn check_merkle(&mut self, other_merkle: &MerkleTree) -> io::Result<Vec<usize>> {
+    pub(crate) fn check_merkle(&mut self, other_merkle: &MerkleTree) -> io::Result<Vec<usize>> {
         let merkle_tree = self.get_merkle();
 
         Ok(merkle_tree?.get_different_chunks_indices(other_merkle))
@@ -312,7 +314,7 @@ impl<'a> SSTable<'a> {
     /// # Errors
     ///
     /// Returns an `io::Error` if the retrieval of the merkle tree fails.
-    pub fn get_merkle(&mut self) -> io::Result<MerkleTree> {
+    pub(crate) fn get_merkle(&mut self) -> io::Result<MerkleTree> {
         let mut merkle_cursor = self.get_cursor_data(self.in_single_file, "-MerkleTree.db", SSTableElementType::MerkleTree, None)?;
 
         let mut merkle_data = Vec::new();
@@ -343,7 +345,7 @@ impl<'a> SSTable<'a> {
     /// # Errors
     ///
     /// Returns an `io::Error` if the merging process fails.
-    pub fn merge_sstables(sstable1_base_path: &Path, sstable2_base_path: &Path, merged_base_path: &Path, sstable1_in_single_file: bool, sstable2_in_single_file: bool, dbconfig: &DBConfig, merged_in_single_file: bool) -> io::Result<()> {
+    pub(crate) fn merge_sstables(sstable1_base_path: &Path, sstable2_base_path: &Path, merged_base_path: &Path, sstable1_in_single_file: bool, sstable2_in_single_file: bool, dbconfig: &DBConfig, merged_in_single_file: bool) -> io::Result<()> {
         // Create directory if it doesn't exist
         create_dir_all(merged_base_path)?;
 
@@ -358,7 +360,7 @@ impl<'a> SSTable<'a> {
         for (key, entry) in merged_data {
             inner_mem.insert(&key, &entry.get_value(), TimeStamp::Custom(entry.get_timestamp()));
         }
-      
+
         let mut merged_sstable = SSTable::new(merged_base_path, &inner_mem, merged_in_single_file)?;
 
         // Flush the new SSTable to disk
@@ -485,7 +487,7 @@ impl<'a> SSTable<'a> {
     /// # Errors
     ///
     /// Returns an `io::Error` if the merging process fails.
-    pub fn merge_sstable_multiple(sstable_paths: Vec<&Path>, in_single_file: Vec<bool>, merged_base_path: &Path, merged_in_single_file: bool, dbconfig: &DBConfig) -> io::Result<()> {
+    pub(crate) fn merge_sstable_multiple(sstable_paths: Vec<&Path>, in_single_file: Vec<bool>, merged_base_path: &Path, merged_in_single_file: bool, dbconfig: &DBConfig) -> io::Result<()> {
         create_dir_all(merged_base_path)?;
 
         let merged_data = SSTable::merge_sorted_entries_multiple(sstable_paths.clone(), in_single_file)?;
@@ -554,7 +556,7 @@ impl<'a> SSTable<'a> {
             let option_entries: Vec<Option<_>> = file_ref_sstables
                 .iter_mut()
                 .zip(total_entry_offsets.iter())
-                .map(|(sstable, offset)| sstable.get_entry_from_data_file(*offset as u64))
+                .map(|(sstable, offset)| sstable.get_entry_from_data_file(*offset))
                 .collect();
 
             // if all entries are none, there is no more data
@@ -778,7 +780,7 @@ impl<'a> SSTable<'a> {
 
             let mut offset_bytes = [0u8; 8]; //u64
             index_reader.read_exact(&mut offset_bytes).unwrap();
-            total_entry_offset += 8;     
+            total_entry_offset += 8;
             if key == &current_key_bytes {
                 return Some(u64::from_ne_bytes(offset_bytes));
             }
@@ -1053,7 +1055,7 @@ impl<'a> SSTable<'a> {
     /// # Errors
     ///
     /// Returns an `io::Error` if there's an issue when reading contents of SStable file.
-    pub fn get_key_range(sstable_base_path: &'a Path, in_single_file: bool) -> io::Result<(Box<[u8]>, Box<[u8]>)> {
+    pub(crate) fn get_key_range(sstable_base_path: &'a Path, in_single_file: bool) -> io::Result<(Box<[u8]>, Box<[u8]>)> {
         let mut open_options = OpenOptions::new();
         open_options.read(true).write(false).create(false);
 

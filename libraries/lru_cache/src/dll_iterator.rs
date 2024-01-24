@@ -1,7 +1,4 @@
-use crate::doubly_linked_list::{DoublyLinkedList, Link};
-use crate::dll_node:: {Node, Entry};
-use std::rc::Rc;
-use std::cell::RefCell;
+use crate::doubly_linked_list::Link;
 use segment_elements::MemoryEntry;
 
 pub struct DLLIterator {
