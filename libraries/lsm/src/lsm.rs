@@ -1,7 +1,7 @@
 use std::io;
 use std::path::{Path, PathBuf};
 use segment_elements::{ TimeStamp, SegmentTrait };
-use sstable::SSTable;
+use crate::sstable::SSTable;
 use db_config::{ DBConfig, CompactionAlgorithmType };
 
 struct LSMConfig {

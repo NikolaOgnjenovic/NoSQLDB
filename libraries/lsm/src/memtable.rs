@@ -3,7 +3,7 @@ use std::io;
 use b_tree::BTree;
 use db_config::{DBConfig, MemoryTableType};
 use skip_list::SkipList;
-use segment_elements::TimeStamp;
+use segment_elements::{MemoryEntry, TimeStamp};
 use write_ahead_log::WriteAheadLog;
 
 pub(crate) struct MemoryTable {
@@ -70,5 +70,7 @@ impl MemoryTable {
         self.wal.finalize()
     }
 
-    // todo dodati iterator ovde, refaktorisati da bude sve u istom crate-u
+    pub(crate) fn iterator(&self) -> Box<dyn Iterator<Item = (Box<[u8]>, MemoryEntry)> + '_> {
+        self.inner_mem.iterator()
+    }
 }

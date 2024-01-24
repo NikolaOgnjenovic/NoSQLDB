@@ -54,7 +54,7 @@ impl BTree {
         }
     }
 
-    ///Returns Option<Iterator> for BTree that yields sorted (Key, MemEntry) pairs
+    /// Returns Option<Iterator> for BTree that yields sorted (Key, MemEntry) pairs
     /// The value is Some if length > 0 otherwise None
     pub fn iter(&self) -> BTreeIterator {
         let mut stack = Vec::new();
