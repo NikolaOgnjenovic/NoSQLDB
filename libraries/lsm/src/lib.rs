@@ -272,7 +272,7 @@ mod sstable_tests {
 
         // Create an SSTable and flush
         let mut sstable = SSTable::open(&temp_dir.path(), in_single_file).expect("Failed to open SSTable");
-        sstable.flush(mem_table, summary_density).expect("Failed to flush sstable");
+        sstable.flush(mem_table, summary_density, &mut None).expect("Failed to flush sstable");
 
         //Retrieve and validate data from the SSTable
         for i in 0..range {
@@ -280,7 +280,7 @@ mod sstable_tests {
             let expected_value: i32 = i * multiplier;
 
             // Retrieve value from the SSTable
-            if let Some(entry) = sstable.get(&key.to_ne_bytes()) {
+            if let Some(entry) = sstable.get(&key.to_ne_bytes(), &mut None) {
                 // Get the value using the get_value method
                 let actual_value_bytes: Box<[u8]> = entry.get_value();
 
@@ -316,7 +316,7 @@ mod sstable_tests {
 
         // Create an SSTable from the MemoryPool's inner_mem
         let mut sstable = SSTable::open(&temp_dir.path(), in_single_file).expect("Failed to open SSTable");
-        sstable.flush(mem_table, summary_density).expect("Failed to flush sstable");
+        sstable.flush(mem_table, summary_density, &mut None).expect("Failed to flush sstable");
 
         // Get the merkle tree from the SSTable
         let merkle_tree = sstable.get_merkle().expect("Failed to get merkle tree");
@@ -363,7 +363,7 @@ mod sstable_tests {
             let sstable_path = temp_dir.path().join("sstable".to_string() + (i + 1).to_string().as_str());
             let mut sstable = SSTable::open(&sstable_path, in_single_file[i]).expect("Failed to open SSTable");
 
-            sstable.flush(mem_table, summary_density).expect("Failed to flush sstable");
+            sstable.flush(mem_table, summary_density, &mut None).expect("Failed to flush sstable");
             sstable_paths.push(sstable_path);
         }
 
@@ -376,7 +376,7 @@ mod sstable_tests {
         let db_config = DBConfig::default();
 
         // Merge the two SSTables
-        SSTable::merge(sstable_paths.clone(), in_single_file, merged_sstable_path.as_path(), merged_in_single_file, summary_density)
+        SSTable::merge(sstable_paths.clone(), in_single_file, merged_sstable_path.as_path(), merged_in_single_file, summary_density, &mut None)
             .expect("Failed to merge SSTables");
 
         verify_merged_sstable(&merged_sstable_path, mem_table_type, range, multiplier, merged_in_single_file);
@@ -396,7 +396,7 @@ mod sstable_tests {
             let expected_value: i32 = i * multiplier * 2;
 
             // Retrieve value from the merged SSTable
-            if let Some(entry) = merged_sstable.get(&key.to_ne_bytes()) {
+            if let Some(entry) = merged_sstable.get(&key.to_ne_bytes(), &mut None) {
                 // Get the value using the get_value method
                 let actual_value_bytes: Box<[u8]> = entry.get_value();
 

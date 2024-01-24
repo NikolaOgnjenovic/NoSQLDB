@@ -10,7 +10,7 @@ pub enum MemoryTableType {
     BTree,
 }
 
-/// Options for the compression algorithm type
+/// Options for the compaction algorithm type
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
 pub enum CompactionAlgorithmType {
     SizeTiered,
@@ -42,6 +42,8 @@ pub struct DBConfig {
     pub cache_max_size: usize,
     pub token_bucket_num: usize,
     pub token_bucket_interval: usize,
+    pub use_compression: bool,
+    pub compression_dictionary_path: String,
 }
 
 
@@ -70,6 +72,8 @@ impl Default for DBConfig {
             cache_max_size: 0,
             token_bucket_num: 0,
             token_bucket_interval: 0,
+            use_compression: false,
+            compression_dictionary_path: "./dictionary.bin".to_string(),
         }
     }
 }
