@@ -1,8 +1,9 @@
 use std::io;
-use std::path::{Path, PathBuf};
-use segment_elements::{ TimeStamp, SegmentTrait };
+use std::path::PathBuf;
+use segment_elements::TimeStamp;
 use crate::sstable::SSTable;
 use db_config::{ DBConfig, CompactionAlgorithmType };
+use crate::memtable::MemoryTable;
 
 struct LSMConfig {
     // Base directory path where all other SSTable directories will be stored
@@ -126,16 +127,16 @@ impl LSM {
     /// # Returns
     ///
     /// io::Result indicating success of flushing process
-    fn flush<'a>(&mut self, inner_mem: &'a Box<dyn SegmentTrait + Send>) -> io::Result<()> {
+    fn flush<'a>(&mut self, mem_table: MemoryTable) -> io::Result<()> {
         let in_single_file = self.config.in_single_file;
         let summary_density = self.config.summary_density;
         let directory_name = LSM::get_directory_name(0, in_single_file);
-        let sstable_base_path = self.config.parent_dir.join(directory_name.as_str());
+        let sstable_base_path = self.config.parent_dir.join(directory_name.as_path());
 
-        let mut sstable = SSTable::new(sstable_base_path.as_path(), inner_mem, in_single_file)?;
-        sstable.flush(summary_density)?;
+        let mut sstable = SSTable::open(sstable_base_path.as_path(), in_single_file)?;
+        sstable.flush(mem_table, summary_density)?;
 
-        self.sstable_directory_names[0].push(PathBuf::from(directory_name.as_str()));
+        self.sstable_directory_names[0].push(PathBuf::from(directory_name));
         if self.config.compaction_enabled && self.sstable_directory_names[0].len() > self.config.max_per_level {
             if self.config.compaction_algorithm == CompactionAlgorithmType::SizeTiered {
                 self.size_tiered_compaction(0)?;
@@ -179,7 +180,7 @@ impl LSM {
             let merged_base_path = self.config.parent_dir.join(merged_directory.clone());
 
             // Merge them all together, push merged SSTable into sstable_directory_names and delete all SSTables involved in merging process
-            SSTable::merge_sstable_multiple(sstable_base_paths, sstable_single_file, merged_base_path.as_path(), merged_in_single_file, db_config)?;
+            SSTable::merge(sstable_base_paths, sstable_single_file, merged_base_path.as_path(), merged_in_single_file, self.config.summary_density)?;
             self.sstable_directory_names[level].clear();
             self.sstable_directory_names[level+1].push(merged_directory);
 
@@ -220,7 +221,7 @@ impl LSM {
             let merged_base_path = self.config.parent_dir.join(merged_directory.clone());
 
             // Merge them all together
-            SSTable::merge_sstable_multiple(sstable_base_paths, sstable_single_file, merged_base_path.as_path(), merged_in_single_file, db_config)?;
+            SSTable::merge(sstable_base_paths, sstable_single_file, merged_base_path.as_path(), merged_in_single_file, self.config.summary_density)?;
 
             // Extract indexes of SSTable that need to be removed
             let indexes_to_delete: Vec<_> = in_range_paths

@@ -6,20 +6,16 @@ use std::fs::{create_dir_all, File, OpenOptions, remove_dir_all};
 use std::io;
 use std::io::{Cursor, Read, Seek, SeekFrom, Write};
 use std::path::{Path};
-use b_tree::BTree;
 use bloom_filter::BloomFilter;
-use db_config::{DBConfig, MemoryTableType};
-use segment_elements::{MemoryEntry, SegmentTrait, TimeStamp};
+use segment_elements::{MemoryEntry, SegmentTrait};
 use merkle_tree::merkle_tree::MerkleTree;
-use skip_list::SkipList;
+use crate::memtable::MemoryTable;
 use crate::sstable::sstable_element_type::SSTableElementType;
 
 /// Struct representing an SSTable (Sorted String Table) for storing key-value pairs on disk.
 pub(crate) struct SSTable<'a> {
     // Base directory path where the SSTable files will be stored.
     base_path: &'a Path,
-    // In-memory segment containing key-value pairs.
-    inner_mem: Option<&'a Box<dyn SegmentTrait + Send>>,
     // Flag indicating whether to store data in a single file or multiple files.
     in_single_file: bool,
     // Offset for data file when storing in single file.
@@ -32,18 +28,17 @@ pub(crate) struct SSTable<'a> {
     bloom_filter_offset: usize,
     // Offset for Merkle tree file when storing in single file.
     merkle_offset: usize,
-    // Holds references to
+    // Holds references to files for reading & writing
     file_handles: HashMap<String, File>,
 }
 
 impl<'a> SSTable<'a> {
-    /// Creates a new SSTable instance.
+    /// Opens an SSTable in the given base path.
     ///
     /// # Arguments
     ///
-    /// * `base_path` - The base directory path where SSTable files will be stored.
-    /// * `inner_mem` - In-memory segment containing key-value pairs.
-    /// * `in_single_file` - Flag indicating whether to store data in a single file or multiple files.
+    /// * `base_path` - The base directory path where SSTable files are be stored.
+    /// * `in_single_file` - Flag indicating whether data is stored in a single file or multiple files.
     ///
     /// # Returns
     ///
@@ -52,13 +47,12 @@ impl<'a> SSTable<'a> {
     /// # Errors
     ///
     /// Returns an `io::Error` if there is an issue when creating directories.
-    pub(crate) fn new(base_path: &'a Path, inner_mem: &'a Box<dyn SegmentTrait + Send>, in_single_file: bool) -> io::Result<SSTable<'a>> {
+    pub(crate) fn open(base_path: &'a Path, in_single_file: bool) -> io::Result<SSTable<'a>> {
         // Create directory if it doesn't exist
         create_dir_all(base_path)?;
 
         Ok(Self {
             base_path,
-            inner_mem: Some(inner_mem),
             in_single_file,
             data_offset: 0,
             index_offset: 0,
@@ -69,11 +63,11 @@ impl<'a> SSTable<'a> {
         })
     }
 
-
-    /// Flushes the in-memory segment to the SSTable files on disk.
+    /// Flushes the memory table to the SSTable files on disk.
     ///
     /// # Arguments
     ///
+    /// * `mem_table` - The memory table to be flushed.
     /// * `summary_density` - The density parameter for creating the summary.
     ///
     /// # Returns
@@ -83,9 +77,27 @@ impl<'a> SSTable<'a> {
     /// # Errors
     ///
     /// Returns an `io::Error` if there is an issue flushing the data or serializing components.
-    pub(crate) fn flush(&mut self, summary_density: usize) -> io::Result<()> {
+    pub(crate) fn flush(&mut self, mem_table: MemoryTable, summary_density: usize) -> io::Result<()> {
+        self.flush_to_disk(mem_table.iterator().collect(), summary_density)
+    }
+
+    /// Flushes the memory table to the SSTable files on disk.
+    ///
+    /// # Arguments
+    ///
+    /// * `sstable_data` - The data Vec<(key, MemoryEntry)> to be flushed to the disk.
+    /// * `summary_density` - The density parameter for creating the summary.
+    ///
+    /// # Returns
+    ///
+    /// An `io::Result` indicating success or an `io::Error`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an `io::Error` if there is an issue flushing the data or serializing components.
+    fn flush_to_disk(&mut self, sstable_data: Vec<(Box<[u8]>, MemoryEntry)>, summary_density: usize) -> io::Result<()> {
         // Build serialized data, index_builder, and bloom_filter
-        let (serialized_data, index_builder, bloom_filter) = self.build_data_and_index_and_filter();
+        let (serialized_data, index_builder, bloom_filter) = self.build_data_and_index_and_filter(sstable_data);
 
         // Serialize the index, summary, bloom filter and merkle tree
         let serialized_index = self.get_serialized_index(&index_builder);
@@ -96,11 +108,11 @@ impl<'a> SSTable<'a> {
         if self.in_single_file {
             self.write_to_single_file(&serialized_data, &serialized_index, &serialized_index_summary, &serialized_bloom_filter, &serialized_merkle_tree)
         } else {
-            self.write_to_file(&serialized_data, "-Data.db")?;
-            self.write_to_file(&serialized_index, "-Index.db")?;
-            self.write_to_file(&serialized_index_summary, "-Summary.db")?;
-            self.write_to_file(&serialized_bloom_filter, "-BloomFilter.db")?;
-            self.write_to_file(&serialized_merkle_tree, "-MerkleTree.db")?;
+            self.write_to_file(&serialized_data, "SSTable-Data.db")?;
+            self.write_to_file(&serialized_index, "SSTable-Index.db")?;
+            self.write_to_file(&serialized_index_summary, "SSTable-Summary.db")?;
+            self.write_to_file(&serialized_bloom_filter, "SSTable-BloomFilter.db")?;
+            self.write_to_file(&serialized_merkle_tree, "SSTable-MerkleTree.db")?;
 
             Ok(())
         }
@@ -115,13 +127,13 @@ impl<'a> SSTable<'a> {
     /// # Errors
     ///
     /// None.
-    fn build_data_and_index_and_filter(&self) -> (Vec<u8>, Vec<(Vec<u8>, u64)>, BloomFilter) {
+    fn build_data_and_index_and_filter(&self, sstable_data: Vec<(Box<[u8]>, MemoryEntry)>) -> (Vec<u8>, Vec<(Vec<u8>, u64)>, BloomFilter) {
         let mut index_builder = Vec::new();
         let mut bloom_filter = BloomFilter::new(0.01, 100_000);
         let mut data = Vec::new();
 
         let mut offset: u64 = 0;
-        for (key, entry) in self.inner_mem.expect("SSTable has no inner_mem").iterator() {
+        for (key, entry) in sstable_data {
             let entry_data = entry.serialize(&key);
 
             data.extend_from_slice(&entry_data);
@@ -255,7 +267,7 @@ impl<'a> SSTable<'a> {
         buffer.extend_from_slice(serialized_merkle_tree);
 
         // Write the entire buffer to the .db file
-        self.write_to_file(&buffer, ".db")?;
+        self.write_to_file(&buffer, "SSTable.db")?;
 
         Ok(())
     }
@@ -315,7 +327,7 @@ impl<'a> SSTable<'a> {
     ///
     /// Returns an `io::Error` if the retrieval of the merkle tree fails.
     pub(crate) fn get_merkle(&mut self) -> io::Result<MerkleTree> {
-        let mut merkle_cursor = self.get_cursor_data(self.in_single_file, "-MerkleTree.db", SSTableElementType::MerkleTree, None)?;
+        let mut merkle_cursor = self.get_cursor_data(self.in_single_file, "SSTable-MerkleTree.db", SSTableElementType::MerkleTree, None)?;
 
         let mut merkle_data = Vec::new();
         merkle_cursor.read_to_end(&mut merkle_data)?;
@@ -325,160 +337,15 @@ impl<'a> SSTable<'a> {
         Ok(merkle_tree)
     }
 
-    /// Merges two SSTables into a new SSTable using merge sort on keys and timestamps.
-    /// Deletes the old SSTables and flushes the merged SSTable on completion.
-    ///
-    /// # Arguments
-    ///
-    /// * `sstable1_base_path` - The base path of the first SSTable to merge.
-    /// * `sstable2_base_path` - The base path of the second SSTable to merge.
-    /// * `merged_base_path` - The base path where the merged SSTable files will be stored.
-    /// * `sstable1_in_single_file` - A boolean indicating whether the first SSTable is stored in a single file.
-    /// * `sstable2_in_single_file` - A boolean indicating whether the second SSTable is stored in a single file.
-    /// * `dbconfig` - The configuration for the database.
-    /// * `merged_in_single_file` - A boolean indicating whether the merged SSTable is stored in a single file.
-    ///
-    /// # Returns
-    ///
-    /// Returns An `io::Result` indicating success or an `io::Error`.
-    ///
-    /// # Errors
-    ///
-    /// Returns an `io::Error` if the merging process fails.
-    pub(crate) fn merge_sstables(sstable1_base_path: &Path, sstable2_base_path: &Path, merged_base_path: &Path, sstable1_in_single_file: bool, sstable2_in_single_file: bool, dbconfig: &DBConfig, merged_in_single_file: bool) -> io::Result<()> {
-        // Create directory if it doesn't exist
-        create_dir_all(merged_base_path)?;
-
-        // Merge data
-        let merged_data = SSTable::merge_sorted_entries(sstable1_base_path, sstable2_base_path, sstable1_in_single_file, sstable2_in_single_file)?;
-
-        let mut inner_mem: Box<dyn SegmentTrait + Send> = match dbconfig.memory_table_type {
-            MemoryTableType::SkipList => Box::new(SkipList::new(dbconfig.skip_list_max_level)),
-            MemoryTableType::HashMap => todo!(),
-            MemoryTableType::BTree => Box::new(BTree::new(dbconfig.b_tree_order).unwrap())
-        };
-        for (key, entry) in merged_data {
-            inner_mem.insert(&key, &entry.get_value(), TimeStamp::Custom(entry.get_timestamp()));
-        }
-
-        let mut merged_sstable = SSTable::new(merged_base_path, &inner_mem, merged_in_single_file)?;
-
-        // Flush the new SSTable to disk
-        merged_sstable.flush(dbconfig.summary_density)?;
-
-        remove_dir_all(sstable1_base_path)?;
-        remove_dir_all(sstable2_base_path)?;
-
-        Ok(())
-    }
-
-    /// Merges two sorted SSTables into a new Vec of key-value pairs using merge sort based on keys and timestamps.
-    ///
-    /// The function reads entries from two SSTables identified by their base paths (`sstable1_base_path` and `sstable2_base_path`).
-    /// It performs a merge sort based on the keys and timestamps of the entries. The resulting Vec contains tuples, where each tuple
-    /// represents a key-value pair from the merged SSTables.
-    ///
-    /// # Arguments
-    ///
-    /// * `sstable1_base_path` - The base path of the first SSTable to merge.
-    /// * `sstable2_base_path` - The base path of the second SSTable to merge.
-    /// * `sstable1_in_single_file` - A boolean indicating whether the first SSTable is stored in a single file.
-    /// * `sstable2_in_single_file` - A boolean indicating whether the second SSTable is stored in a single file.
-    ///
-    /// # Returns
-    ///
-    /// An `io::Result` containing a Vec of key-value pairs `(Box<[u8]>, MemoryEntry)` representing the merged entries.
-    ///
-    /// # Errors
-    ///
-    /// Returns an `io::Error` if there is an issue when reading from the SSTables or if deserialization fails.
-    fn merge_sorted_entries(sstable1_base_path: &'a Path, sstable2_base_path: &'a Path, sstable1_in_single_file: bool, sstable2_in_single_file: bool) -> io::Result<Vec<(Box<[u8]>, MemoryEntry)>> {
-        // Read the first entry from each SSTable
-        let mut total_entry_offset1 = 0;
-        let mut total_entry_offset2 = 0;
-
-        let mut file_ref_sstable1 = Self {
-            base_path: sstable1_base_path,
-            inner_mem: None,
-            in_single_file: sstable1_in_single_file,
-            data_offset: 0,
-            index_offset: 0,
-            summary_offset: 0,
-            bloom_filter_offset: 0,
-            merkle_offset: 0,
-            file_handles: HashMap::new()
-        };
-
-        let mut file_ref_sstable2 = Self {
-            base_path: sstable2_base_path,
-            inner_mem: None,
-            in_single_file: sstable2_in_single_file,
-            data_offset: 0,
-            index_offset: 0,
-            summary_offset: 0,
-            bloom_filter_offset: 0,
-            merkle_offset: 0,
-            file_handles: HashMap::new()
-        };
-
-        // Merge sort based on keys and timestamps
-        let mut merged_entries = Vec::new();
-        while let (
-            Some(((k1, e1), e1_offset)),
-            Some(((k2, e2), e2_offset))
-        ) = (
-            file_ref_sstable1.get_entry_from_data_file(total_entry_offset1),
-            file_ref_sstable2.get_entry_from_data_file(total_entry_offset2)
-        ) {
-            let compare_result = k1.cmp(&k2);
-
-            if compare_result == Ordering::Equal {
-                // If keys are equal, choose the entry with the newer timestamp
-                if e1.get_timestamp() > e2.get_timestamp() {
-                    merged_entries.push((k1, e1));
-                } else {
-                    merged_entries.push((k2, e2));
-                }
-
-                total_entry_offset1 += e1_offset;
-                total_entry_offset2 += e2_offset;
-            } else if compare_result == Ordering::Less {
-                // If key1 < key2, append entry1 to merged entries
-                merged_entries.push((k1, e1));
-                total_entry_offset1 += e1_offset;
-            } else {
-                // If key1 > key2, append entry2 to merged entries
-                merged_entries.push((k2, e2));
-                total_entry_offset2 += e2_offset;
-            }
-        }
-
-        // Append remaining entries from SSTable1 if any
-        while let Some(((k1, e1), e1_offset)) = file_ref_sstable1.get_entry_from_data_file(total_entry_offset1) {
-            merged_entries.push((k1, e1));
-            total_entry_offset1 += e1_offset;
-        }
-
-        // Append remaining entries from SSTable2 if any
-        while let Some(((k2, e2), e2_offset)) = file_ref_sstable2.get_entry_from_data_file(total_entry_offset2) {
-            merged_entries.push((k2, e2));
-            total_entry_offset1 += e2_offset;
-        }
-
-        Ok(merged_entries)
-    }
-
-
     /// Merges multiple SSTables into a new SSTable using merge sort on keys and timestamps.
     /// Deletes the old SSTables and flushes the merged SSTable on completion.
     ///
     /// # Arguments
     ///
     /// * `sstable_paths` - Base paths to all SSTables.
-    /// * in_single_file - Vector of booleans indicating whether or not are corresponding SSTables stored in a single file
+    /// * `in_single_file` - Vector of booleans indicating whether corresponding SSTables are stored in a single file
     /// * `merged_base_path` - The base path where the merged SSTable files will be stored.
     /// * `merged_in_single_file` - A boolean indicating whether the merged SSTable is stored in a single file.
-    /// * `dbconfig` - The configuration for the database.
     ///
     /// # Returns
     ///
@@ -487,23 +354,15 @@ impl<'a> SSTable<'a> {
     /// # Errors
     ///
     /// Returns an `io::Error` if the merging process fails.
-    pub(crate) fn merge_sstable_multiple(sstable_paths: Vec<&Path>, in_single_file: Vec<bool>, merged_base_path: &Path, merged_in_single_file: bool, dbconfig: &DBConfig) -> io::Result<()> {
+    pub(crate) fn merge(sstable_paths: Vec<&Path>, in_single_file: Vec<bool>, merged_base_path: &Path, merged_in_single_file: bool, summary_density: usize) -> io::Result<()> {
         create_dir_all(merged_base_path)?;
 
-        let merged_data = SSTable::merge_sorted_entries_multiple(sstable_paths.clone(), in_single_file)?;
-        let mut inner_mem: Box<dyn SegmentTrait + Send> = match dbconfig.memory_table_type {
-            MemoryTableType::SkipList => Box::new(SkipList::new(dbconfig.skip_list_max_level)),
-            MemoryTableType::HashMap => todo!(),
-            MemoryTableType::BTree => Box::new(BTree::new(dbconfig.b_tree_order).unwrap())
-        };
-        for (key, entry) in merged_data {
-            inner_mem.insert(&key, &entry.get_value(), TimeStamp::Custom(entry.get_timestamp()));
-        }
+        let merged_data = SSTable::merge_entries(sstable_paths.clone(), in_single_file)?;
 
-        let mut merged_sstable = SSTable::new(merged_base_path, &inner_mem, merged_in_single_file)?;
+        let mut merged_sstable = SSTable::open(merged_base_path, merged_in_single_file)?;
 
         // Flush the new SSTable to disk
-        merged_sstable.flush(dbconfig.summary_density)?;
+        merged_sstable.flush_to_disk(merged_data, summary_density)?;
 
         let _ = sstable_paths
             .iter()
@@ -512,8 +371,7 @@ impl<'a> SSTable<'a> {
         Ok(())
     }
 
-
-    /// Merges multiple sorted SSTables into a new Vec of key-value pairs using merge sort based on keys and timestamps.
+    /// Merges multiple SSTables into a new Vec of key-value pairs using merge sort based on keys and timestamps.
     ///
     /// The function reads entries from multiple SSTables identified by their base paths.
     /// It performs a merge sort based on the keys and timestamps of the entries. The resulting Vec contains tuples, where each tuple
@@ -522,7 +380,7 @@ impl<'a> SSTable<'a> {
     /// # Arguments
     ///
     /// * `sstable_paths` - Base paths to all SSTables.
-    /// * in_single_file - Vector of booleans indicating whether or not are corresponding SSTables stored in a single file
+    /// * `in_single_file` - Vector of booleans indicating whether corresponding SSTables are stored in a single file
     ///
     /// # Returns
     ///
@@ -531,7 +389,7 @@ impl<'a> SSTable<'a> {
     /// # Errors
     ///
     /// Returns an `io::Error` if there is an issue when reading from the SSTables or if deserialization fails.
-    fn merge_sorted_entries_multiple(sstable_paths: Vec<&'a Path>, in_single_file: Vec<bool>) -> io::Result<Vec<(Box<[u8]>, MemoryEntry)>> {
+    fn merge_entries(sstable_paths: Vec<&'a Path>, in_single_file: Vec<bool>) -> io::Result<Vec<(Box<[u8]>, MemoryEntry)>> {
         let number_of_tables = sstable_paths.len();
 
         // offsets for each sstable
@@ -540,7 +398,6 @@ impl<'a> SSTable<'a> {
         for i in 0..number_of_tables {
             file_ref_sstables.push( Self {
                 base_path: sstable_paths[i],
-                inner_mem: None,
                 in_single_file: in_single_file[i],
                 data_offset: 0,
                 index_offset: 0,
@@ -587,7 +444,7 @@ impl<'a> SSTable<'a> {
                     total_entry_offsets[*index] += element.as_ref().unwrap().1.clone();
                 });
 
-            // insert entry with biggest timestamp
+            // insert entry with the biggest timestamp
             let max_index = SSTable::find_max_timestamp(&min_entries);
             merged_entries.push(min_entries[max_index].1.as_ref().unwrap().0.clone());
         }
@@ -597,15 +454,15 @@ impl<'a> SSTable<'a> {
     }
 
 
-    /// Finds the index of entry with biggest timestamp
+    /// Finds the index of entry with the biggest timestamp
     ///
     /// # Arguments
     ///
-    /// * entries - vector containing entries with smallest keys
+    /// * `entries` - vector containing entries with the smallest keys
     ///
     /// # Returns
     ///
-    /// An index of entry with biggest timestamp
+    /// An index of entry with the biggest timestamp
     fn find_max_timestamp(entries: &Vec<(usize, &Option<((Box<[u8]>, MemoryEntry), u64)>)>) -> usize {
         let mut max_index = 0;
         let mut max_timestamp = entries[max_index].1.as_ref().unwrap().0.1.get_timestamp();
@@ -665,7 +522,7 @@ impl<'a> SSTable<'a> {
     /// Returns an `io::Error` if there's an issue when reading or deserializing the bloom filter data.
     fn bloom_filter_contains_key(&mut self, key: &[u8]) -> io::Result<bool> {
         // Use the get_cursor_data function to get the Bloom filter data cursor
-        let mut filter_data_cursor = self.get_cursor_data(self.in_single_file, "-BloomFilter.db", SSTableElementType::BloomFilter, None)?;
+        let mut filter_data_cursor = self.get_cursor_data(self.in_single_file, "SSTable-BloomFilter.db", SSTableElementType::BloomFilter, None)?;
 
         let mut filter_data = Vec::new();
         filter_data_cursor.read_to_end(&mut filter_data)?;
@@ -694,7 +551,7 @@ impl<'a> SSTable<'a> {
     /// An Option containing the offset if the key is found, otherwise None.
     fn get_data_offset_from_summary(&mut self, key: &[u8]) -> Option<u64> {
         let mut total_entry_offset = 0;
-        let mut summary_reader = self.get_cursor_data(self.in_single_file, "-Summary.db", SSTableElementType::Summary, Some(total_entry_offset)).ok()?;
+        let mut summary_reader = self.get_cursor_data(self.in_single_file, "SSTable-Summary.db", SSTableElementType::Summary, Some(total_entry_offset)).ok()?;
 
         // Read the min key length and min key from the summary file
         let mut min_key_len_bytes = [0u8; std::mem::size_of::<usize>()];
@@ -723,7 +580,7 @@ impl<'a> SSTable<'a> {
 
         let mut current_key_len_bytes = [0u8; std::mem::size_of::<usize>()];
         let mut previous_offset_bytes = [0u8; std::mem::size_of::<usize>()];
-        summary_reader = self.get_cursor_data(self.in_single_file, "-Summary.db", SSTableElementType::Summary, Some(total_entry_offset)).ok()?;
+        summary_reader = self.get_cursor_data(self.in_single_file, "SSTable-Summary.db", SSTableElementType::Summary, Some(total_entry_offset)).ok()?;
         while summary_reader.read_exact(&mut current_key_len_bytes).is_ok() {
             total_entry_offset += std::mem::size_of::<usize>() as u64;
 
@@ -746,7 +603,7 @@ impl<'a> SSTable<'a> {
 
             previous_offset_bytes = offset_bytes;
 
-            summary_reader = self.get_cursor_data(self.in_single_file, "-Summary.db", SSTableElementType::Summary, Some(total_entry_offset)).ok()?;
+            summary_reader = self.get_cursor_data(self.in_single_file, "SSTable-Summary.db", SSTableElementType::Summary, Some(total_entry_offset)).ok()?;
         }
 
         let previous_offset = u64::from_ne_bytes(previous_offset_bytes);
@@ -766,7 +623,7 @@ impl<'a> SSTable<'a> {
     /// An Option containing the data offset if the key is found, otherwise None.
     fn get_data_offset_from_index(&mut self, seek_offset: u64, key: &[u8]) -> Option<u64> {
         let mut total_entry_offset = seek_offset;
-        let mut index_reader = self.get_cursor_data(self.in_single_file, "-Index.db", SSTableElementType::Index, Some(total_entry_offset)).ok()?;
+        let mut index_reader = self.get_cursor_data(self.in_single_file, "SSTable-Index.db", SSTableElementType::Index, Some(total_entry_offset)).ok()?;
 
         let mut current_key_len_bytes = [0u8; std::mem::size_of::<usize>()];
 
@@ -785,7 +642,7 @@ impl<'a> SSTable<'a> {
                 return Some(u64::from_ne_bytes(offset_bytes));
             }
 
-            index_reader = self.get_cursor_data(self.in_single_file, "-Index.db", SSTableElementType::Index, Some(total_entry_offset)).ok()?;
+            index_reader = self.get_cursor_data(self.in_single_file, "SSTable-Index.db", SSTableElementType::Index, Some(total_entry_offset)).ok()?;
         }
 
         // Key not found
@@ -802,7 +659,7 @@ impl<'a> SSTable<'a> {
     ///
     /// An Option containing a pair of the key & MemoryEntry pair and the memory entry bytes length if successful, otherwise None.
     fn get_entry_from_data_file(&mut self, offset: u64) -> Option<((Box<[u8]>, MemoryEntry), u64)> {
-        let mut data_reader = self.get_cursor_data(self.in_single_file, "-Data.db", SSTableElementType::Data, Some(offset)).ok()?;
+        let mut data_reader = self.get_cursor_data(self.in_single_file, "SSTable-Data.db", SSTableElementType::Data, Some(offset)).ok()?;
 
         let mut entry_bytes = vec![];
 
@@ -866,7 +723,7 @@ impl<'a> SSTable<'a> {
         let total_entry_offset = total_entry_offset.unwrap_or(0);
 
         let file = if in_single_file {
-            self.write_to_file(&[], ".db")?
+            self.write_to_file(&[], "SSTable.db")?
         } else {
             self.write_to_file(&[], path_postfix)?
         };
@@ -1061,9 +918,9 @@ impl<'a> SSTable<'a> {
 
         // Adjust the file path accordingly to in_single_file argument
         let file_path = if in_single_file {
-            sstable_base_path.join(".db")
+            sstable_base_path.join("SSTable.db")
         } else {
-            sstable_base_path.join("-Summary.db")
+            sstable_base_path.join("SSTable-Summary.db")
         };
         let mut file_handle = open_options.open(file_path)?;
 
