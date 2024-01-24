@@ -49,12 +49,12 @@ impl LSM {
     /// # Arguments
     ///
     /// * `level` - The level of new SSTable
-    /// * in_single_file` - Boolean containing information wheteher or not is SSTable in one file
+    /// * `in_single_file` - Boolean containing information whether or not is SSTable in one file
     ///
     /// # Returns
     ///
     /// Folder name of our new SSTable
-    fn get_directory_name(&self, level: usize, in_single_file: bool) -> String {
+    fn get_directory_name(level: usize, in_single_file: bool) -> String {
         let prefix = "sstable_";
         let suffix = if in_single_file {
             "s"
@@ -64,13 +64,61 @@ impl LSM {
         prefix.to_string() + (level+1).to_string().as_str() + "_" + &TimeStamp::Now.get_time().to_string() + "_" + suffix
     }
 
+    /// Determines whether or not is sstable in single file by reading its path
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - Path to the SSTable
+    ///
+    /// # Returns
+    ///
+    /// Boolean indicating the construction of SSTable
+    fn is_in_single_file(path: &PathBuf) -> bool {
+        return if path.to_str().unwrap().chars().last().unwrap() == 's' {
+            true
+        } else {
+            false
+        }
+    }
+
+
+    /// Finds SSTables with similar key ranges as the SSTable that started compaction process.
+    ///
+    /// # Arguments
+    ///
+    /// * `main_min_key` - Min key from main SSTable
+    /// * `main_max_key` - Max key from main SSTable
+    /// * `level` - One level below our main SSTable that started compaction process
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing vector with tuple as elements.
+    /// Each tuple contains index of a path in sstable_directory_names[level] as well as an actual path to that SSTable.
+    /// The purpose of an index is to be able to quickly delete all the tables involved in compaction process later.
+    fn find_similar_key_ranges(&self, main_min_key: &[u8], main_max_key: &[u8], level:usize) -> io::Result<Vec<(usize, &PathBuf)>> {
+        let base_paths: Vec<_> = self.sstable_directory_names[level]
+            .iter()
+            .enumerate()
+            .filter(|(index, path)| {
+                let sstable_base_path = self.parent_dir.join(path);
+                let in_single_file = LSM::is_in_single_file(path);
+                match SSTable::get_key_range(sstable_base_path.as_path(), in_single_file) {
+                    Ok((min_key, max_key)) => max_key >= Box::from(main_max_key) && min_key <= Box::from(main_min_key),
+                    Err(_) => false,
+                }
+            })
+            .collect();
+
+        Ok(base_paths)
+    }
+
 
 
     /// FLushes MemTable onto disk and starts the compaction process if necessary.
     ///
     /// # Arguments
     ///
-    /// * inner_mem - The MemTable that needs to be flushed.
+    /// * `inner_mem` - The MemTable that needs to be flushed.
     /// * `db_config` - Configuration file.
     ///
     /// # Returns
@@ -79,18 +127,21 @@ impl LSM {
     fn flush<'a>(&mut self, inner_mem: &'a Box<dyn SegmentTrait + Send>, db_config: &DBConfig) -> io::Result<()> {
         let in_single_file = db_config.sstable_single_file;
         let summary_density = db_config.summary_density;
-        let directory_name = self.get_directory_name(0, in_single_file);
+        let directory_name = LSM::get_directory_name(0, in_single_file);
         let sstable_base_path = self.parent_dir.join(directory_name.as_str());
+
         let mut sstable = SSTable::new(sstable_base_path.as_path(), inner_mem, in_single_file)?;
         sstable.flush(summary_density)?;
+
         self.sstable_directory_names[0].push(PathBuf::from(directory_name.as_str()));
         if self.compaction_enabled && self.sstable_directory_names[0].len() > self.max_per_level {
             if self.compaction_algorithm == CompactionAlgorithmType::SizeTiered {
                 self.size_tiered_compaction(0, db_config)?;
             } else {
-                self.leveled_compaction(0, db_config);
+                self.leveled_compaction(0, db_config)?;
             }
         }
+
         Ok(())
     }
 
@@ -99,7 +150,7 @@ impl LSM {
     ///
     /// # Arguments
     ///
-    /// * level - The level where compactions started
+    /// * `level` - The level where compactions started
     /// * `db_config` - Configuration file.
     ///
     /// # Returns
@@ -107,25 +158,30 @@ impl LSM {
     /// io::Result indicating success of SSTable merging process
     fn size_tiered_compaction(&mut self, mut level: usize, db_config: &DBConfig) -> io::Result<()> {
         let merged_in_single_file = db_config.sstable_single_file;
+
         while self.sstable_directory_names[level].len() > self.max_per_level {
+
             let mut sstable_base_paths = Vec::new();
             let mut sstable_single_file = Vec::new();
+
+            // Find all SSTables that need to be merged and create vector of booleans indicating whether or not is each SSTable in single file
             for path in &self.sstable_directory_names[level] {
                 let base_path = self.parent_dir.join(path);
                 sstable_base_paths.push(base_path);
-                if path.to_str().unwrap().chars().last().unwrap() == 's' {
-                    sstable_single_file.push(true);
-                } else {
-                    sstable_single_file.push(false);
-                }
+                sstable_single_file.push(LSM::is_in_single_file(path));
             }
+
+            // Make a name for new SSTable and convert PathBuf into Path
             let sstable_base_paths:Vec<_> = sstable_base_paths.iter().map(|path_buf| path_buf.as_path()).collect();
-            let merged_directory = PathBuf::from(self.get_directory_name(level+1, merged_in_single_file));
+            let merged_directory = PathBuf::from(LSM::get_directory_name(level+1, merged_in_single_file));
             let merged_base_path = self.parent_dir.join(merged_directory.clone());
+
+            // Merge them all together, push merged SSTable into sstable_directory_names and delete all SSTables involved in merging process
             SSTable::merge_sstable_multiple(sstable_base_paths, sstable_single_file, merged_base_path.as_path(), merged_in_single_file, db_config)?;
             self.sstable_directory_names[level].clear();
             self.sstable_directory_names[level+1].push(merged_directory);
 
+            // Check for possibility of another compaction occurring
             level += 1;
             if level >= self.number_of_levels {
                 break;
@@ -134,9 +190,63 @@ impl LSM {
         Ok(())
     }
 
-    fn leveled_compaction(&mut self, level: usize, db_config: &DBConfig) {
-        //todo()!
+    fn leveled_compaction(&mut self, mut level: usize, db_config: &DBConfig) -> io::Result<()> {
+        let merged_in_single_file = db_config.sstable_single_file;
+
+        while self.sstable_directory_names[level].len() > self.max_per_level {
+            // Choose first SStable from given level
+            let main_sstable_base_path = self.parent_dir.join(self.sstable_directory_names[level].remove(0));
+            let in_single_file = LSM::is_in_single_file(&main_sstable_base_path);
+            let (main_min_key, main_max_key) = SSTable::get_key_range(main_sstable_base_path.as_path(), in_single_file)?;
+
+            // Find SStables with keys in similar range one level below
+            let in_range_paths = self.find_similar_key_ranges(&main_min_key, &main_max_key, level+1)?;
+            let mut sstable_base_paths: Vec<_> = in_range_paths.clone()
+                .into_iter()
+                .map(|(_, path)| path.as_path())
+                .collect();
+
+
+
+            //Put main SStable in vector and create vector of booleans indicating whether or not is each SSTable in single file
+            sstable_base_paths.push(main_sstable_base_path.as_path());
+            let mut sstable_single_file = Vec::new();
+            for path in &sstable_base_paths {
+                sstable_single_file.push(LSM::is_in_single_file(&path.to_owned().to_path_buf()));
+            }
+
+
+            // Make a name for new SSTable
+            let merged_directory = PathBuf::from(LSM::get_directory_name(level+1, merged_in_single_file));
+            let merged_base_path = self.parent_dir.join(merged_directory.clone());
+
+            // Merge them all together
+            SSTable::merge_sstable_multiple(sstable_base_paths, sstable_single_file, merged_base_path.as_path(), merged_in_single_file, db_config)?;
+
+            // Extract indexes of SSTable that need to be removed
+            let indexes_to_delete: Vec<_> = in_range_paths
+                .iter()
+                .map(|(index, _)| index)
+                .collect();
+
+            //Make new vector for sstable_directory_names one level below main that contains only SStables that weren't involved in compactions
+            let mut kept_sstable_directories: Vec<PathBuf> = self.sstable_directory_names[level + 1]
+                .iter()
+                .enumerate()
+                .filter(|&(index, _)| !indexes_to_delete.contains(&&index))
+                .map(|(_, &ref elem)| elem.clone())
+                .collect();
+
+            // Replace this vector with existing in sstable_directory_names and append merged directory to it
+            kept_sstable_directories.push(merged_directory);
+            self.sstable_directory_names[level+1] = kept_sstable_directories;
+
+            // Check for possibility of another compaction occurring
+            level += 1;
+            if level >= self.number_of_levels {
+                break;
+            }
+        }
+        Ok(())
     }
-
-
 }

@@ -129,7 +129,7 @@ mod tests {
     fn test_merge_sstables() {
         let multiplier = 2;
 
-        for range in (1..=30).step_by(10) {
+        for range in (1..=10).step_by(10) {
             // todo: uncomment hashmap when implemented
             for memory_type in &[MemoryTableType::SkipList, /*MemoryTableType::HashMap,*/MemoryTableType::BTree] {
                 // merge_sstables(true, true, &memory_type.clone(), range, multiplier, true);

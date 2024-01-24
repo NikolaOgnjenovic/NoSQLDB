@@ -550,7 +550,7 @@ impl<'a> SSTable<'a> {
         }
         let mut merged_entries = Vec::new();
         loop {
-            // contains a tuple (index, entry, offset) for each sstable
+            // contains a tuple ((index, entry), offset) for each sstable
             let option_entries: Vec<Option<_>> = file_ref_sstables
                 .iter_mut()
                 .zip(total_entry_offsets.iter())
@@ -1035,6 +1035,65 @@ impl<'a> SSTable<'a> {
         };
 
         Ok(Cursor::new(buffer))
+    }
+
+
+    /// Reads min and max key from SSTable at a given path.
+    ///
+    ///
+    /// # Arguments
+    ///
+    /// * `sstable_base_path` - base path to SSTable.
+    /// * `in_single_file` - Indicates whether the table is stored in a single or multiple files.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing tuple of boxed slices. First position in tuple represents min key and second position represents max key
+    ///
+    /// # Errors
+    ///
+    /// Returns an `io::Error` if there's an issue when reading contents of SStable file.
+    pub fn get_key_range(sstable_base_path: &'a Path, in_single_file: bool) -> io::Result<(Box<[u8]>, Box<[u8]>)> {
+        let mut open_options = OpenOptions::new();
+        open_options.read(true).write(false).create(false);
+
+        // Adjust the file path accordingly to in_single_file argument
+        let file_path = if in_single_file {
+            sstable_base_path.join(".db")
+        } else {
+            sstable_base_path.join("-Summary.db")
+        };
+        let mut file_handle = open_options.open(file_path)?;
+
+        // Position the file cursor on beginning of summary data
+        if in_single_file {
+            file_handle.seek(SeekFrom::Start(2 * std::mem::size_of::<usize>() as u64))?;
+
+            let mut summary_offset_bytes = [0u8; std::mem::size_of::<usize>()];
+            file_handle.read_exact(&mut summary_offset_bytes)?;
+            let summary_offset_bytes = usize::from_ne_bytes(summary_offset_bytes) as u64;
+
+            file_handle.seek(SeekFrom::Start(summary_offset_bytes))?;
+        }
+
+        // Read min and max key from summary
+        let mut min_key_len_bytes = [0u8; std::mem::size_of::<usize>()];
+        file_handle.read_exact(&mut min_key_len_bytes)?;
+        let min_key_len = usize::from_ne_bytes(min_key_len_bytes);
+
+        let mut min_key_bytes = vec![0u8; min_key_len];
+        file_handle.read_exact(&mut min_key_bytes)?;
+        let min_key = min_key_bytes.into_boxed_slice();
+
+        let mut max_key_len_bytes = [0u8; std::mem::size_of::<usize>()];
+        file_handle.read_exact(&mut max_key_len_bytes)?;
+        let max_key_len = usize::from_ne_bytes(max_key_len_bytes);
+
+        let mut max_key_bytes = vec![0u8; max_key_len];
+        file_handle.read_exact(&mut max_key_bytes)?;
+        let max_key = max_key_bytes.into_boxed_slice();
+
+        Ok((min_key, max_key))
     }
 
     /// Writes the provided data to a file with the given path postfix and returns a mutable reference to the file.
