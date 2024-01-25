@@ -34,14 +34,24 @@ impl RecordIterator {
 
         let mut all_read_bytes = Vec::new();
 
+        let starting_byte = {
+            let mut byte_file = OpenOptions::new().read(true).open(dir.join("byte_index.num"))?;
+            let mut byte_buffer = [0u8; 8];
+            byte_file.read_exact(&mut byte_buffer).ok();
+            usize::from_ne_bytes(byte_buffer)
+        };
+
+        // todo dodati ucitavanje 100k po 100k bajtova, a ne sve od jednom
+
         for file in files {
             let mut file = OpenOptions::new().read(true).open(file)?;
+
             file.read_to_end(&mut all_read_bytes)?;
         }
 
         Ok(RecordIterator {
             all_read_bytes,
-            data_pointer: 0,
+            data_pointer: starting_byte,
             crc_hasher: Crc::<u32>::new(&CRC_32_ISCSI)
         })
     }

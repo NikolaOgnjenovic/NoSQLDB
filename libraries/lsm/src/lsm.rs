@@ -167,7 +167,7 @@ impl LSM {
             let mut sstable_base_paths = Vec::new();
             let mut sstable_single_file = Vec::new();
 
-            // Find all SSTables that need to be merged and create vector of booleans indicating whether or not is each SSTable in single file
+            // Find all SSTables that need to be merged and create vector of booleans indicating whether each SSTable is in a single file
             for path in &self.sstable_directory_names[level] {
                 let base_path = self.config.parent_dir.join(path);
                 sstable_base_paths.push(base_path);
@@ -209,7 +209,7 @@ impl LSM {
                 .map(|(_, path)| path.as_path())
                 .collect();
 
-            // Put main SStable in vector and create vector of booleans indicating whether or not is each SSTable in single file
+            // Put main SStable in vector and create vector of booleans indicating whether each SSTable is in a single file
             sstable_base_paths.push(main_sstable_base_path.as_path());
             let mut sstable_single_file = Vec::new();
             for path in &sstable_base_paths {

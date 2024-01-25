@@ -1,8 +1,10 @@
-use std::io;
+use std::collections::VecDeque;
+use std::{fs, io};
 use std::path::PathBuf;
 use crc::{Crc, CRC_32_ISCSI};
 use db_config::DBConfig;
 use segment_elements::TimeStamp;
+use crate::wal_byte_index::WALByteIndex;
 use crate::wal_file::WALFile;
 
 struct WALConfig {
@@ -24,7 +26,8 @@ impl WALConfig {
 pub struct WriteAheadLog {
     crc_hasher: Crc<u32>,
     config: WALConfig,
-    files: Vec<WALFile>
+    last_byte_file: WALByteIndex,
+    files: VecDeque<WALFile>
 }
 
 impl WriteAheadLog {
@@ -33,10 +36,14 @@ impl WriteAheadLog {
     pub fn new(dbconfig: &DBConfig) -> io::Result<WriteAheadLog> {
         let wal_config = WALConfig::from(dbconfig);
 
+        // Create a directory if it doesn't exist
+        fs::create_dir_all(&wal_config.wal_dir)?;
+
         Ok(Self {
             crc_hasher: Crc::<u32>::new(&CRC_32_ISCSI),
-            files: vec![WALFile::build(&wal_config.wal_dir)?],
-            config: WALConfig::from(dbconfig)
+            files: VecDeque::from(vec![WALFile::build(&wal_config.wal_dir)?]),
+            last_byte_file: WALByteIndex::open(&wal_config.wal_dir)?,
+            config: WALConfig::from(dbconfig),
         })
     }
 
@@ -77,20 +84,20 @@ impl WriteAheadLog {
     }
 
     fn push_all_bytes(&mut self, mut bytes: Vec<u8>) -> io::Result<()> {
-        let mut last_file = self.files.last_mut().unwrap();
+        let mut last_file = self.files.back_mut().unwrap();
 
         if last_file.num_entries == self.config.wal_max_entries {
             last_file.close_file();
-            self.files.push(WALFile::build(&self.config.wal_dir)?);
-            last_file = self.files.last_mut().unwrap();
+            self.files.push_back(WALFile::build(&self.config.wal_dir)?);
+            last_file = self.files.back_mut().unwrap();
         }
 
         while bytes.len() >= self.config.wal_max_size - last_file.current_size {
             let cur_size = last_file.current_size;
             last_file.write_bytes(&bytes[0..(self.config.wal_max_size - cur_size)])?;
             bytes.drain(0..(self.config.wal_max_size - cur_size));
-            self.files.push(WALFile::build(&self.config.wal_dir)?);
-            last_file = self.files.last_mut().unwrap();
+            self.files.push_back(WALFile::build(&self.config.wal_dir)?);
+            last_file = self.files.back_mut().unwrap();
         }
 
         last_file.write_bytes(&bytes)?;
@@ -98,11 +105,23 @@ impl WriteAheadLog {
         Ok(())
     }
 
-    pub fn finalize(self) -> io::Result<()> {
-        for file in self.files {
-            file.remove_file()?
+    pub fn add_to_starting_byte(&mut self, value: usize) -> io::Result<()> {
+        self.last_byte_file.add(value)
+    }
+
+    pub fn remove_flushed_wals(&mut self) -> io::Result<()> {
+        let mut file_num = 1;
+        let mut subtract_bytes = 0;
+        let byte_index = self.last_byte_file.get();
+
+        while file_num * self.config.wal_max_size < byte_index {
+            let mut file = self.files.pop_front().unwrap();
+            subtract_bytes += file.get_len()?;
+            file.remove_file()?;
+            file_num += 1;
         }
 
+        self.last_byte_file.set(byte_index - subtract_bytes as usize)?;
         Ok(())
     }
 }

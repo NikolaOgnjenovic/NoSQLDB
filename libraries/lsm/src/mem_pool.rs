@@ -8,6 +8,7 @@ use std::path::Path;
 use threadpool::ThreadPool;
 use segment_elements::TimeStamp;
 use db_config::DBConfig;
+use write_ahead_log::WriteAheadLog;
 use crate::memtable::MemoryTable;
 use crate::mem_pool::record_iterator::RecordIterator;
 
@@ -16,6 +17,7 @@ pub(crate) struct MemoryPool {
     read_only_tables: VecDeque<MemoryTable>,
     config: DBConfig,
     thread_pool: ThreadPool,
+    wal: WriteAheadLog
 }
 
 impl MemoryPool {
@@ -24,13 +26,16 @@ impl MemoryPool {
             config: dbconfig.clone(),
             read_only_tables: VecDeque::with_capacity(dbconfig.memory_table_pool_num),
             read_write_table: MemoryTable::new(dbconfig)?,
-            thread_pool: ThreadPool::new(100)
+            thread_pool: ThreadPool::new(100),
+            wal: WriteAheadLog::new(dbconfig)?
         })
     }
 
     /// Inserts the key with the corresponding value in the read write memory table.
     pub(crate) fn insert(&mut self, key: &[u8], value: &[u8], time_stamp: TimeStamp) -> io::Result<()> {
-        if self.read_write_table.insert(key, value, time_stamp, true)? {
+        self.wal.insert(key, value, time_stamp)?;
+
+        if self.read_write_table.insert(key, value, time_stamp) {
             self.swap();
         }
 
@@ -38,9 +43,11 @@ impl MemoryPool {
     }
 
     /// Logically deletes an element in-place, and updates the number of elements if
-    /// the delete is "adding" a new element.
+    /// the deletion is "adding" a new element.
     pub(crate) fn delete(&mut self, key: &[u8], time_stamp: TimeStamp) -> io::Result<()> {
-        if self.read_write_table.delete(key, time_stamp, true)? {
+        self.wal.delete(key, time_stamp)?;
+
+        if self.read_write_table.delete(key, time_stamp) {
             self.swap();
         }
 
@@ -97,7 +104,13 @@ impl MemoryPool {
         if self.read_only_tables.len() == self.config.memory_table_pool_num {
             // unwrap allowed because if condition will never be true when unwrap can panic
             let to_be_flushed = unsafe { self.read_only_tables.pop_back().unwrap_unchecked() };
-            self.flush_concurrent(to_be_flushed);
+
+            // self.flush_concurrent(to_be_flushed);
+            // todo pomeriti ovu logiku u flush funkciju
+
+            let memtable_byte_size = to_be_flushed.calc_wal_size();
+            self.wal.add_to_starting_byte(memtable_byte_size).unwrap();
+            self.wal.remove_flushed_wals().unwrap();
         }
     }
 
@@ -130,9 +143,13 @@ impl MemoryPool {
             };
 
             if entry.tombstone {
-                pool.read_write_table.delete(&entry.key, TimeStamp::Custom(entry.timestamp), false)?;
+                if pool.read_write_table.delete(&entry.key, TimeStamp::Custom(entry.timestamp)) {
+                    pool.swap();
+                }
             } else {
-                pool.read_write_table.insert(&entry.key, &entry.value.unwrap(), TimeStamp::Custom(entry.timestamp), false)?;
+                if pool.read_write_table.insert(&entry.key, &entry.value.unwrap(), TimeStamp::Custom(entry.timestamp)) {
+                    pool.swap();
+                }
             }
         }
 
