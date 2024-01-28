@@ -159,8 +159,10 @@ impl<'a> SSTable<'a> {
     ///
     /// None.
     fn get_serialized_index(&self, index_builder: &[(Vec<u8>, u64)]) -> Vec<u8> {
+        let index_density = 1;
         let mut index = Vec::new();
-        for (key, offset) in index_builder {
+        // Add every step-th key and its offset to the summary
+        for (key, offset) in index_builder.iter().step_by(index_density) {
             index.extend(&key.len().to_ne_bytes());
             index.extend(key);
             index.extend(&offset.to_ne_bytes());
