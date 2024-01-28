@@ -9,6 +9,7 @@ use std::path::{Path};
 use bloom_filter::BloomFilter;
 use segment_elements::{MemoryEntry, SegmentTrait};
 use merkle_tree::merkle_tree::MerkleTree;
+use compression::CompressionDictionary;
 use crate::memtable::MemoryTable;
 use crate::sstable::sstable_element_type::SSTableElementType;
 
@@ -77,8 +78,8 @@ impl<'a> SSTable<'a> {
     /// # Errors
     ///
     /// Returns an `io::Error` if there is an issue flushing the data or serializing components.
-    pub(crate) fn flush(&mut self, mem_table: MemoryTable, summary_density: usize) -> io::Result<()> {
-        self.flush_to_disk(mem_table.iterator().collect(), summary_density)
+    pub(crate) fn flush(&mut self, mem_table: MemoryTable, summary_density: usize, compression_dictionary: &mut Option<CompressionDictionary>) -> io::Result<()> {
+        self.flush_to_disk(mem_table.iterator().collect(), summary_density, compression_dictionary)
     }
 
     /// Flushes the memory table to the SSTable files on disk.
@@ -95,9 +96,9 @@ impl<'a> SSTable<'a> {
     /// # Errors
     ///
     /// Returns an `io::Error` if there is an issue flushing the data or serializing components.
-    fn flush_to_disk(&mut self, sstable_data: Vec<(Box<[u8]>, MemoryEntry)>, summary_density: usize) -> io::Result<()> {
+    fn flush_to_disk(&mut self, sstable_data: Vec<(Box<[u8]>, MemoryEntry)>, summary_density: usize, compression_dictionary: &mut Option<CompressionDictionary>) -> io::Result<()> {
         // Build serialized data, index_builder, and bloom_filter
-        let (serialized_data, index_builder, bloom_filter) = self.build_data_and_index_and_filter(sstable_data);
+        let (serialized_data, index_builder, bloom_filter) = self.build_data_and_index_and_filter(sstable_data, compression_dictionary);
 
         // Serialize the index, summary, bloom filter and merkle tree
         let serialized_index = self.get_serialized_index(&index_builder);
@@ -118,7 +119,7 @@ impl<'a> SSTable<'a> {
         }
     }
 
-    /// Builds the SSTable data, index builder, and Bloom Filter using self.inner_mem.
+    /// Builds the SSTable data, index builder, and Bloom Filter.
     ///
     /// # Returns
     ///
@@ -127,17 +128,26 @@ impl<'a> SSTable<'a> {
     /// # Errors
     ///
     /// None.
-    fn build_data_and_index_and_filter(&self, sstable_data: Vec<(Box<[u8]>, MemoryEntry)>) -> (Vec<u8>, Vec<(Vec<u8>, u64)>, BloomFilter) {
+    fn build_data_and_index_and_filter(&self, sstable_data: Vec<(Box<[u8]>, MemoryEntry)>, compression_dictionary: &mut Option<CompressionDictionary>) -> (Vec<u8>, Vec<(Vec<u8>, u64)>, BloomFilter) {
         let mut index_builder = Vec::new();
         let mut bloom_filter = BloomFilter::new(0.01, 100_000);
         let mut data = Vec::new();
 
+        if compression_dictionary.is_some() {
+            let keys: Vec<Box<[u8]>> = sstable_data.into_iter().map(|(boxed_slice, _)| boxed_slice).collect();
+            compression_dictionary.unwrap().add(&keys).expect("Failed to add keys to the dictionary!");
+        }
+
         let mut offset: u64 = 0;
         for (key, entry) in sstable_data {
-            let entry_data = entry.serialize(&key);
+            let encoded_key = match compression_dictionary {
+                Some(compression_dictionary) => compression_dictionary.encode(&key).unwrap(),
+                None => key
+            };
+            let entry_data = entry.serialize(&encoded_key);
 
             data.extend_from_slice(&entry_data);
-            index_builder.push((key.to_vec(), offset));
+            index_builder.push((encoded_key.to_vec(), offset));
             bloom_filter.add(&key);
 
             offset += entry_data.len() as u64;
@@ -287,9 +297,13 @@ impl<'a> SSTable<'a> {
     /// # Errors
     ///
     /// None.
-    pub(crate) fn get(&mut self, key: &[u8]) -> Option<MemoryEntry> {
+    pub(crate) fn get(&mut self, key: &[u8], compression_dictionary: &mut Option<CompressionDictionary>) -> Option<MemoryEntry> {
         if self.bloom_filter_contains_key(key).unwrap_or(false) {
-            if let Some(offset) = self.get_data_offset_from_summary(key) {
+            let encoded_key = match compression_dictionary {
+                Some(compression_dictionary) => compression_dictionary.encode(&key.to_vec().into_boxed_slice()).unwrap().as_ref(),
+                None => key
+            };
+            if let Some(offset) = self.get_data_offset_from_summary(encoded_key) {
                 return match self.get_entry_from_data_file(offset) {
                     Some(entry) => Some(entry.0.1),
                     None => None
@@ -356,7 +370,7 @@ impl<'a> SSTable<'a> {
     /// # Errors
     ///
     /// Returns an `io::Error` if the merging process fails.
-    pub(crate) fn merge(sstable_paths: Vec<&Path>, in_single_file: Vec<bool>, merged_base_path: &Path, merged_in_single_file: bool, summary_density: usize) -> io::Result<()> {
+    pub(crate) fn merge(sstable_paths: Vec<&Path>, in_single_file: Vec<bool>, merged_base_path: &Path, merged_in_single_file: bool, summary_density: usize, compression_dictionary: &mut Option<CompressionDictionary>) -> io::Result<()> {
         create_dir_all(merged_base_path)?;
 
         let merged_data = SSTable::merge_entries(sstable_paths.clone(), in_single_file)?;
@@ -364,7 +378,7 @@ impl<'a> SSTable<'a> {
         let mut merged_sstable = SSTable::open(merged_base_path, merged_in_single_file)?;
 
         // Flush the new SSTable to disk
-        merged_sstable.flush_to_disk(merged_data, summary_density)?;
+        merged_sstable.flush_to_disk(merged_data, summary_density, compression_dictionary)?;
 
         let _ = sstable_paths
             .iter()
