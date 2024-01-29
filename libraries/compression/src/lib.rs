@@ -1,6 +1,7 @@
 mod compression;
 
 pub use compression::CompressionDictionary;
+pub use compression::{variable_encode, variable_decode};
 
 #[cfg(test)]
 mod tests {
