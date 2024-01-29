@@ -10,13 +10,21 @@ authors = ["Luka Bursać", "Momir Stanišić", "Mihajlo Orlović", "Nikola Ognje
 
 [dependencies]
 db_config = { path = "libraries/db_config" }
-memtable = { path = "libraries/memtable" }
 segment_elements = { path = "libraries/segment_elements" }
 lru_cache = { path = "libraries/lru_cache" }
+lsm = { path = "libraries/lsm" }
 bloom_filter = { path = "libraries/bloom_filter" }
 count_min_sketch = { path = "libraries/count_min_sketch" }
 hyperloglog = { path = "libraries/hyperloglog" }
 simhash = { path = "libraries/simhash" }
+
+[lib]
+path = "src/lib.rs"
+name = "db_lib"
+
+[[bin]]
+path = "src/bin.rs"
+name = "nosql_engine"
 
 # All the libraries the package is built with
 [workspace]

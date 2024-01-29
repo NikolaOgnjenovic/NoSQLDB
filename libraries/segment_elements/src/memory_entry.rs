@@ -1,3 +1,4 @@
+use std::io;
 use crate::TimeStamp;
 use crc::{Crc, CRC_32_ISCSI};
 
@@ -26,9 +27,13 @@ impl MemoryEntry {
         entry_bytes.extend(self.timestamp.to_ne_bytes());
         entry_bytes.extend((self.tombstone as u8).to_ne_bytes());
         entry_bytes.extend(key.len().to_ne_bytes());
-        entry_bytes.extend(self.value.len().to_ne_bytes());
+        if !self.tombstone {
+            entry_bytes.extend(self.value.len().to_ne_bytes());
+        }
         entry_bytes.extend(key.iter());
-        entry_bytes.extend(self.value.iter());
+        if !self.tombstone {
+            entry_bytes.extend(self.value.iter());
+        }
 
         with_hasher.extend(crc_hasher.checksum(&entry_bytes).to_ne_bytes().as_ref());
         with_hasher.extend(entry_bytes);
@@ -36,7 +41,7 @@ impl MemoryEntry {
         with_hasher.into_boxed_slice()
     }
 
-    pub fn deserialize(bytes: &[u8]) -> Result<(Box<[u8]>, Self), &str> {
+    pub fn deserialize(bytes: &[u8]) -> io::Result<(Box<[u8]>, Self)> {
         let crc_hasher = Crc::<u32>::new(&CRC_32_ISCSI);
 
         let crc = {
@@ -58,23 +63,31 @@ impl MemoryEntry {
         };
 
         let key_len = {
-            let mut key_len_bytes = [0u8; 8];
-            key_len_bytes.copy_from_slice(&bytes[21..29]);
+            let mut key_len_bytes = [0u8; std::mem::size_of::<usize>()];
+            key_len_bytes.copy_from_slice(&bytes[21..21 + std::mem::size_of::<usize>()]);
             usize::from_ne_bytes(key_len_bytes)
         };
 
-        let value_len = {
+        let value_len = if tombstone {
+            0
+        } else {
             let mut value_len_bytes = [0u8; 8];
-            value_len_bytes.copy_from_slice(&bytes[29..37]);
+            value_len_bytes.copy_from_slice(&bytes[21 + std::mem::size_of::<usize>()..21 + 2 * std::mem::size_of::<usize>()]);
             usize::from_ne_bytes(value_len_bytes)
         };
 
         let mut key = vec![0u8; key_len].into_boxed_slice();
-        key.copy_from_slice(&bytes[37..37+key_len]);
+        if tombstone {
+            key.copy_from_slice(&bytes[21 + std::mem::size_of::<usize>()..21 + std::mem::size_of::<usize>() + key_len]);
+        } else {
+            key.copy_from_slice(&bytes[21 + 2 * std::mem::size_of::<usize>()..21 + 2 * std::mem::size_of::<usize>() + key_len]);
+        }
 
-        let value = {
+        let value = if tombstone {
+            vec![].into_boxed_slice()
+        } else {
             let mut value = vec![0u8; value_len].into_boxed_slice();
-            value.copy_from_slice(&bytes[37+key_len..37+key_len+value_len]);
+            value.copy_from_slice(&bytes[21 + 2 * std::mem::size_of::<usize>() + key_len..21 + 2 * std::mem::size_of::<usize>() + key_len + value_len]);
             value
         };
 
@@ -89,7 +102,7 @@ impl MemoryEntry {
 
 
         if crc_hasher.checksum(&bytes) != crc {
-            Err("Invalid data, crc doesn't match")
+            panic!("Crc isn't valid")
         } else {
             let entry = MemoryEntry {
                 value,

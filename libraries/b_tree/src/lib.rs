@@ -74,47 +74,35 @@ mod tests {
         assert_eq!(b.get(&90u128.to_ne_bytes()).unwrap(), Box::from(180u128.to_ne_bytes()));
     }
 
-    // #[test]
-    // fn delete_perm_test() {
-    //     for i in 2..15 {
-    //         let mut b = BTree::new(i).unwrap();
-    //
-    //         let mut added_elements = Vec::new();
-    //         let mut rng = rand::thread_rng();
-    //
-    //         for _ in 0..10 {
-    //             let random_number: u128 = rng.gen_range(0..=1000000000);
-    //             added_elements.push(random_number);
-    //             b.insert(&random_number.to_ne_bytes(), &(random_number * 2).to_ne_bytes(), TimeStamp::Now);
-    //         }
-    //
-    //         let mut removed_elements = Vec::new();
-    //
-    //         for j in 0..10 {
-    //             if rng.gen_bool(1.0) {
-    //                 let element_to_be_removed = added_elements[j];
-    //                 removed_elements.push(element_to_be_removed);
-    //
-    //                 b.delete_permanent(&element_to_be_removed.to_ne_bytes());
-    //             }
-    //         }
-    //
-    //         for random_number in removed_elements {
-    //             assert_eq!(b.get(&random_number.to_ne_bytes()), None);
-    //         }
-    //     }
-    // }
-
     #[test]
-    fn test_delete1() {
-        let mut b = BTree::new(5).unwrap();
+    fn delete_perm_test() {
+        for i in 2..15 {
+            let mut b = BTree::new(i).unwrap();
 
-        for i in 0..100u128 {
-            b.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now);
+            let mut added_elements = Vec::new();
+            let mut rng = rand::thread_rng();
+
+            for _ in 0..10 {
+                let random_number: u128 = rng.gen_range(0..=1000000000);
+                added_elements.push(random_number);
+                b.insert(&random_number.to_ne_bytes(), &(random_number * 2).to_ne_bytes(), TimeStamp::Now);
+            }
+
+            let mut removed_elements = Vec::new();
+
+            for j in 0..10 {
+                if rng.gen_bool(1.0) {
+                    let element_to_be_removed = added_elements[j];
+                    removed_elements.push(element_to_be_removed);
+
+                    b.delete_permanent(&element_to_be_removed.to_ne_bytes());
+                }
+            }
+
+            for random_number in removed_elements {
+                assert_eq!(b.get(&random_number.to_ne_bytes()), None);
+            }
         }
-
-        assert!(!b.delete(&50u128.to_ne_bytes(), TimeStamp::Now));
-        assert_eq!(b.get(&50u128.to_ne_bytes()), None);
     }
 
     #[test]
@@ -154,27 +142,7 @@ mod tests {
 
         assert_eq!(45, b.size());
         assert_eq!(b.get(&20u128.to_ne_bytes()), Some(Box::from(40u128.to_ne_bytes())));
-        assert_eq!(b.get(&26u128.to_ne_bytes()), None);
-    }
-
-    #[test]
-    fn iterator_test() {
-        for order in 2..15 {
-            let mut b = BTree::new(order).unwrap();
-
-            for i in 0..10000u32 {
-                assert!(b.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now));
-            }
-            let iterator = b.iterator();
-
-            let mut i:u32 = 0;
-            for target in iterator {
-                let key = target.0;
-                let entry = target.1;
-                assert_eq!(<[u8; 4] as Into<Box<[u8]>>>::into(i.to_ne_bytes()), key);
-                i += 1;
-            }
-        }
+        assert_eq!(b.get(&27u128.to_ne_bytes()), Some(Box::from([])));
     }
 
     #[test]

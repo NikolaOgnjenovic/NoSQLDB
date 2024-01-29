@@ -104,8 +104,8 @@ impl DoublyLinkedList {
     }
 
     pub fn iter(&self) -> DLLIterator {
-        let mut current = &self.tail;
-        let mut iterator = DLLIterator::new(current.clone());
+        let current = &self.tail;
+        let iterator = DLLIterator::new(current.clone());
         iterator
     }
 }

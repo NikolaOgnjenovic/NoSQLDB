@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 use segment_elements::{MemoryEntry, SegmentTrait, TimeStamp};
-use crate::b_tree_node::{Node, Entry, compare_keys};
+use crate::b_tree_node::{Node, Entry};
 use crate::b_tree_iterator::BTreeIterator;
 use crate::order_error::OrderError;
 use bloom_filter::BloomFilter;
@@ -54,7 +54,7 @@ impl BTree {
         }
     }
 
-    ///Returns Option<Iterator> for BTree that yields sorted (Key, MemEntry) pairs
+    /// Returns Option<Iterator> for BTree that yields sorted (Key, MemEntry) pairs
     /// The value is Some if length > 0 otherwise None
     pub fn iter(&self) -> BTreeIterator {
         let mut stack = Vec::new();

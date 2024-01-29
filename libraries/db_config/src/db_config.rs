@@ -2,24 +2,20 @@ use std::io::{BufReader, Error, ErrorKind, Write};
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 
-
 /// Options for the implementation of memory table
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum MemoryTableType {
     SkipList,
-    HashMap,  // todo, dodato na osnovu specifikacije?
+    HashMap,
     BTree,
 }
 
-
-// todo, novo gradivo, nije još implementirano, dodato na osnovu specifikacije
-/// Options for the compression algorithm type
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
-pub enum CompressionAlgorithmType {
+/// Options for the compaction algorithm type
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
+pub enum CompactionAlgorithmType {
     SizeTiered,
     Leveled,
 }
-
 
 /// Configuration parameters
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
@@ -30,23 +26,25 @@ pub struct DBConfig {
     pub skip_list_max_level: usize,
     pub hyperloglog_precision: u32,
     pub write_ahead_log_dir: String,
-    pub write_ahead_log_num_of_logs: usize,  // todo, dodato na osnovu specifikacije?
-    pub write_ahead_log_size: usize,         // todo, dodato na osnovu specifikacije?
+    pub write_ahead_log_num_of_logs: usize,
+    pub write_ahead_log_size: usize,
     pub b_tree_order: usize,
     pub memory_table_capacity: usize,
     pub memory_table_type: MemoryTableType,
     pub memory_table_pool_num: usize,
     pub summary_density: usize,
+    pub index_density: usize,
     pub sstable_single_file: bool,
-
-    // todo, novo gradivo, nije još implementirano,
-    // todo, dodato ono šta je poznato na osnovu specifikacije
+    pub sstable_dir: String,
     pub lsm_max_level: usize,
-    pub compression_enabled: bool,
-    pub compression_algorithm_type: CompressionAlgorithmType,
+    pub lsm_max_per_level: usize,
+    pub compaction_enabled: bool,
+    pub compaction_algorithm_type: CompactionAlgorithmType,
     pub cache_max_size: usize,
     pub token_bucket_num: usize,
     pub token_bucket_interval: usize,
+    pub use_compression: bool,
+    pub compression_dictionary_path: String,
 }
 
 
@@ -59,28 +57,28 @@ impl Default for DBConfig {
             skip_list_max_level: 10,
             hyperloglog_precision: 10,
             write_ahead_log_dir: "./wal/".to_string(),
-            // todo postaviti ovo da ne sme da bude vise od memory_table_capacity
-            write_ahead_log_num_of_logs: 1000,  // todo, dodato na osnovu specifikacije?
-            write_ahead_log_size: 1048576,      // todo, dodato na osnovu specifikacije?
+            write_ahead_log_num_of_logs: 1000,
+            write_ahead_log_size: 1048576,
             b_tree_order: 10,
             memory_table_capacity: 1000,
             memory_table_type: MemoryTableType::SkipList,
             memory_table_pool_num: 10,
             summary_density: 3,
+            index_density: 2,
             sstable_single_file: false,
-
-            // todo, novo gradivo, nije još implementirano,
-            // todo, dodato ono šta je poznato na osnovu specifikacije
+            sstable_dir: "./sstables/".to_string(),
             lsm_max_level: 0,
-            compression_enabled: false,
-            compression_algorithm_type: CompressionAlgorithmType::SizeTiered,
+            lsm_max_per_level: 0,
+            compaction_enabled: false,
+            compaction_algorithm_type: CompactionAlgorithmType::SizeTiered,
             cache_max_size: 0,
             token_bucket_num: 0,
             token_bucket_interval: 0,
+            use_compression: false,
+            compression_dictionary_path: "./dictionary.bin".to_string(),
         }
     }
 }
-
 
 impl DBConfig {
     /// Creates new instance of configuration with default values
