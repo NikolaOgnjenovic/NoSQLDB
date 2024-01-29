@@ -251,7 +251,6 @@ mod sstable_tests {
             let value: i32 = i * multiplier;
             let timestamp = TimeStamp::Now;
             mem_table.insert(&key.to_ne_bytes(), &value.to_ne_bytes(), timestamp, false).expect("Failed to insert into mem table");
-            mem_table
         }
     }
 
