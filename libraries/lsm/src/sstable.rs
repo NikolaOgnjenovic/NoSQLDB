@@ -7,10 +7,78 @@ use std::io;
 use std::io::{Cursor, Read, Seek, SeekFrom, Write};
 use std::path::{Path};
 use bloom_filter::BloomFilter;
+use lru_cache::LRUCache;
 use segment_elements::{MemoryEntry, SegmentTrait};
 use merkle_tree::merkle_tree::MerkleTree;
 use crate::memtable::MemoryTable;
 use crate::sstable::sstable_element_type::SSTableElementType;
+
+///Struct made to keep track of how many bytes got flushed for wal segment deletion
+pub(crate) struct FlushByteSizes {
+    index_bytes_len: usize,
+    index_summary_bytes_len: usize,
+    merkle_bytes_len: usize,
+    bloom_filter_bytes_len: usize,
+    data_len: usize
+}
+
+impl FlushByteSizes {
+    fn new(
+        index_bytes_len: usize,
+        index_summary_bytes_len: usize,
+        merkle_bytes_len: usize,
+        bloom_filter_bytes_len: usize,
+        data_len: usize,
+    ) -> Self {
+        FlushByteSizes {
+            index_bytes_len,
+            index_summary_bytes_len,
+            merkle_bytes_len,
+            bloom_filter_bytes_len,
+            data_len,
+        }
+    }
+
+    pub(crate) fn get_index_bytes_len(&self) -> usize {
+        self.index_bytes_len
+    }
+
+    pub(crate) fn get_index_summary_bytes_len(&self) -> usize {
+        self.index_summary_bytes_len
+    }
+
+    pub(crate) fn get_merkle_bytes_len(&self) -> usize {
+        self.merkle_bytes_len
+    }
+
+    pub(crate) fn get_bloom_filter_bytes_len(&self) -> usize {
+        self.bloom_filter_bytes_len
+    }
+
+    pub(crate) fn get_data_len(&self) -> usize {
+        self.data_len
+    }
+
+    fn set_index_bytes_len(&mut self, index_bytes_len: usize) {
+        self.index_bytes_len = index_bytes_len;
+    }
+
+    fn set_index_summary_bytes_len(&mut self, index_summary_bytes_len: usize) {
+        self.index_summary_bytes_len = index_summary_bytes_len;
+    }
+
+    fn set_merkle_bytes_len(&mut self, merkle_bytes_len: usize) {
+        self.merkle_bytes_len = merkle_bytes_len;
+    }
+
+    fn set_bloom_filter_bytes_len(&mut self, bloom_filter_bytes_len: usize) {
+        self.bloom_filter_bytes_len = bloom_filter_bytes_len;
+    }
+
+    fn set_data_len(&mut self, data_len: usize) {
+        self.data_len = data_len;
+    }
+}
 
 /// Struct representing an SSTable (Sorted String Table) for storing key-value pairs on disk.
 pub(crate) struct SSTable<'a> {
@@ -77,8 +145,8 @@ impl<'a> SSTable<'a> {
     /// # Errors
     ///
     /// Returns an `io::Error` if there is an issue flushing the data or serializing components.
-    pub(crate) fn flush(&mut self, mem_table: MemoryTable, summary_density: usize) -> io::Result<()> {
-        self.flush_to_disk(mem_table.iterator().collect(), summary_density)
+    pub(crate) fn flush(&mut self, mem_table: MemoryTable, summary_density: usize, lru_cache: Option<&mut LRUCache>) -> io::Result<FlushByteSizes> {
+        self.flush_to_disk(mem_table.iterator().collect(), summary_density, lru_cache)
     }
 
     /// Flushes the memory table to the SSTable files on disk.
@@ -95,9 +163,9 @@ impl<'a> SSTable<'a> {
     /// # Errors
     ///
     /// Returns an `io::Error` if there is an issue flushing the data or serializing components.
-    fn flush_to_disk(&mut self, sstable_data: Vec<(Box<[u8]>, MemoryEntry)>, summary_density: usize) -> io::Result<()> {
+    fn flush_to_disk(&mut self, sstable_data: Vec<(Box<[u8]>, MemoryEntry)>, summary_density: usize, lru_cache: Option<&mut LRUCache>) -> io::Result<FlushByteSizes> {
         // Build serialized data, index_builder, and bloom_filter
-        let (serialized_data, index_builder, bloom_filter) = self.build_data_and_index_and_filter(sstable_data);
+        let (serialized_data, index_builder, bloom_filter) = self.build_data_and_index_and_filter(sstable_data, lru_cache);
 
         // Serialize the index, summary, bloom filter and merkle tree
         let serialized_index = self.get_serialized_index(&index_builder);
@@ -105,17 +173,20 @@ impl<'a> SSTable<'a> {
         let serialized_bloom_filter = bloom_filter.serialize();
         let serialized_merkle_tree = MerkleTree::new(&serialized_data).serialize();
 
+        let flush_size = FlushByteSizes::new(serialized_index.len(), serialized_index_summary.len(),
+        serialized_merkle_tree.len(), serialized_bloom_filter.len(), serialized_data.len());
+
         if self.in_single_file {
-            self.write_to_single_file(&serialized_data, &serialized_index, &serialized_index_summary, &serialized_bloom_filter, &serialized_merkle_tree)
+            self.write_to_single_file(&serialized_data, &serialized_index, &serialized_index_summary, &serialized_bloom_filter, &serialized_merkle_tree)?;
         } else {
             self.write_to_file(&serialized_data, "SSTable-Data.db")?;
             self.write_to_file(&serialized_index, "SSTable-Index.db")?;
             self.write_to_file(&serialized_index_summary, "SSTable-Summary.db")?;
             self.write_to_file(&serialized_bloom_filter, "SSTable-BloomFilter.db")?;
             self.write_to_file(&serialized_merkle_tree, "SSTable-MerkleTree.db")?;
-
-            Ok(())
         }
+
+        Ok(flush_size)
     }
 
     /// Builds the SSTable data, index builder, and Bloom Filter using self.inner_mem.
@@ -127,7 +198,7 @@ impl<'a> SSTable<'a> {
     /// # Errors
     ///
     /// None.
-    fn build_data_and_index_and_filter(&self, sstable_data: Vec<(Box<[u8]>, MemoryEntry)>) -> (Vec<u8>, Vec<(Vec<u8>, u64)>, BloomFilter) {
+    fn build_data_and_index_and_filter(&self, sstable_data: Vec<(Box<[u8]>, MemoryEntry)>, lru_cache: Option<&mut LRUCache>) -> (Vec<u8>, Vec<(Vec<u8>, u64)>, BloomFilter) {
         let mut index_builder = Vec::new();
         let mut bloom_filter = BloomFilter::new(0.01, 100_000);
         let mut data = Vec::new();
@@ -135,6 +206,9 @@ impl<'a> SSTable<'a> {
         let mut offset: u64 = 0;
         for (key, entry) in sstable_data {
             let entry_data = entry.serialize(&key);
+            if let Some(&mut ref mut lru) = lru_cache {
+                lru.update(&key, entry);
+            }
 
             data.extend_from_slice(&entry_data);
             index_builder.push((key.to_vec(), offset));
@@ -362,7 +436,7 @@ impl<'a> SSTable<'a> {
         let mut merged_sstable = SSTable::open(merged_base_path, merged_in_single_file)?;
 
         // Flush the new SSTable to disk
-        merged_sstable.flush_to_disk(merged_data, summary_density)?;
+        merged_sstable.flush_to_disk(merged_data, summary_density, None)?;
 
         let _ = sstable_paths
             .iter()

@@ -390,7 +390,7 @@ mod sstable_tests {
 
         // Create an SSTable and flush
         let mut sstable = SSTable::open(&temp_dir.path(), in_single_file).expect("Failed to open SSTable");
-        sstable.flush(mem_table, summary_density).expect("Failed to flush sstable");
+        sstable.flush(mem_table, summary_density, None).expect("Failed to flush sstable");
 
         // Retrieve and validate data from the SSTable
         for i in 0..range {
@@ -434,7 +434,7 @@ mod sstable_tests {
 
         // Create an SSTable from the MemoryPool's inner_mem
         let mut sstable = SSTable::open(&temp_dir.path(), in_single_file).expect("Failed to open SSTable");
-        sstable.flush(mem_table, summary_density).expect("Failed to flush sstable");
+        sstable.flush(mem_table, summary_density, None).expect("Failed to flush sstable");
 
         // Get the merkle tree from the SSTable
         let merkle_tree = sstable.get_merkle().expect("Failed to get merkle tree");
@@ -480,7 +480,7 @@ mod sstable_tests {
             let sstable_path = temp_dir.path().join("sstable".to_string() + (i + 1).to_string().as_str());
             let mut sstable = SSTable::open(&sstable_path, in_single_file[i]).expect("Failed to open SSTable");
 
-            sstable.flush(mem_table, summary_density).expect("Failed to flush sstable");
+            sstable.flush(mem_table, summary_density, None).expect("Failed to flush sstable");
             sstable_paths.push(sstable_path);
         }
 

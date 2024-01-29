@@ -47,7 +47,7 @@ impl Node {
         }
 
         if node_index < self.n && key.cmp(&*self.entries[node_index].as_ref().unwrap().key) == Ordering::Equal {
-            Some(self.entries[node_index].as_ref().unwrap().mem_entry.get_value())
+            Some(self.entries[node_index].as_ref().unwrap().mem_entry.serialize(key))
         } else if self.is_leaf {
             None
         } else {
