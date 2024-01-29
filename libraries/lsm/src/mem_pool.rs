@@ -81,10 +81,10 @@ impl MemoryPool {
         None
     }
 
-    // /// Joins all threads that are writing memory tables. This is a blocking operation.
-    // pub(crate) fn join_concurrent_writes(&mut self) {
-    //     self.thread_pool.join();
-    // }
+    /// Joins all threads that are writing memory tables. This is a blocking operation.
+    pub(crate) fn join_concurrent_writes(&mut self) {
+        self.thread_pool.join();
+    }
 
     /// Swaps the current read write memory table with a new one. Checks if the number of read only
     /// memory tables exceeds the capacity, and flushes the last one if necessary.
@@ -105,20 +105,20 @@ impl MemoryPool {
         Ok(None)
     }
 
-    // fn flush_concurrent(&mut self, table: MemoryTable) {
-    //     let density_move = self.config.summary_density;
-    //
-    //     self.thread_pool.execute(move || {
-    //         // todo: LSM sturktura treba da pozove kreiranje nove sstabele i potencionalno da ona radi kompakcije i
-    //         // todo mergeovanje ovde, a ako ne ovde onda se radi u main db strukturi
-    //         println!("FLUSH");
-    //
-    //         match table.finalize() {
-    //             Ok(_) => (),
-    //             Err(e) => eprintln!("WAL couldn't be deleted. Error: {}", e)
-    //         };
-    //     });
-    // }
+    fn flush_concurrent(&mut self, table: MemoryTable) {
+        let density_move = self.config.summary_density;
+
+        self.thread_pool.execute(move || {
+            // todo: LSM sturktura treba da pozove kreiranje nove sstabele i potencionalno da ona radi kompakcije i
+            // todo mergeovanje ovde, a ako ne ovde onda se radi u main db strukturi
+            println!("FLUSH");
+
+            match table.finalize() {
+                Ok(_) => (),
+                Err(e) => eprintln!("WAL couldn't be deleted. Error: {}", e)
+            };
+        });
+    }
 
     /// Loads from every log file in the given directory.
     pub(crate) fn load_from_dir(config: &DBConfig) -> Result<MemoryPool, Box<dyn Error>> {

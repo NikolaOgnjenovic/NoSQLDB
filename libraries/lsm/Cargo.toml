@@ -13,6 +13,7 @@ write_ahead_log = { path = "../write_ahead_log" }
 db_config = { path = "../db_config" }
 bloom_filter = { path = "../bloom_filter" }
 merkle_tree = { path = "../merkle_tree" }
+compression = { path = "../compression" }
 lru_cache = { path = "../lru_cache" }
 crc = "3.0.1"
 threadpool = "1.8.1"

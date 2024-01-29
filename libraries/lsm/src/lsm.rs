@@ -2,6 +2,7 @@ use std::error::Error;
 use std::io;
 use std::path::PathBuf;
 use segment_elements::{MemoryEntry, TimeStamp};
+use compression::CompressionDictionary;
 use crate::sstable::SSTable;
 use db_config::{ DBConfig, CompactionAlgorithmType };
 use write_ahead_log::WriteAheadLog;
@@ -21,6 +22,7 @@ struct LSMConfig {
     compaction_algorithm: CompactionAlgorithmType,
     in_single_file: bool,
     summary_density: usize,
+    index_density: usize,
     compaction_enabled: bool,
 }
 
@@ -33,7 +35,8 @@ impl LSMConfig {
             compaction_algorithm: dbconfig.compaction_algorithm_type,
             compaction_enabled: dbconfig.compaction_enabled,
             in_single_file: dbconfig.sstable_single_file,
-            summary_density: dbconfig.summary_density
+            summary_density: dbconfig.summary_density,
+            index_density: dbconfig.index_density
         }
     }
 }
@@ -45,6 +48,7 @@ pub(crate) struct LSM {
     wal: WriteAheadLog,
     mem_pool: MemoryPool,
     lru_cache: LRUCache,
+    compression_dictionary: Option<CompressionDictionary>,
     config: LSMConfig
 }
 
@@ -68,6 +72,10 @@ impl LSM {
             wal,
             mem_pool,
             lru_cache,
+            compression_dictionary: match dbconfig.use_compression {
+                true => Some(CompressionDictionary::load(dbconfig.compression_dictionary_path.as_str()).unwrap()),
+                false => None
+            },
             sstable_directory_names: Vec::with_capacity(dbconfig.lsm_max_level)
         })
     }
@@ -123,6 +131,8 @@ impl LSM {
     ///
     /// # Arguments
     ///
+    /// * `sstable_directory_names` - Directory names of the sstables
+    /// * `parent_dir` - Parent directory
     /// * `main_min_key` - Min key from main SSTable
     /// * `main_max_key` - Max key from main SSTable
     /// * `level` - One level below our main SSTable that started compaction process
@@ -132,12 +142,12 @@ impl LSM {
     /// A `Result` containing vector with tuple as elements.
     /// Each tuple contains index of a path in sstable_directory_names[level] as well as an actual path to that SSTable.
     /// The purpose of an index is to be able to quickly delete all the tables involved in compaction process later.
-    fn find_similar_key_ranges(&self, main_min_key: &[u8], main_max_key: &[u8], level:usize) -> io::Result<Vec<(usize, &PathBuf)>> {
-        let base_paths: Vec<_> = self.sstable_directory_names[level]
+    fn find_similar_key_ranges<'a>(sstable_directory_names: &'a Vec<Vec<PathBuf>>, parent_dir: &'a PathBuf, main_min_key: &[u8], main_max_key: &[u8], level:usize) -> io::Result<Vec<(usize, &'a PathBuf)>> {
+        let base_paths: Vec<_> = sstable_directory_names[level]
             .iter()
             .enumerate()
             .filter(|(index, path)| {
-                let sstable_base_path = self.config.parent_dir.join(path);
+                let sstable_base_path = parent_dir.join(path);
                 let in_single_file = LSM::is_in_single_file(path);
                 match SSTable::get_key_range(sstable_base_path.as_path(), in_single_file) {
                     Ok((min_key, max_key)) => max_key >= Box::from(main_max_key) && min_key <= Box::from(main_min_key),
@@ -245,11 +255,12 @@ impl LSM {
     pub(crate) fn flush<'a>(&mut self, mem_table: MemoryTable) -> io::Result<()> {
         let in_single_file = self.config.in_single_file;
         let summary_density = self.config.summary_density;
+        let index_density = self.config.index_density;
         let directory_name = LSM::get_directory_name(0, in_single_file);
         let sstable_base_path = self.config.parent_dir.join(directory_name.as_path());
 
         let mut sstable = SSTable::open(sstable_base_path.as_path(), in_single_file)?;
-        let flush_bytes = sstable.flush(mem_table, summary_density, Some(&mut self.lru_cache))?;
+        let flush_bytes = sstable.flush(mem_table, summary_density, index_density, Some(&mut self.lru_cache))?;
         let mem_table_byte_size = flush_bytes.get_data_len();
         self.wal.add_to_starting_byte(mem_table_byte_size).unwrap();
         self.wal.remove_flushed_wals().unwrap();
@@ -280,7 +291,6 @@ impl LSM {
         let merged_in_single_file = self.config.in_single_file;
 
         while self.sstable_directory_names[level].len() > self.config.max_per_level {
-
             let mut sstable_base_paths = Vec::new();
             let mut sstable_single_file = Vec::new();
 
@@ -297,7 +307,7 @@ impl LSM {
             let merged_base_path = self.config.parent_dir.join(merged_directory.clone());
 
             // Merge them all together, push merged SSTable into sstable_directory_names and delete all SSTables involved in merging process
-            SSTable::merge(sstable_base_paths, sstable_single_file, merged_base_path.as_path(), merged_in_single_file, self.config.summary_density)?;
+            SSTable::merge(sstable_base_paths, sstable_single_file, merged_base_path.as_path(), merged_in_single_file, self.config.summary_density, self.config.index_density, &mut self.compression_dictionary)?;
             self.sstable_directory_names[level].clear();
             self.sstable_directory_names[level+1].push(merged_directory);
 
@@ -333,7 +343,7 @@ impl LSM {
             let (main_min_key, main_max_key) = SSTable::get_key_range(main_sstable_base_path.as_path(), in_single_file)?;
 
             // Find SStables with keys in similar range one level below
-            let in_range_paths = self.find_similar_key_ranges(&main_min_key, &main_max_key, level+1)?;
+            let in_range_paths = LSM::find_similar_key_ranges(&self.sstable_directory_names, &self.config.parent_dir, &main_min_key, &main_max_key, level+1)?;
             let mut sstable_base_paths: Vec<_> = in_range_paths.clone()
                 .into_iter()
                 .map(|(_, path)| path.as_path())
@@ -351,7 +361,7 @@ impl LSM {
             let merged_base_path = self.config.parent_dir.join(merged_directory.clone());
 
             // Merge them all together
-            SSTable::merge(sstable_base_paths, sstable_single_file, merged_base_path.as_path(), merged_in_single_file, self.config.summary_density)?;
+            SSTable::merge(sstable_base_paths, sstable_single_file, merged_base_path.as_path(), merged_in_single_file, self.config.summary_density, self.config.index_density, &mut self.compression_dictionary)?;
 
             // Extract indexes of SSTable that need to be removed
             let indexes_to_delete: Vec<_> = in_range_paths
