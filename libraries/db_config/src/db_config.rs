@@ -64,7 +64,7 @@ impl Default for DBConfig {
             memory_table_type: MemoryTableType::SkipList,
             memory_table_pool_num: 10,
             summary_density: 3,
-            index_density: 3,
+            index_density: 2,
             sstable_single_file: false,
             sstable_dir: "./sstables/".to_string(),
             lsm_max_level: 0,
