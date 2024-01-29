@@ -410,15 +410,3 @@ impl Node {
         }
     }
 }
-
-pub fn compare_keys(a: &[u8], b: &[u8]) -> Ordering {
-    for (&byte_a, &byte_b) in a.iter().rev().zip(b.iter().rev()) {
-        match byte_a.cmp(&byte_b) {
-            Ordering::Less => return Ordering::Less,
-            Ordering::Greater => return Ordering::Greater,
-            Ordering::Equal => continue,
-        }
-    }
-    Ordering::Equal
-}
-

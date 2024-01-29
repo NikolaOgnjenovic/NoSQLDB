@@ -110,7 +110,6 @@ impl LSM {
         path.to_str().unwrap().chars().last().unwrap() == 's'
     }
 
-
     /// Function that returns full path to a sstable and wether or not is it in single file
     ///
     /// # Arguments
@@ -146,7 +145,7 @@ impl LSM {
         let base_paths: Vec<_> = sstable_directory_names[level]
             .iter()
             .enumerate()
-            .filter(|(index, path)| {
+            .filter(|(_, path)| {
                 let sstable_base_path = parent_dir.join(path);
                 let in_single_file = LSM::is_in_single_file(path);
                 match SSTable::get_key_range(sstable_base_path.as_path(), in_single_file) {
@@ -189,7 +188,7 @@ impl LSM {
             for sstable_dir in level.iter().rev() {
                 let (path, in_single_file) = self.get_sstable_path(sstable_dir);
                 let mut sstable = SSTable::open(path.as_path(), in_single_file)?;
-                if let Some(data) = sstable.get(key) {
+                if let Some(data) = sstable.get(key, self.config.index_density, &mut self.compression_dictionary) {
                     self.lru_cache.insert(key, Some(data.clone()));
                     return Ok(Some(data.serialize(key)));
                 }
@@ -260,7 +259,7 @@ impl LSM {
         let sstable_base_path = self.config.parent_dir.join(directory_name.as_path());
 
         let mut sstable = SSTable::open(sstable_base_path.as_path(), in_single_file)?;
-        let flush_bytes = sstable.flush(mem_table, summary_density, index_density, Some(&mut self.lru_cache))?;
+        let flush_bytes = sstable.flush(mem_table, summary_density, index_density, Some(&mut self.lru_cache), &mut self.compression_dictionary)?;
         let mem_table_byte_size = flush_bytes.get_data_len();
         self.wal.add_to_starting_byte(mem_table_byte_size).unwrap();
         self.wal.remove_flushed_wals().unwrap();

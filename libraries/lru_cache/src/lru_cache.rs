@@ -65,10 +65,6 @@ impl LRUCache {
         }
     }
 
-    pub fn insert_nonexistent(&mut self, key: &[u8]) {
-
-    }
-
     pub fn insert(&mut self, key: &[u8], memory_entry: Option<MemoryEntry>) {
         let entry = if memory_entry.is_some() {
             let memory_entry = memory_entry.unwrap();

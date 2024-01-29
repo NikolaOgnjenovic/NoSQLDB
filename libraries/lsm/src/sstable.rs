@@ -8,7 +8,7 @@ use std::io::{Cursor, Read, Seek, SeekFrom, Write};
 use std::path::{Path};
 use bloom_filter::BloomFilter;
 use lru_cache::LRUCache;
-use segment_elements::{MemoryEntry, SegmentTrait};
+use segment_elements::MemoryEntry;
 use merkle_tree::merkle_tree::MerkleTree;
 use compression::CompressionDictionary;
 use crate::memtable::MemoryTable;
@@ -147,7 +147,7 @@ impl<'a> SSTable<'a> {
     /// # Errors
     ///
     /// Returns an `io::Error` if there is an issue flushing the data or serializing components.
-    pub(crate) fn flush(&mut self, mem_table: MemoryTable, summary_density: usize, index_density: usize, lru_cache: Option<&mut LRUCache>, compression_dictionary: &mut Option<CompressionDictionary>) -> io::Result<()> {
+    pub(crate) fn flush(&mut self, mem_table: MemoryTable, summary_density: usize, index_density: usize, lru_cache: Option<&mut LRUCache>, compression_dictionary: &mut Option<CompressionDictionary>) -> io::Result<FlushByteSizes> {
         self.flush_to_disk(mem_table.iterator().collect(), summary_density, index_density, lru_cache, compression_dictionary)
     }
 
@@ -166,7 +166,7 @@ impl<'a> SSTable<'a> {
     /// # Errors
     ///
     /// Returns an `io::Error` if there is an issue flushing the data or serializing components.
-    fn flush_to_disk(&mut self, sstable_data: Vec<(Box<[u8]>, MemoryEntry)>, summary_density: usize, index_density: usize, lru_cache: Option<&mut LRUCache>, compression_dictionary: &mut Option<CompressionDictionary>) -> io::Result<()> {
+    fn flush_to_disk(&mut self, sstable_data: Vec<(Box<[u8]>, MemoryEntry)>, summary_density: usize, index_density: usize, lru_cache: Option<&mut LRUCache>, compression_dictionary: &mut Option<CompressionDictionary>) -> io::Result<FlushByteSizes> {
         // Build serialized data, index_builder, and bloom_filter
         let (serialized_data, index_builder, bloom_filter) = self.build_data_and_index_and_filter(sstable_data, lru_cache, compression_dictionary);
 
@@ -213,16 +213,15 @@ impl<'a> SSTable<'a> {
 
         let mut offset = 0;
         for (key, entry) in sstable_data {
-            let entry_data = entry.serialize(&key);
-            if let Some(&mut ref mut lru) = lru_cache {
-                lru.update(&key, entry);
-            }
-
             let encoded_key = match compression_dictionary {
                 Some(compression_dictionary) => compression_dictionary.encode(&key.clone()).unwrap(),
                 None => key.clone()
             };
             let entry_data = entry.serialize(&encoded_key);
+
+            if let Some(&mut ref mut lru) = lru_cache {
+                lru.update(&key, entry);
+            }
 
             data.extend_from_slice(&entry_data);
             index_builder.push((encoded_key.to_vec(), offset));
@@ -249,7 +248,7 @@ impl<'a> SSTable<'a> {
     /// None.
     fn get_serialized_index(&self, index_builder: &[(Vec<u8>, usize)], index_density: usize) -> Vec<u8> {
         let mut index = Vec::new();
-        
+
         // Add every step-th key and its offset to the summary
         for (key, offset) in index_builder.iter().step_by(index_density) {
             index.extend(&key.len().to_ne_bytes());
@@ -525,7 +524,7 @@ impl<'a> SSTable<'a> {
             let entries: Vec<_> = option_entries
                 .iter()
                 .enumerate()
-                .filter(|(index, elem)| elem.is_some())
+                .filter(|(_, elem)| elem.is_some())
                 .collect();
 
             // find the indexes of min keys

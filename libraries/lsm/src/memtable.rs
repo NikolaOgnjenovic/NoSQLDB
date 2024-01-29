@@ -1,5 +1,4 @@
 use std::error::Error;
-use std::io;
 use b_tree::BTree;
 use db_config::{DBConfig, MemoryTableType};
 use skip_list::SkipList;

@@ -3,13 +3,11 @@ mod record_iterator;
 
 use std::collections::VecDeque;
 use std::error::Error;
-use std::{io, ptr};
+use std::io;
 use std::path::Path;
 use threadpool::ThreadPool;
 use segment_elements::TimeStamp;
 use db_config::DBConfig;
-use write_ahead_log::WriteAheadLog;
-use crate::lsm::LSM;
 use crate::memtable::MemoryTable;
 use crate::mem_pool::record_iterator::RecordIterator;
 
@@ -105,20 +103,20 @@ impl MemoryPool {
         Ok(None)
     }
 
-    fn flush_concurrent(&mut self, table: MemoryTable) {
-        let density_move = self.config.summary_density;
-
-        self.thread_pool.execute(move || {
-            // todo: LSM sturktura treba da pozove kreiranje nove sstabele i potencionalno da ona radi kompakcije i
-            // todo mergeovanje ovde, a ako ne ovde onda se radi u main db strukturi
-            println!("FLUSH");
-
-            match table.finalize() {
-                Ok(_) => (),
-                Err(e) => eprintln!("WAL couldn't be deleted. Error: {}", e)
-            };
-        });
-    }
+    // fn flush_concurrent(&mut self, table: MemoryTable) {
+    //     let density_move = self.config.summary_density;
+    //
+    //     self.thread_pool.execute(move || {
+    //         // todo: LSM sturktura treba da pozove kreiranje nove sstabele i potencionalno da ona radi kompakcije i
+    //         // todo mergeovanje ovde, a ako ne ovde onda se radi u main db strukturi
+    //         println!("FLUSH");
+    //
+    //         match table.finalize() {
+    //             Ok(_) => (),
+    //             Err(e) => eprintln!("WAL couldn't be deleted. Error: {}", e)
+    //         };
+    //     });
+    // }
 
     /// Loads from every log file in the given directory.
     pub(crate) fn load_from_dir(config: &DBConfig) -> Result<MemoryPool, Box<dyn Error>> {
