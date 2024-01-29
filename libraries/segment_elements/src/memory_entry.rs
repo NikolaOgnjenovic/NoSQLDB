@@ -1,3 +1,4 @@
+use std::io;
 use crate::TimeStamp;
 use crc::{Crc, CRC_32_ISCSI};
 
@@ -40,7 +41,7 @@ impl MemoryEntry {
         with_hasher.into_boxed_slice()
     }
 
-    pub fn deserialize(bytes: &[u8]) -> Result<(Box<[u8]>, Self), &str> {
+    pub fn deserialize(bytes: &[u8]) -> io::Result<(Box<[u8]>, Self)> {
         let crc_hasher = Crc::<u32>::new(&CRC_32_ISCSI);
 
         let crc = {
@@ -101,7 +102,7 @@ impl MemoryEntry {
 
 
         if crc_hasher.checksum(&bytes) != crc {
-            Err("Invalid data, crc doesn't match")
+            panic!("Crc isn't valid")
         } else {
             let entry = MemoryEntry {
                 value,
