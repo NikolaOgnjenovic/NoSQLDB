@@ -9,7 +9,7 @@ pub trait SegmentTrait {
     /// Returns false if the key is present in MemTable, otherwise true and inserts new element with tombstone
     fn delete(&mut self, key: &[u8], time_stamp: TimeStamp) -> bool;
     /// Returns the value of some key if it exists.
-    fn get(&self, key: &[u8]) -> Option<Box<[u8]>>;
+    fn get(&self, key: &[u8]) -> Option<MemoryEntry>;
     /// Returns bytes of the structure.
     fn serialize(&self) -> Box<[u8]>;
     /// Empties all inner elements of structure.

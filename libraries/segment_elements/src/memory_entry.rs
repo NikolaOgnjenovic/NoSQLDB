@@ -2,6 +2,7 @@ use std::error::Error;
 use std::io;
 use crate::TimeStamp;
 use crc::{Crc, CRC_32_ISCSI};
+use compression::{variable_encode, variable_decode};
 use crate::crc_error::CRCError;
 
 /// Public struct that SegmentTrait implementations return on get.
@@ -9,7 +10,7 @@ use crate::crc_error::CRCError;
 pub struct MemoryEntry {
     value: Box<[u8]>,
     tombstone: bool,
-    timestamp: u128
+    timestamp: u128,
 }
 
 impl MemoryEntry {
@@ -17,7 +18,7 @@ impl MemoryEntry {
         MemoryEntry {
             value: Box::from(value),
             timestamp,
-            tombstone
+            tombstone,
         }
     }
 
@@ -26,18 +27,18 @@ impl MemoryEntry {
         let mut with_hasher = Vec::new();
         let crc_hasher = Crc::<u32>::new(&CRC_32_ISCSI);
 
-        entry_bytes.extend(self.timestamp.to_ne_bytes());
+        entry_bytes.extend(variable_encode(self.timestamp).as_ref());
         entry_bytes.extend((self.tombstone as u8).to_ne_bytes());
-        entry_bytes.extend(key.len().to_ne_bytes());
+        entry_bytes.extend(variable_encode(key.len() as u128).as_ref());
         if !self.tombstone {
-            entry_bytes.extend(self.value.len().to_ne_bytes());
+            entry_bytes.extend(variable_encode(self.value.len() as u128).as_ref());
         }
         entry_bytes.extend(key.iter());
         if !self.tombstone {
             entry_bytes.extend(self.value.iter());
         }
 
-        with_hasher.extend(crc_hasher.checksum(&entry_bytes).to_ne_bytes().as_ref());
+        with_hasher.extend(variable_encode(crc_hasher.checksum(&entry_bytes) as u128).as_ref());
         with_hasher.extend(entry_bytes);
 
         with_hasher.into_boxed_slice()
@@ -45,63 +46,55 @@ impl MemoryEntry {
 
     pub fn deserialize(bytes: &[u8]) -> Result<(Box<[u8]>, Self), Box<dyn Error>> {
         let crc_hasher = Crc::<u32>::new(&CRC_32_ISCSI);
+        let mut offset = 0;
 
-        let crc = {
-            let mut crc_bytes = [0u8; 4];
-            crc_bytes.copy_from_slice(&bytes[0..4]);
-            u32::from_ne_bytes(crc_bytes)
-        };
+        let (crc_opt, length) = variable_decode(bytes);
+        let crc = crc_opt.unwrap() as u32;
+        offset += length;
 
-        let timestamp = {
-            let mut timestamp_bytes = [0u8; 16];
-            timestamp_bytes.copy_from_slice(&bytes[4..20]);
-            u128::from_ne_bytes(timestamp_bytes)
-        };
+        let (timestamp_opt, length) = variable_decode(&bytes[offset..]);
+        let timestamp = timestamp_opt.unwrap();
+        offset += length;
 
-        let tombstone = {
-            let mut tombstone_bytes = [0u8; 1];
-            tombstone_bytes.copy_from_slice(&bytes[20..21]);
-            u8::from_ne_bytes(tombstone_bytes) != 0
-        };
+        let tombstone = bytes[offset] != 0;
+        offset += 1;
 
-        let key_len = {
-            let mut key_len_bytes = [0u8; std::mem::size_of::<usize>()];
-            key_len_bytes.copy_from_slice(&bytes[21..21 + std::mem::size_of::<usize>()]);
-            usize::from_ne_bytes(key_len_bytes)
-        };
+        let (key_len_opt, length) = variable_decode(&bytes[offset..]);
+        let key_len = key_len_opt.unwrap() as usize;
+        offset += length;
 
         let value_len = if tombstone {
             0
         } else {
-            let mut value_len_bytes = [0u8; 8];
-            value_len_bytes.copy_from_slice(&bytes[21 + std::mem::size_of::<usize>()..21 + 2 * std::mem::size_of::<usize>()]);
-            usize::from_ne_bytes(value_len_bytes)
+            let (value_len_opt, length) = variable_decode(&bytes[offset..]);
+            offset += length;
+            value_len_opt.unwrap() as usize
         };
 
         let mut key = vec![0u8; key_len].into_boxed_slice();
-        if tombstone {
-            key.copy_from_slice(&bytes[21 + std::mem::size_of::<usize>()..21 + std::mem::size_of::<usize>() + key_len]);
-        } else {
-            key.copy_from_slice(&bytes[21 + 2 * std::mem::size_of::<usize>()..21 + 2 * std::mem::size_of::<usize>() + key_len]);
-        }
+        key.copy_from_slice(&bytes[offset..offset + key_len]);
+        offset += key_len;
 
         let value = if tombstone {
             vec![].into_boxed_slice()
         } else {
             let mut value = vec![0u8; value_len].into_boxed_slice();
-            value.copy_from_slice(&bytes[21 + 2 * std::mem::size_of::<usize>() + key_len..21 + 2 * std::mem::size_of::<usize>() + key_len + value_len]);
+            value.copy_from_slice(&bytes[offset..offset + value_len]);
             value
         };
 
         let mut bytes: Vec<u8> = Vec::new();
 
-        bytes.extend(timestamp.to_ne_bytes().as_ref());
-        bytes.extend((false as u8).to_ne_bytes());
-        bytes.extend(key_len.to_ne_bytes());
-        bytes.extend(value_len.to_ne_bytes());
+        bytes.extend(variable_encode(timestamp).as_ref());
+        bytes.extend((tombstone as u8).to_ne_bytes());
+        bytes.extend(variable_encode(key_len as u128).as_ref());
+        if !tombstone {
+            bytes.extend(variable_encode(value_len as u128).as_ref());
+        }
         bytes.extend(key.as_ref());
-        bytes.extend(value.as_ref());
-
+        if !tombstone {
+            bytes.extend(value.as_ref());
+        }
 
         if crc_hasher.checksum(&bytes) != crc {
             Err(Box::try_from(CRCError(crc)).unwrap())

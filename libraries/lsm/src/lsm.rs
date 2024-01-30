@@ -46,7 +46,7 @@ impl LSMConfig {
 }
 
 /// LSM(Log-Structured Merge Trees) struct for optimizing write-intensive workloads
-pub(crate) struct LSM {
+pub struct LSM {
     // Each vector represents one level containing directory names for SSTables
     sstable_directory_names: Vec<Vec<PathBuf>>,
     wal: WriteAheadLog,
@@ -67,7 +67,7 @@ impl LSM {
     /// # Returns
     ///
     /// LSM instance
-    pub(crate) fn new(dbconfig: &DBConfig) -> Result<Self, Box<dyn Error>> {
+    pub fn new(dbconfig: &DBConfig) -> Result<Self, Box<dyn Error>> {
         let lru_cache = LRUCache::new(dbconfig.cache_max_size);
         let mem_pool = MemoryPool::new(dbconfig)?;
         let wal = WriteAheadLog::new(dbconfig)?;
@@ -87,7 +87,12 @@ impl LSM {
             config: LSMConfig::from(dbconfig),
             wal,
             mem_pool,
-            lru_cache,
+            lru_cacheies/lsm/src/lib.rs
+libraries/lsm/src/lsm.rs
+libraries/lsm/src/mem_pool.rs
+libraries/lsm/src/sstable.rs
+libraries/segment_elements/src/lib.rs
+libraries/segment_elements/src/memory_entry.rs ,
             compression_dictionary: match dbconfig.use_compression {
                 true => Some(CompressionDictionary::load(dbconfig.compression_dictionary_path.as_str()).unwrap()),
                 false => None
@@ -108,7 +113,7 @@ impl LSM {
     /// # Returns
     ///
     /// Folder name of our new SSTable.
-    fn get_directory_name(level: usize, in_single_file: bool) -> PathBuf {
+    pub fn get_directory_name(level: usize, in_single_file: bool) -> PathBuf {
         let suffix = String::from(if in_single_file { "s" } else { "m" });
 
         PathBuf::from(format!("sstable_{}_{}_{}", level + 1, TimeStamp::Now.get_time(), suffix))
@@ -189,24 +194,19 @@ impl LSM {
     ///
     /// An io::Result containing bytes representing data associated with a given key.
     /// Bytes are wrapped in option because key may not be present in our database
-    fn get(&mut self, key: &[u8]) -> io::Result<Option<Box<[u8]>>> {
-        // todo!() da li vratiti bajte ili memory entry?
+    pub fn get(&mut self, key: &[u8]) -> io::Result<Option<MemoryEntry>> {
         // todo!() da li deserijalizacija bajtova moze biti problem ako se radi o probabilistickim strukturama??
-        if let Some(data) = self.mem_pool.get(key) {
-            let (key, memory_entry) = match MemoryEntry::deserialize(data.as_ref()) {
-                Ok((key, memory_entry)) => (key, memory_entry),
-                Err(err) => return Ok(None),
-            };
-            self.lru_cache.insert(&key, Some(memory_entry));
-            return Ok(Some(data));
+        if let Some(memory_entry) = self.mem_pool.get(key) {
+            self.lru_cache.insert(&key, Some(memory_entry.clone()));
+            return Ok(Some(memory_entry.clone()));
         }
         if let Some(data) = self.lru_cache.get(key) {
             let (key, memory_entry) = match MemoryEntry::deserialize(data.as_ref()) {
                 Ok((key, memory_entry)) => (key, memory_entry),
-                Err(err) => return Ok(None),
+                Err(_) => return Ok(None),
             };
-            self.lru_cache.insert(&key, Some(memory_entry));
-            return Ok(Some(data));
+            self.lru_cache.insert(&key, Some(memory_entry.clone()));
+            return Ok(Some(memory_entry.clone()));
         }
         for level in &self.sstable_directory_names {
             for sstable_dir in level.iter().rev() {
@@ -214,14 +214,13 @@ impl LSM {
                 let mut sstable = SSTable::open(path, in_single_file)?;
                 if let Some(data) = sstable.get(key, self.config.index_density, &mut self.compression_dictionary) {
                     self.lru_cache.insert(key, Some(data.clone()));
-                    return Ok(Some(data.serialize(key)));
+                    return Ok(Some(data));
                 }
             }
         }
         self.lru_cache.insert(key, None);
         Ok(None)
     }
-
 
     /// Function that inserts entry into database, First it gets inserted into wal and then into read/write memory table
     /// Also gives signal for flushing process if needed
@@ -235,7 +234,7 @@ impl LSM {
     /// # Returns
     ///
     /// An io::Result representing the success of operation
-    pub(crate) fn insert(&mut self, key: &[u8], value: &[u8], time_stamp: TimeStamp) -> io::Result<()> {
+    pub fn insert(&mut self, key: &[u8], value: &[u8], time_stamp: TimeStamp) -> io::Result<()> {
         self.wal.insert(key, value, time_stamp)?;
         if let Some(memory_table) = self.mem_pool.insert(key, value, time_stamp)? {
             self.flush(memory_table)?;
@@ -257,7 +256,7 @@ impl LSM {
     /// # Returns
     ///
     /// An io::Result representing the success of operation
-    fn delete(&mut self, key: &[u8], time_stamp: TimeStamp) -> io::Result<()> {
+    pub fn delete(&mut self, key: &[u8], time_stamp: TimeStamp) -> io::Result<()> {
         self.wal.delete(key, time_stamp)?;
         if let Some(memory_table) = self.mem_pool.delete(key, time_stamp)? {
             self.flush(memory_table)?;
@@ -412,7 +411,7 @@ impl LSM {
         }
         Ok(())
     }
-
+  
     fn get_keys_from_mem_table(memory_table: &MemoryTable, min_key: Option<&[u8]>, max_key: Option<&[u8]>, searched_key: Option<&[u8]>, scan_type: ScanType) -> Vec<(Box<[u8]>, MemoryEntry)> {
         let mut entries = Vec::new();
         let mut iterator = memory_table.iterator();
@@ -687,9 +686,26 @@ impl LSM {
 
         return Some((return_entry, offsets))
     }
-}
 
-pub(crate) enum ScanType {
-    RangeScan,
-    PrefixScan,
+    pub(crate) enum ScanType {
+        RangeScan,
+        PrefixScan,
+    }
+
+    pub fn load_from_dir(dbconfig: &DBConfig) -> Result<Self, Box<dyn Error>>{
+        let lru_cache = LRUCache::new(dbconfig.cache_max_size);
+        let mem_pool = MemoryPool::load_from_dir(dbconfig)?; // todo luka nez sta god
+        let wal = WriteAheadLog::new(dbconfig)?;
+        Ok(LSM {
+            config: LSMConfig::from(dbconfig),
+            wal,
+            mem_pool,
+            lru_cache,
+            compression_dictionary: match dbconfig.use_compression {
+                true => Some(CompressionDictionary::load(dbconfig.compression_dictionary_path.as_str()).unwrap()),
+                false => None
+            },
+            sstable_directory_names: Vec::with_capacity(dbconfig.lsm_max_level)
+        })
+    }
 }

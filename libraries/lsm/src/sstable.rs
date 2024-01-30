@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::fs::{create_dir_all, File, OpenOptions, remove_dir_all};
 use std::io;
 use std::io::{Cursor, Read, Seek, SeekFrom, Write};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use bloom_filter::BloomFilter;
 use lru_cache::LRUCache;
 use segment_elements::MemoryEntry;

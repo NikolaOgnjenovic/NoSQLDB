@@ -1,19 +1,17 @@
 use std::error::Error;
 use db_config::DBConfig;
-use lru_cache::LRUCache;
-use memtable::MemoryPool;
 use segment_elements::TimeStamp;
 use bloom_filter::BloomFilter;
 use count_min_sketch::CMSketch;
 use hyperloglog::HLL;
 use simhash::{hamming_distance};
-use crate::reserved_key_error::ReservedKeyError;
-use crate::probabilistic_type_error::ProbabilisticTypeError;
+use lsm::LSM;
+use crate::ReservedKeyError;
+use crate::ProbabilisticTypeError;
 
 pub struct DB {
     config: DBConfig,
-    memory_pool: MemoryPool,
-    cache: LRUCache,
+    lsm: LSM,
     // System reserved key prefixes for probabilistic data structures and the token bucket
     reserved_key_prefixes: [&'static [u8]; 5]
 }
@@ -22,8 +20,7 @@ impl Default for DB {
     fn default() -> Self {
         let default_config = DBConfig::default();
         DB {
-            cache: LRUCache::new(default_config.cache_max_size),
-            memory_pool: MemoryPool::new(&default_config).unwrap(),
+            lsm: LSM::new(&default_config).unwrap(),
             config: default_config,
             reserved_key_prefixes: ["bl00m_f1lt3r/".as_bytes(), "c0unt_m1n_$k3tch/".as_bytes(), "hyp3r_l0g_l0g/".as_bytes(), "$1m_ha$h/".as_bytes(), "t0k3n_buck3t/".as_bytes()]
         }
@@ -33,8 +30,7 @@ impl Default for DB {
 impl DB {
     pub fn build(config: DBConfig) -> Result<Self, Box<dyn Error>> {
         Ok(DB {
-            cache: LRUCache::new(config.cache_max_size),
-            memory_pool: MemoryPool::new(&config)?,
+            lsm: LSM::new(&config)?,
             config,
             reserved_key_prefixes: ["bl00m_f1lt3r/".as_bytes(), "c0unt_m1n_$k3tch/".as_bytes(), "hyp3r_l0g_l0g/".as_bytes(), "$1m_ha$h/".as_bytes(), "t0k3n_buck3t/".as_bytes()]
         })
@@ -43,12 +39,12 @@ impl DB {
     /// Reconstructs the last memory table from the WAL. Must be called when the program didn't end
     /// gracefully.
     pub fn reconstruct_from_wal(&mut self) {
-        self.memory_pool = MemoryPool::load_from_dir(&self.config).unwrap_or_else(|e| {
+        self.lsm = LSM::load_from_dir(&self.config).unwrap_or_else(|e| {
             eprintln!("Error occurred: {}", e);
             eprintln!("Memory pool wasn't reconstructed.");
             // unwrap can be called because if a possible error existed, it would have manifested at the
             // DB::build() function
-            MemoryPool::new(&self.config).unwrap()
+            LSM::new(&self.config).unwrap()
         });
     }
 
@@ -64,19 +60,19 @@ impl DB {
             }
         }
 
-        self.memory_pool.insert(key, value, TimeStamp::Now)?;
+        self.lsm.insert(key, value, TimeStamp::Now)?;
         Ok(())
     }
 
     /// Removes the value that's associated to the given key.
     pub fn delete(&mut self, key: &[u8]) -> std::io::Result<()> {
-        self.memory_pool.delete(key, TimeStamp::Now)
+        self.lsm.delete(key, TimeStamp::Now)
     }
 
     /// Retrieves the data that is associated to a given key.
-    pub fn get(&self, key: &[u8]) -> Option<Box<[u8]>> {
-        if let Some(value) = self.memory_pool.get(key) {
-            return Some(value);
+    pub fn get(&mut self, key: &[u8]) -> std::io::Result<Option<Box<[u8]>>> {
+        if let Some(memory_entry) = self.lsm.get(key)? {
+            return Ok(Some(memory_entry.get_value()));
         }
 
         // todo sstable get, komplikovano
@@ -87,7 +83,7 @@ impl DB {
     /// Should be called before the program exit to gracefully finish all memory tables writes,
     /// SStable merges and compactions.
     pub fn shut_down(&mut self) {
-        self.memory_pool.join_concurrent_writes();
+        //self.lsm.join_concurrent_writes();
         // todo join sstable LSM merge-ove i kompakcije
     }
 
@@ -100,7 +96,7 @@ impl DB {
     /// # Returns
     ///
     /// An `Option` containing the value associated with the key, or `None` if the key is not present.
-    pub fn bloom_filter_get(&self, key: &[u8]) -> Option<Box<[u8]>> {
+    pub fn bloom_filter_get(&mut self, key: &[u8]) -> std::io::Result<Option<Box<[u8]>>> {
         self.reserved_get(key, 0)
     }
 
@@ -164,7 +160,7 @@ impl DB {
     /// # Returns
     ///
     /// An `Option` containing the value associated with the key, or `None` if the key is not present.
-    pub fn count_min_sketch_get(&self, key: &[u8]) -> Option<Box<[u8]>> {
+    pub fn count_min_sketch_get(&mut self, key: &[u8]) -> std::io::Result<Option<Box<[u8]>>> {
         self.reserved_get(key, 1)
     }
 
@@ -218,7 +214,7 @@ impl DB {
     /// # Returns
     ///
     /// An `Option` containing the value associated with the key, or `None` if the key is not present.
-    pub fn hyperloglog_get(&self, key: &[u8]) -> Option<Box<[u8]>> {
+    pub fn hyperloglog_get(&mut self, key: &[u8]) -> std::io::Result<Option<Box<[u8]>>> {
         self.reserved_get(key, 2)
     }
 
@@ -285,14 +281,14 @@ impl DB {
     /// # Returns
     ///
     /// An `Option` containing the value associated with the key, or `None` if the key is not present.
-    fn reserved_get(&self, key: &[u8], index: usize) -> Option<Box<[u8]>> {
+    fn reserved_get(&mut self, key: &[u8], index: usize) -> std::io::Result<Option<Box<[u8]>>> {
         let combined_key = self.get_combined_key(key, index);
 
-        if let Some(value) = self.get(&combined_key) {
-            return Some(value);
+        if let Some(value) = self.get(&combined_key)? {
+            return Ok(Some(value));
         }
 
-        None
+        Ok(None)
     }
 
     /// Combines the given key with a reserved key prefix based on the specified index.
@@ -322,8 +318,8 @@ impl DB {
     ///
     /// Result containing the serialized bytes of the probabilistic data structure or an error
     /// wrapped in a `Box<dyn Error>`.
-    fn get_probabilistic_ds_bytes(&self, combined_key: &[u8]) -> Result<Box<[u8]>, Box<dyn Error>> {
-        match self.get(combined_key) {
+    fn get_probabilistic_ds_bytes(&mut self, combined_key: &[u8]) -> Result<Box<[u8]>, Box<dyn Error>> {
+        match self.get(combined_key)? {
             Some(bytes) => Ok(bytes),
             None => {
                 Err(Box::new(ProbabilisticTypeError {

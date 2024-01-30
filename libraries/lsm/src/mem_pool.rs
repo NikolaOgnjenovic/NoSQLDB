@@ -1,4 +1,3 @@
-
 mod record_iterator;
 
 use std::collections::VecDeque;
@@ -49,13 +48,13 @@ impl MemoryPool {
 
     /// Tries to retrieve key's data from all memory tables currently loaded in memory.
     /// Does not go into on-disk structures.
-    pub(crate) fn get(&self, key: &[u8]) -> Option<Box<[u8]>> {
+    pub(crate) fn get(&self, key: &[u8]) -> Option<MemoryEntry> {
         if self.read_write_table.is_empty() {
             return None;
         }
 
         if let Some(data) = self.read_write_table.get(key) {
-            return if !data.is_empty() {
+            return if !data.get_value().is_empty() {
                 Some(data)
             } else {
                 None
@@ -67,9 +66,9 @@ impl MemoryPool {
                 return None;
             }
 
-            if let Some(data) = table.get(key) {
-                return if !data.is_empty() {
-                    Some(data)
+            if let Some(memory_entry) = table.get(key) {
+                return if !memory_entry.get_value().is_empty() {
+                    Some(memory_entry)
                 } else {
                     None
                 }

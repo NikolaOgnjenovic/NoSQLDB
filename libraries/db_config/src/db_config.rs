@@ -1,3 +1,4 @@
+use std::fmt;
 use std::io::{BufReader, Error, ErrorKind, Write};
 use serde::{Deserialize, Serialize};
 use std::fs::File;
@@ -10,11 +11,32 @@ pub enum MemoryTableType {
     BTree,
 }
 
+/// Helper function to display MemoryTableType
+impl fmt::Display for MemoryTableType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            MemoryTableType::SkipList => write!(f, "SkipList"),
+            MemoryTableType::HashMap => write!(f, "HashMap"),
+            MemoryTableType::BTree => write!(f, "BTree"),
+        }
+    }
+}
+
 /// Options for the compaction algorithm type
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
 pub enum CompactionAlgorithmType {
     SizeTiered,
     Leveled,
+}
+
+/// Helper function to display MemoryTableType
+impl fmt::Display for CompactionAlgorithmType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CompactionAlgorithmType::SizeTiered => write!(f, "SizeTiered"),
+            CompactionAlgorithmType::Leveled => write!(f, "Leveled"),
+        }
+    }
 }
 
 /// Configuration parameters
@@ -46,6 +68,8 @@ pub struct DBConfig {
     pub use_compression: bool,
     pub compression_dictionary_path: String,
 }
+
+
 
 
 /// Default values for configuration parameters, used if properties are missing in JSON file

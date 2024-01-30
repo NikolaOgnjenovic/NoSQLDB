@@ -21,9 +21,9 @@ mod tests {
         skip_list.insert(&[2], &[20], TimeStamp::Now);
         skip_list.insert(&[3], &[30], TimeStamp::Now);
 
-        assert_eq!(skip_list.get(&[1]), Some(Box::from([10].to_vec())));
-        assert_eq!(skip_list.get(&[2]), Some(Box::from([20].to_vec())));
-        assert_eq!(skip_list.get(&[3]), Some(Box::from([30].to_vec())));
+        assert_eq!(skip_list.get(&[1]).unwrap().get_value(), Box::from([10].to_vec()));
+        assert_eq!(skip_list.get(&[2]).unwrap().get_value(), Box::from([20].to_vec()));
+        assert_eq!(skip_list.get(&[3]).unwrap().get_value(), Box::from([30].to_vec()));
     }
 
     #[test]
@@ -35,7 +35,7 @@ mod tests {
         skip_list.insert(&[3], &[30], TimeStamp::Now);
 
         assert!(!skip_list.delete(&[2], TimeStamp::Now));
-        assert_eq!(skip_list.get(&[2]), Some(Box::from([])));
+        assert_eq!(skip_list.get(&[2]).unwrap().get_value(), Box::from([]));
     }
 
     #[test]
@@ -54,7 +54,7 @@ mod tests {
         skip_list.insert(&[1], &[10], TimeStamp::Now);
         skip_list.insert(&[1], &[100], TimeStamp::Now); // Duplicate key
 
-        assert_eq!(skip_list.get(&[1]), Some(Box::from([100].to_vec())));
+        assert_eq!(skip_list.get(&[1]).unwrap().get_value(), Box::from([100].to_vec()));
     }
 
     #[test]
@@ -71,16 +71,16 @@ mod tests {
         let mut skip_list = SkipList::new(max_level);
 
         for i in 0..30i32 {
-            let key = (i).to_ne_bytes();
+            let key = i.to_ne_bytes();
             let value = (i * 2).to_ne_bytes();
             skip_list.insert(&key, &value, TimeStamp::Now);
         }
 
         for i in 0..30i32 {
-            let key = (i).to_ne_bytes();
+            let key = i.to_ne_bytes();
             let value = (i * 2).to_ne_bytes();
             let result = skip_list.get(&key);
-            assert_eq!(result, Some(Box::from(value)));
+            assert_eq!(result.unwrap().get_value(), Box::from(value));
         }
     }
 
@@ -93,7 +93,7 @@ mod tests {
         assert!(skip_list.insert(&[2], &[2], TimeStamp::Now));
         assert!(!skip_list.insert(&[1], &[3], TimeStamp::Now));
 
-        assert_eq!(Some(Box::from([3].to_vec())), skip_list.get(&[1]));
+        assert_eq!(Box::from([3].to_vec()), skip_list.get(&[1]).unwrap().get_value());
     }
 
     #[test]
@@ -102,17 +102,17 @@ mod tests {
         let mut skip_list = SkipList::new(max_level);
 
         for i in 0..40i32 {
-            let key = (i).to_ne_bytes();
+            let key = i.to_ne_bytes();
             let value = (i * 2).to_ne_bytes();
             skip_list.insert(&key, &value, TimeStamp::Now);
         }
         
         for i in 25..45i32 {
-            skip_list.delete(&(i).to_ne_bytes(), TimeStamp::Now);
+            skip_list.delete(&i.to_ne_bytes(), TimeStamp::Now);
         }
 
         assert_eq!(45, skip_list.get_length());
-        assert_eq!(skip_list.get(&20i32.to_ne_bytes()), Some(Box::from(40i32.to_ne_bytes())));
+        assert_eq!(skip_list.get(&20i32.to_ne_bytes()).unwrap().get_value(), Box::from(40i32.to_ne_bytes()));
     }
 
     #[test]

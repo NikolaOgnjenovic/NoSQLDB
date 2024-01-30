@@ -4,3 +4,6 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors = ["Momir Stanišić"]
+
+[dependencies]
+bitvec = "1.0.1"

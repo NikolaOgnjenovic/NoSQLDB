@@ -164,7 +164,7 @@ impl segment_elements::SegmentTrait for SkipList {
 		false
 	}
 
-	fn get(&self, key: &[u8]) -> Option<Box<[u8]>> {
+	fn get(&self, key: &[u8]) -> Option<MemoryEntry> {
 		let mut node = Arc::clone(&self.tail);
 
 		for i in (0..self.level).rev() {
@@ -174,7 +174,7 @@ impl segment_elements::SegmentTrait for SkipList {
 
 				match key.cmp(node_key) {
 					Ordering::Less => break,
-					Ordering::Equal => return Some(helper.get_val().serialize(key)),
+					Ordering::Equal => return Some(helper.get_val().clone()),
 					Ordering::Greater => node = next.clone()
 				}
 			}
