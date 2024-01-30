@@ -1,5 +1,5 @@
 #[derive(Debug)]
-pub struct CRCError(pub(crate) u32);
+pub struct CRCError(pub u32);
 
 impl std::fmt::Display for CRCError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

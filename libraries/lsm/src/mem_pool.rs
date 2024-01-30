@@ -1,4 +1,4 @@
-mod crc_error;
+
 mod record_iterator;
 
 use std::collections::VecDeque;
@@ -6,7 +6,7 @@ use std::error::Error;
 use std::io;
 use std::path::Path;
 use threadpool::ThreadPool;
-use segment_elements::TimeStamp;
+use segment_elements::{MemoryEntry, TimeStamp};
 use db_config::DBConfig;
 use crate::memtable::MemoryTable;
 use crate::mem_pool::record_iterator::RecordIterator;
@@ -103,6 +103,15 @@ impl MemoryPool {
         Ok(None)
     }
 
+    pub(crate) fn get_all_tables(&self) -> Vec<&MemoryTable> {
+        let mut memory_tables = Vec::new();
+        memory_tables.push(&self.read_write_table);
+        for memory_table in &self.read_only_tables {
+            memory_tables.push(memory_table);
+        }
+
+        memory_tables
+    }
     // fn flush_concurrent(&mut self, table: MemoryTable) {
     //     let density_move = self.config.summary_density;
     //
