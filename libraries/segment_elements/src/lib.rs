@@ -66,7 +66,7 @@ mod tests_hashmap_impl {
 
         assert!(map.insert(&key, &value, timestamp));
 
-        assert_eq!(map.get(&key), Some(value.to_vec().into_boxed_slice()));
+        assert_eq!(map.get(&key).unwrap().get_value(), value.to_vec().into_boxed_slice());
     }
 
     #[test]
@@ -79,7 +79,7 @@ mod tests_hashmap_impl {
 
         assert!(!map.delete(&key, timestamp));
 
-        assert_eq!(map.get(&key), Some(Box::from(&[] as &[u8])));
+        assert_eq!(map.get(&key).unwrap().get_value(), Box::from(&[] as &[u8]));
     }
 
     #[test]

@@ -1,6 +1,6 @@
-use std::cmp::{min, Ordering};
+use std::cmp::Ordering;
 use std::error::Error;
-use std::fs::{File, read_dir};
+use std::fs::read_dir;
 use std::io;
 use std::io::BufRead;
 use std::path::PathBuf;
@@ -10,10 +10,14 @@ use crate::sstable::SSTable;
 use db_config::{ DBConfig, CompactionAlgorithmType };
 use write_ahead_log::WriteAheadLog;
 use lru_cache::LRUCache;
-use crate::lsm::ScanType::RangeScan;
 
 use crate::mem_pool::MemoryPool;
 use crate::memtable::MemoryTable;
+
+pub(crate) enum ScanType {
+    RangeScan,
+    PrefixScan,
+}
 
 struct LSMConfig {
     // Base directory path where all other SSTable directories will be stored
@@ -87,12 +91,7 @@ impl LSM {
             config: LSMConfig::from(dbconfig),
             wal,
             mem_pool,
-            lru_cacheies/lsm/src/lib.rs
-libraries/lsm/src/lsm.rs
-libraries/lsm/src/mem_pool.rs
-libraries/lsm/src/sstable.rs
-libraries/segment_elements/src/lib.rs
-libraries/segment_elements/src/memory_entry.rs ,
+            lru_cache,
             compression_dictionary: match dbconfig.use_compression {
                 true => Some(CompressionDictionary::load(dbconfig.compression_dictionary_path.as_str()).unwrap()),
                 false => None
@@ -522,8 +521,6 @@ libraries/segment_elements/src/memory_entry.rs ,
             .collect();
         let merged_memory_entries = LSM::merge_scanned_entries(entries);
 
-
-
         //dobavi sve sstabele koji imaju key u zadatom opsegu
         let mut sstable_paths = Vec::new();
         for level in 0..self.config.max_level {
@@ -685,11 +682,6 @@ libraries/segment_elements/src/memory_entry.rs ,
 
 
         return Some((return_entry, offsets))
-    }
-
-    pub(crate) enum ScanType {
-        RangeScan,
-        PrefixScan,
     }
 
     pub fn load_from_dir(dbconfig: &DBConfig) -> Result<Self, Box<dyn Error>>{

@@ -178,7 +178,7 @@ impl SSTable {
         let serialized_merkle_tree = MerkleTree::new(&serialized_data).serialize();
 
         let flush_size = FlushByteSizes::new(serialized_index.len(), serialized_index_summary.len(),
-        serialized_merkle_tree.len(), serialized_bloom_filter.len(), serialized_data.len());
+                                             serialized_merkle_tree.len(), serialized_bloom_filter.len(), serialized_data.len());
 
         if self.in_single_file {
             self.write_to_single_file(&serialized_data, &serialized_index, &serialized_index_summary, &serialized_bloom_filter, &serialized_merkle_tree)?;
@@ -590,9 +590,9 @@ impl SSTable {
         for (index, element) in entries {
             let element = element.as_ref().unwrap();
             if !merging {
-                 if element.0.1.get_tombstone() {
-                     continue;
-                 }
+                if element.0.1.get_tombstone() {
+                    continue;
+                }
             }
             let key = &element.0.0;
             let compare_result = min_key.cmp(key);
@@ -767,43 +767,26 @@ impl SSTable {
         // Merge reads a single entry from the given offset without looping through index_density number of entries
         // Traverse through index_density entries to find the given key only if both are not None
         if let (Some(index_density), Some(key)) = (index_density, key) {
+            if index_density < 1 {
+                return None;
+            }
+
             let mut traversed_entries: usize = 0;
-
             while traversed_entries <= index_density {
-                let mut data_entry_reader = self.get_cursor_data(self.in_single_file, "SSTable-Data.db", SSTableElementType::Data, Some(offset + traversed_offset)).ok()?;
-                // Skip CRC & timestamp
-                data_entry_reader.seek(SeekFrom::Start(20)).ok()?;
-
-                // Read tombstone. If tombstone is true, skip value len
-                let mut tombstone_bytes = [0u8; 1];
-                data_entry_reader.read_exact(&mut tombstone_bytes).ok();
-                let tombstone = u8::from_ne_bytes(tombstone_bytes) != 0;
-
-                // Read key len
-                let mut key_len_bytes = [0u8; std::mem::size_of::<usize>()];
-                data_entry_reader.read_exact(&mut key_len_bytes).ok();
-                let key_len = usize::from_ne_bytes(key_len_bytes);
-
-                let value_len = if tombstone {
-                    0
-                } else {
-                    // Read value len
-                    let mut value_len_bytes = [0u8; std::mem::size_of::<usize>()];
-                    data_entry_reader.read_exact(&mut value_len_bytes).ok();
-                    usize::from_ne_bytes(value_len_bytes)
-                };
-
-                // Read key
-                let mut key_bytes = vec![0u8; key_len];
-                data_entry_reader.read_exact(&mut key_bytes).ok();
+                let mut current_offset_and_key_bytes = self.get_cursor_data(self.in_single_file, "SSTable-Data.db", SSTableElementType::DataEntryWithoutValue, Some(offset + traversed_offset)).ok()?;
 
                 // If the wanted key is found, break
-                if key_bytes.as_slice() == key {
+                if current_offset_and_key_bytes.as_slice() == key {
                     break;
                 }
 
                 traversed_entries += 1;
-                traversed_offset += (21 + 2 * std::mem::size_of::<usize>() + key_len + value_len) as u64;
+                // todo: make DataEntryKey return the entire header, just without the value
+                //  also make it return the length of the header in order to skip to the next entry properly
+                // todo: return how much a memory entry takes up if it's variably encoded
+                //  traversed_offset += length of entire memory entry (crc, tombstone, timestamp, key len value len as 2 numbers and then the actual key len and value len
+                // traversed offset used to be crc + timestamp + tombstone + key_eln + value_len (2 usize) + the actual lenghts
+                // traversed_offset += (21 + 2 * std::mem::size_of::<usize>() + key_len + value_len) as u64;
             }
 
             // If all index_density entries have been traversed and the key hasn't been found, return None
@@ -811,46 +794,13 @@ impl SSTable {
                 return None;
             }
         }
-
-        let mut data_entry_reader = self.get_cursor_data(self.in_single_file, "SSTable-Data.db", SSTableElementType::Data, Some(offset + traversed_offset)).ok()?;
-
-        let mut data_entry_bytes = vec![];
-        let mut crc_bytes = [0u8; 4];
-        data_entry_reader.read_exact(&mut crc_bytes).ok();
-        data_entry_bytes.extend_from_slice(&crc_bytes);
-
-        let mut timestamp_bytes = [0u8; 16];
-        data_entry_reader.read_exact(&mut timestamp_bytes).ok();
-        data_entry_bytes.extend_from_slice(&timestamp_bytes);
-
-        let mut tombstone_byte = [0u8; 1];
-        data_entry_reader.read_exact(&mut tombstone_byte).ok();
-        data_entry_bytes.extend_from_slice(&tombstone_byte);
-        let tombstone = u8::from_ne_bytes(tombstone_byte) != 0;
-
-        let mut key_len_bytes = [0u8; std::mem::size_of::<usize>()];
-        data_entry_reader.read_exact(&mut key_len_bytes).ok();
-        data_entry_bytes.extend_from_slice(&key_len_bytes);
-        let key_len = usize::from_ne_bytes(key_len_bytes);
-
-        let value_len = if tombstone {
-            0
-        } else {
-            let mut value_len_bytes = [0u8; std::mem::size_of::<usize>()];
-            data_entry_reader.read_exact(&mut value_len_bytes).ok();
-            data_entry_bytes.extend_from_slice(&value_len_bytes);
-            usize::from_ne_bytes(value_len_bytes)
-        };
-
-        let mut key_bytes = vec![0u8; key_len];
-        data_entry_reader.read_exact(&mut key_bytes).ok();
-        data_entry_bytes.extend_from_slice(&key_bytes);
-
-        let mut value_bytes = vec![0u8; value_len];
-        data_entry_reader.read_exact(&mut value_bytes).ok();
-        data_entry_bytes.extend_from_slice(&value_bytes);
-
-        // Deserialize the entry bytes
+        // Deserialize the last read memory entry bytes
+        // todo: append only the value of the last read memory entry without value
+        //  do this by calling self.get_cursor_data(..., Some(offset + traversed_offset + last entry without value length - value_length)
+        //  then read value length & value in cursor, append value to the last read memory entry and finally deserialize it
+        let header_length = 0; // todo: crc...key_len. read value_len, skip key, read value in get_cursor(DataEntryvalue) and return just value bytes
+        let mut data_entry_reader = self.get_cursor_data(self.in_single_file, "SSTable-Data.db", SSTableElementType::DataEntryValue, Some(offset + traversed_offset + header_length)).ok()?;
+        let data_entry_bytes = data_entry_reader.get_ref();
         match MemoryEntry::deserialize(&data_entry_bytes) {
             Ok(entry) => Some((entry, data_entry_bytes.len() as u64)),
             Err(_) => None,
@@ -909,7 +859,7 @@ impl SSTable {
         };
 
         match sstable_element_type {
-            SSTableElementType::Data => {
+            SSTableElementType::DataEntryWithoutValue => {
                 let result = file.seek(SeekFrom::Start(file_element_offset + total_entry_offset));
 
                 if let Err(err) = result {
@@ -923,13 +873,14 @@ impl SSTable {
                     }
                 }
 
-                // Read data entry metadata and then key and value len and bytes
-                let mut entry_metadata_bytes = vec![0u8; 21]; // CRC + tombstone + timestamp
-
+                // TODO: Perform optional decoding on this entry reading code
+                //  Decode the CRC, timestamp, key len, value len byte by byte
+                //  Since we aren't storing the length of the entry
+                let mut crc_timestamp_bytes = [0u8; 20]; // CRC + timestamp
                 // If no metadata bytes, EOF reached
-                match file.read_exact(&mut entry_metadata_bytes) {
+                match file.read_exact(&mut crc_timestamp_bytes) {
                     Ok(()) => {
-                        buffer.extend_from_slice(&entry_metadata_bytes);
+                        buffer.extend_from_slice(&crc_timestamp_bytes);
                     }
                     Err(_) => {
                         // If EOF, return empty vec
@@ -937,23 +888,43 @@ impl SSTable {
                     }
                 }
 
+                let mut entry_buffer = vec![];
+
+                let mut tombstone_byte = [0u8; 1];
+                file.read_exact(&mut tombstone_byte)?;
+                entry_buffer.extend_from_slice(&tombstone_byte);
+                let tombstone =  u8::from_ne_bytes(tombstone_byte) != 0;
+
                 let mut key_len_bytes = [0u8; std::mem::size_of::<usize>()];
-                file.read_exact(&mut key_len_bytes)?;
-                buffer.extend_from_slice(&mut key_len_bytes);
+                file.read_exact(&mut key_len_bytes).ok();
+                entry_buffer.extend_from_slice(&key_len_bytes);
                 let key_len = usize::from_ne_bytes(key_len_bytes);
 
-                let mut value_len_bytes = [0u8; std::mem::size_of::<usize>()];
-                file.read_exact(&mut value_len_bytes)?;
-                buffer.extend_from_slice(&value_len_bytes);
-                let value_len = usize::from_ne_bytes(value_len_bytes);
+                let value_len = if tombstone {
+                    0
+                } else {
+                    let mut value_len_bytes = [0u8; std::mem::size_of::<usize>()];
+                    file.read_exact(&mut value_len_bytes).ok();
+                    entry_buffer.extend_from_slice(&value_len_bytes);
+                    usize::from_ne_bytes(value_len_bytes)
+                };
 
                 let mut key_bytes = vec![0u8; key_len];
-                file.read_exact(&mut key_bytes)?;
-                buffer.extend_from_slice(&key_bytes);
+                file.read_exact(&mut key_bytes).ok();
+                entry_buffer.extend_from_slice(&key_bytes);
 
+                // todo: exclude when DataEntryWithoutValue
                 let mut value_bytes = vec![0u8; value_len];
-                file.read_exact(&mut value_bytes)?;
-                buffer.extend_from_slice(&value_bytes);
+                file.read_exact(&mut value_bytes).ok();
+                entry_buffer.extend_from_slice(&value_bytes);
+
+                // todo: take variable encoding into account instead of 21 + 2 * 8...
+                buffer.extend_from_slice(&(21 + 2 * 8 + key_len + value_len as u64).to_ne_bytes());
+                buffer.extend_from_slice(&entry_buffer);
+            },
+            // todo: implement
+            SSTableElementType::DataEntryValue => {
+                unimplemented!()
             },
             SSTableElementType::Index => {
                 file.seek(SeekFrom::Start(file_element_offset + total_entry_offset))?;
@@ -1154,8 +1125,8 @@ impl SSTable {
             match scan_type {
                 ScanType::RangeScan => {
                     if key.as_ref() >= searched_key {
-                break;
-                }
+                        break;
+                    }
                     offset = current_offset;
                 }
                 ScanType::PrefixScan => {
@@ -1172,7 +1143,7 @@ impl SSTable {
         Ok(offset as u64)
     }
 
-    ///ova funkcija mora postojati jer je jebeni index proredjen mamu mu jebem u picku
+    // todo: clean up
     /// idem ovom funkcijom dok ne naidjem na prvi key koji je veci od mog i tada ne updateujem offset vec vrnem taj offset nazad
     pub(crate) fn update_sstable_offsets(sstables: &mut Vec<SSTable>, in_single_files: Vec<bool>, mut current_offsets: Vec<u64>, searched_key: &[u8], scan_type: ScanType) -> io::Result<Vec<u64>> {
         for (index, sstable) in sstables.iter_mut().enumerate() {

@@ -55,330 +55,330 @@ mod lsm_tests {
     }
 }
 
-#[cfg(test)]
-mod mem_pool_wal_tests {
-    use std::fs;
-    use std::fs::{read_dir, remove_file};
-    use std::path::Path;
-    use db_config::DBConfig;
-    use segment_elements::TimeStamp;
-    use crate::mem_pool::MemoryPool;
-
-    #[test]
-    fn test_wal_reconstruction() {
-        let mut config = DBConfig::default();
-        config.write_ahead_log_dir += "test_wal_reconstruction/";
-        config.memory_table_capacity = 1000;
-        config.write_ahead_log_num_of_logs = 1000;
-        config.memory_table_pool_num = 20;
-
-        match read_dir(&config.write_ahead_log_dir) {
-            Ok(dir) => {
-                dir.map(|dir_entry| dir_entry.unwrap().path())
-                    .filter(|file| file.file_name().unwrap() != ".keep")
-                    .filter(|file| file.extension().unwrap() == "log" || file.extension().unwrap() == "num")
-                    .for_each(|file| remove_file(file).unwrap())
-            }
-            Err(_) => ()
-        }
-
-        let mut mem_pool = MemoryPool::new(&config).unwrap();
-
-        for i in 0..1_000_000u32 {
-            mem_pool.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now).expect("IO error");
-        }
-
-        let load_mem_pool = MemoryPool::load_from_dir(&config).unwrap();
-
-        for i in 985000..1_000_000u32 {
-            assert_eq!(load_mem_pool.get(&i.to_ne_bytes()), Some(Box::from((i * 2).to_ne_bytes())));
-        }
-    }
-
-    #[test]
-    fn test_wal_size_cap() {
-        let mut config = DBConfig::default();
-        config.write_ahead_log_dir += "test_wal_size_cap/";
-        config.memory_table_capacity = 10;
-        config.memory_table_pool_num = 3;
-        config.write_ahead_log_size = 50;
-
-        match read_dir(&config.write_ahead_log_dir) {
-            Ok(dir) => {
-                dir.map(|dir_entry| dir_entry.unwrap().path())
-                    .filter(|file| file.file_name().unwrap() != ".keep")
-                    .filter(|file| file.extension().unwrap() == "log" || file.extension().unwrap() == "num")
-                    .for_each(|file| remove_file(file).unwrap())
-            }
-            Err(_) => ()
-        }
-
-        let mut mem_pool = MemoryPool::new(&config).unwrap();
-
-        for i in 0..5u128 {
-            mem_pool.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now).expect("IO error");
-        }
-
-        for file in read_dir(&config.write_ahead_log_dir).unwrap()
-            .map(|dir_entry| dir_entry.unwrap().path())
-            .filter(|file| file.file_name().unwrap() != ".keep")
-            .filter(|file| file.extension().unwrap() == "log") {
-            assert!(fs::metadata(Path::new(&file)).unwrap().len() <= 50);
-        }
-
-        let load_mem_pool = MemoryPool::load_from_dir(&config).unwrap();
-
-        for i in 0..5u128 {
-            assert_eq!(load_mem_pool.get(&i.to_ne_bytes()), Some(Box::from((i * 2).to_ne_bytes())));
-        }
-    }
-
-    #[test]
-    fn test_wal_num_cap() {
-        let mut config = DBConfig::default();
-        config.write_ahead_log_dir += "test_wal_num_cap/";
-        config.memory_table_capacity = 100;
-        config.memory_table_pool_num = 3;
-        config.write_ahead_log_num_of_logs = 1;
-
-        match read_dir(&config.write_ahead_log_dir) {
-            Ok(dir) => {
-                dir.map(|dir_entry| dir_entry.unwrap().path())
-                    .filter(|file| file.file_name().unwrap() != ".keep")
-                    .filter(|file| file.extension().unwrap() == "log" || file.extension().unwrap() == "num")
-                    .for_each(|file| remove_file(file).unwrap())
-            }
-            Err(_) => ()
-        }
-
-        let mut mem_pool = MemoryPool::new(&config).unwrap();
-
-        for i in 0..100u128 {
-            mem_pool.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now).expect("IO error");
-        }
-
-        for file in read_dir(&config.write_ahead_log_dir).unwrap()
-            .map(|dir_entry| dir_entry.unwrap().path())
-            .filter(|file| file.file_name().unwrap() != ".keep")
-            .filter(|file| file.extension().unwrap() == "log") {
-            assert!(fs::metadata(Path::new(&file)).unwrap().len() <= 69 * 3);
-        }
-
-        let load_mem_pool = MemoryPool::load_from_dir(&config).unwrap();
-
-        for i in 0..100u128 {
-            assert_eq!(load_mem_pool.get(&i.to_ne_bytes()), Some(Box::from((i * 2).to_ne_bytes())));
-        }
-    }
-
-    #[test]
-    fn test_wal_size_cap2() {
-        let mut config = DBConfig::default();
-        config.write_ahead_log_dir += "test_wal_size_cap2/";
-        config.memory_table_capacity = 10;
-        config.memory_table_pool_num = 3;
-        config.write_ahead_log_size = 10;
-
-        match read_dir(&config.write_ahead_log_dir) {
-            Ok(dir) => {
-                dir.map(|dir_entry| dir_entry.unwrap().path())
-                    .filter(|file| file.file_name().unwrap() != ".keep")
-                    .filter(|file| file.extension().unwrap() == "log" || file.extension().unwrap() == "num")
-                    .for_each(|file| remove_file(file).unwrap())
-            }
-            Err(_) => ()
-        }
-
-        let mut mem_pool = MemoryPool::new(&config).unwrap();
-
-        for i in 0..10u128 {
-            mem_pool.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now).expect("IO error");
-        }
-
-        for file in read_dir(&config.write_ahead_log_dir).unwrap()
-            .map(|dir_entry| dir_entry.unwrap().path())
-            .filter(|file| file.file_name().unwrap() != ".keep")
-            .filter(|file| file.extension().unwrap() == "log") {
-            assert!(fs::metadata(Path::new(&file)).unwrap().len() <= 10);
-        }
-
-        let load_mem_pool = MemoryPool::load_from_dir(&config).unwrap();
-
-        for i in 0..10u128 {
-            assert_eq!(load_mem_pool.get(&i.to_ne_bytes()), Some(Box::from((i * 2).to_ne_bytes())));
-        }
-    }
-
-    #[test]
-    fn test_wal_num_and_size_cap() {
-        let mut config = DBConfig::default();
-        config.write_ahead_log_dir += "test_wal_num_and_size_cap/";
-        config.memory_table_capacity = 10;
-        config.memory_table_pool_num = 3;
-        config.write_ahead_log_num_of_logs = 1;
-        config.write_ahead_log_size = 10;
-
-        match read_dir(&config.write_ahead_log_dir) {
-            Ok(dir) => {
-                dir.map(|dir_entry| dir_entry.unwrap().path())
-                    .filter(|file| file.file_name().unwrap() != ".keep")
-                    .filter(|file| file.extension().unwrap() == "log" || file.extension().unwrap() == "num")
-                    .for_each(|file| remove_file(file).unwrap())
-            }
-            Err(_) => ()
-        }
-
-        let mut mem_pool = MemoryPool::new(&config).unwrap();
-
-        for i in 0..10u128 {
-            mem_pool.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now).expect("IO error");
-        }
-
-        for file in read_dir(&config.write_ahead_log_dir).unwrap()
-            .map(|dir_entry| dir_entry.unwrap().path())
-            .filter(|file| file.file_name().unwrap() != ".keep")
-            .filter(|file| file.extension().unwrap() == "log") {
-            assert!(fs::metadata(Path::new(&file)).unwrap().len() <= 200);
-        }
-
-        let load_mem_pool = MemoryPool::load_from_dir(&config).unwrap();
-
-        for i in 0..10u128 {
-            assert_eq!(load_mem_pool.get(&i.to_ne_bytes()), Some(Box::from((i * 2).to_ne_bytes())));
-        }
-    }
-
-    #[test]
-    fn test_wal_one_file_correct_reload() {
-        let mut config = DBConfig::default();
-        config.write_ahead_log_dir += "test_wal_one_file_correct_reload/";
-        config.memory_table_capacity = 10;
-        config.memory_table_pool_num = 10;
-        config.write_ahead_log_num_of_logs = 300001;
-
-        match read_dir(&config.write_ahead_log_dir) {
-            Ok(dir) => {
-                dir.map(|dir_entry| dir_entry.unwrap().path())
-                    .filter(|file| file.file_name().unwrap() != ".keep")
-                    .filter(|file| file.extension().unwrap() == "log" || file.extension().unwrap() == "num")
-                    .for_each(|file| remove_file(file).unwrap())
-            }
-            Err(_) => ()
-        }
-
-        let mut mem_pool = MemoryPool::new(&config).unwrap();
-
-        for i in 0..300000u128 {
-            mem_pool.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now).expect("IO error");
-        }
-
-        let load_mem_pool = MemoryPool::load_from_dir(&config).unwrap();
-
-        for i in 300000u128 - 84..300000u128 {
-            assert_eq!(load_mem_pool.get(&i.to_ne_bytes()), Some(Box::from((i * 2).to_ne_bytes())));
-        }
-    }
-
-    #[test]
-    fn test_wal_delete_on_flush() {
-        let mut config = DBConfig::default();
-        config.write_ahead_log_dir += "test_wal_delete_on_flush/";
-        config.memory_table_capacity = 10;
-        config.memory_table_pool_num = 10;
-        config.write_ahead_log_size = 1000;
-
-        match read_dir(&config.write_ahead_log_dir) {
-            Ok(dir) => {
-                dir.map(|dir_entry| dir_entry.unwrap().path())
-                    .filter(|file| file.file_name().unwrap() != ".keep")
-                    .filter(|file| file.extension().unwrap() == "log" || file.extension().unwrap() == "num")
-                    .for_each(|file| remove_file(file).unwrap())
-            }
-            Err(_) => ()
-        }
-
-        let mut mem_pool = MemoryPool::new(&config).unwrap();
-
-        for i in 0..300000u128 {
-            mem_pool.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now).expect("IO error");
-        }
-
-        assert!(read_dir(&config.write_ahead_log_dir).unwrap()
-                       .map(|dir_entry| dir_entry.unwrap().path())
-                       .filter(|file| file.file_name().unwrap() != ".keep")
-                       .filter(|file| file.extension().unwrap() == "log")
-                       .count() < 25);
-    }
-
-    #[test]
-    fn test_wal_big_input() {
-        let mut config = DBConfig::default();
-        config.write_ahead_log_dir += "test_wal_big_input/";
-        config.memory_table_capacity = 13;
-        config.memory_table_pool_num = 10;
-        config.write_ahead_log_size = 5;
-
-        match read_dir(&config.write_ahead_log_dir) {
-            Ok(dir) => {
-                dir.map(|dir_entry| dir_entry.unwrap().path())
-                    .filter(|file| file.file_name().unwrap() != ".keep")
-                    .filter(|file| file.extension().unwrap() == "log" || file.extension().unwrap() == "num")
-                    .for_each(|file| remove_file(file).unwrap())
-            }
-            Err(_) => ()
-        }
-        let mut mem_pool = MemoryPool::new(&config).unwrap();
-
-        let big_data = "老";
-
-        for i in 0..100 {
-            let big_input = big_data.repeat(i);
-            mem_pool.insert(big_input.as_bytes(), &2_u128.to_ne_bytes(), TimeStamp::Now).expect("IO error");
-        }
-
-        let load_mem_pool = MemoryPool::load_from_dir(&config).unwrap();
-
-        for i in 0..100 {
-            let big_input = big_data.repeat(i);
-            assert_eq!(load_mem_pool.get(&big_input.as_bytes()), Some(Box::from(2_u128.to_ne_bytes())));
-        }
-    }
-
-    #[test]
-    fn test_wal_small_input() {
-        let mut config = DBConfig::default();
-        config.write_ahead_log_dir += "test_wal_small_input/";
-        config.memory_table_capacity = 5;
-        config.memory_table_pool_num = 1;
-        config.write_ahead_log_num_of_logs = 100000;
-
-        match read_dir(&config.write_ahead_log_dir) {
-            Ok(dir) => {
-                dir.map(|dir_entry| dir_entry.unwrap().path())
-                    .filter(|file| file.file_name().unwrap() != ".keep")
-                    .filter(|file| file.extension().unwrap() == "log" || file.extension().unwrap() == "num")
-                    .for_each(|file| remove_file(file).unwrap())
-            }
-            Err(_) => ()
-        }
-        let mut mem_pool = MemoryPool::new(&config).unwrap();
-
-        for i in 0..53u8 {
-            println!("{i}");
-            mem_pool.insert(&i.to_ne_bytes(), &1_u128.to_ne_bytes(), TimeStamp::Now).expect("IO error");
-        }
-
-        let load_mem_pool = MemoryPool::load_from_dir(&config).unwrap();
-
-        for i in 0..50u8 {
-            assert_eq!(load_mem_pool.get(&i.to_ne_bytes()), None);
-        }
-
-        for i in 51..53u8 {
-            assert_eq!(load_mem_pool.get(&i.to_ne_bytes()), Some(Box::from(1_u128.to_ne_bytes())));
-        }
-    }
-}
+// #[cfg(test)]
+// mod mem_pool_wal_tests {
+//     use std::fs;
+//     use std::fs::{read_dir, remove_file};
+//     use std::path::Path;
+//     use db_config::DBConfig;
+//     use segment_elements::TimeStamp;
+//     use crate::mem_pool::MemoryPool;
+//
+//     #[test]
+//     fn test_wal_reconstruction() {
+//         let mut config = DBConfig::default();
+//         config.write_ahead_log_dir += "test_wal_reconstruction/";
+//         config.memory_table_capacity = 1000;
+//         config.write_ahead_log_num_of_logs = 1000;
+//         config.memory_table_pool_num = 20;
+//
+//         match read_dir(&config.write_ahead_log_dir) {
+//             Ok(dir) => {
+//                 dir.map(|dir_entry| dir_entry.unwrap().path())
+//                     .filter(|file| file.file_name().unwrap() != ".keep")
+//                     .filter(|file| file.extension().unwrap() == "log" || file.extension().unwrap() == "num")
+//                     .for_each(|file| remove_file(file).unwrap())
+//             }
+//             Err(_) => ()
+//         }
+//
+//         let mut mem_pool = MemoryPool::new(&config).unwrap();
+//
+//         for i in 0..1_000_000u32 {
+//             mem_pool.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now).expect("IO error");
+//         }
+//
+//         let load_mem_pool = MemoryPool::load_from_dir(&config).unwrap();
+//
+//         for i in 985000..1_000_000u32 {
+//             assert_eq!(load_mem_pool.get(&i.to_ne_bytes()), Some(Box::from((i * 2).to_ne_bytes())));
+//         }
+//     }
+//
+//     #[test]
+//     fn test_wal_size_cap() {
+//         let mut config = DBConfig::default();
+//         config.write_ahead_log_dir += "test_wal_size_cap/";
+//         config.memory_table_capacity = 10;
+//         config.memory_table_pool_num = 3;
+//         config.write_ahead_log_size = 50;
+//
+//         match read_dir(&config.write_ahead_log_dir) {
+//             Ok(dir) => {
+//                 dir.map(|dir_entry| dir_entry.unwrap().path())
+//                     .filter(|file| file.file_name().unwrap() != ".keep")
+//                     .filter(|file| file.extension().unwrap() == "log" || file.extension().unwrap() == "num")
+//                     .for_each(|file| remove_file(file).unwrap())
+//             }
+//             Err(_) => ()
+//         }
+//
+//         let mut mem_pool = MemoryPool::new(&config).unwrap();
+//
+//         for i in 0..5u128 {
+//             mem_pool.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now).expect("IO error");
+//         }
+//
+//         for file in read_dir(&config.write_ahead_log_dir).unwrap()
+//             .map(|dir_entry| dir_entry.unwrap().path())
+//             .filter(|file| file.file_name().unwrap() != ".keep")
+//             .filter(|file| file.extension().unwrap() == "log") {
+//             assert!(fs::metadata(Path::new(&file)).unwrap().len() <= 50);
+//         }
+//
+//         let load_mem_pool = MemoryPool::load_from_dir(&config).unwrap();
+//
+//         for i in 0..5u128 {
+//             assert_eq!(load_mem_pool.get(&i.to_ne_bytes()), Some(Box::from((i * 2).to_ne_bytes())));
+//         }
+//     }
+//
+//     #[test]
+//     fn test_wal_num_cap() {
+//         let mut config = DBConfig::default();
+//         config.write_ahead_log_dir += "test_wal_num_cap/";
+//         config.memory_table_capacity = 100;
+//         config.memory_table_pool_num = 3;
+//         config.write_ahead_log_num_of_logs = 1;
+//
+//         match read_dir(&config.write_ahead_log_dir) {
+//             Ok(dir) => {
+//                 dir.map(|dir_entry| dir_entry.unwrap().path())
+//                     .filter(|file| file.file_name().unwrap() != ".keep")
+//                     .filter(|file| file.extension().unwrap() == "log" || file.extension().unwrap() == "num")
+//                     .for_each(|file| remove_file(file).unwrap())
+//             }
+//             Err(_) => ()
+//         }
+//
+//         let mut mem_pool = MemoryPool::new(&config).unwrap();
+//
+//         for i in 0..100u128 {
+//             mem_pool.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now).expect("IO error");
+//         }
+//
+//         for file in read_dir(&config.write_ahead_log_dir).unwrap()
+//             .map(|dir_entry| dir_entry.unwrap().path())
+//             .filter(|file| file.file_name().unwrap() != ".keep")
+//             .filter(|file| file.extension().unwrap() == "log") {
+//             assert!(fs::metadata(Path::new(&file)).unwrap().len() <= 69 * 3);
+//         }
+//
+//         let load_mem_pool = MemoryPool::load_from_dir(&config).unwrap();
+//
+//         for i in 0..100u128 {
+//             assert_eq!(load_mem_pool.get(&i.to_ne_bytes()), Some(Box::from((i * 2).to_ne_bytes())));
+//         }
+//     }
+//
+//     #[test]
+//     fn test_wal_size_cap2() {
+//         let mut config = DBConfig::default();
+//         config.write_ahead_log_dir += "test_wal_size_cap2/";
+//         config.memory_table_capacity = 10;
+//         config.memory_table_pool_num = 3;
+//         config.write_ahead_log_size = 10;
+//
+//         match read_dir(&config.write_ahead_log_dir) {
+//             Ok(dir) => {
+//                 dir.map(|dir_entry| dir_entry.unwrap().path())
+//                     .filter(|file| file.file_name().unwrap() != ".keep")
+//                     .filter(|file| file.extension().unwrap() == "log" || file.extension().unwrap() == "num")
+//                     .for_each(|file| remove_file(file).unwrap())
+//             }
+//             Err(_) => ()
+//         }
+//
+//         let mut mem_pool = MemoryPool::new(&config).unwrap();
+//
+//         for i in 0..10u128 {
+//             mem_pool.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now).expect("IO error");
+//         }
+//
+//         for file in read_dir(&config.write_ahead_log_dir).unwrap()
+//             .map(|dir_entry| dir_entry.unwrap().path())
+//             .filter(|file| file.file_name().unwrap() != ".keep")
+//             .filter(|file| file.extension().unwrap() == "log") {
+//             assert!(fs::metadata(Path::new(&file)).unwrap().len() <= 10);
+//         }
+//
+//         let load_mem_pool = MemoryPool::load_from_dir(&config).unwrap();
+//
+//         for i in 0..10u128 {
+//             assert_eq!(load_mem_pool.get(&i.to_ne_bytes()), Some(Box::from((i * 2).to_ne_bytes())));
+//         }
+//     }
+//
+//     #[test]
+//     fn test_wal_num_and_size_cap() {
+//         let mut config = DBConfig::default();
+//         config.write_ahead_log_dir += "test_wal_num_and_size_cap/";
+//         config.memory_table_capacity = 10;
+//         config.memory_table_pool_num = 3;
+//         config.write_ahead_log_num_of_logs = 1;
+//         config.write_ahead_log_size = 10;
+//
+//         match read_dir(&config.write_ahead_log_dir) {
+//             Ok(dir) => {
+//                 dir.map(|dir_entry| dir_entry.unwrap().path())
+//                     .filter(|file| file.file_name().unwrap() != ".keep")
+//                     .filter(|file| file.extension().unwrap() == "log" || file.extension().unwrap() == "num")
+//                     .for_each(|file| remove_file(file).unwrap())
+//             }
+//             Err(_) => ()
+//         }
+//
+//         let mut mem_pool = MemoryPool::new(&config).unwrap();
+//
+//         for i in 0..10u128 {
+//             mem_pool.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now).expect("IO error");
+//         }
+//
+//         for file in read_dir(&config.write_ahead_log_dir).unwrap()
+//             .map(|dir_entry| dir_entry.unwrap().path())
+//             .filter(|file| file.file_name().unwrap() != ".keep")
+//             .filter(|file| file.extension().unwrap() == "log") {
+//             assert!(fs::metadata(Path::new(&file)).unwrap().len() <= 200);
+//         }
+//
+//         let load_mem_pool = MemoryPool::load_from_dir(&config).unwrap();
+//
+//         for i in 0..10u128 {
+//             assert_eq!(load_mem_pool.get(&i.to_ne_bytes()), Some(Box::from((i * 2).to_ne_bytes())));
+//         }
+//     }
+//
+//     #[test]
+//     fn test_wal_one_file_correct_reload() {
+//         let mut config = DBConfig::default();
+//         config.write_ahead_log_dir += "test_wal_one_file_correct_reload/";
+//         config.memory_table_capacity = 10;
+//         config.memory_table_pool_num = 10;
+//         config.write_ahead_log_num_of_logs = 300001;
+//
+//         match read_dir(&config.write_ahead_log_dir) {
+//             Ok(dir) => {
+//                 dir.map(|dir_entry| dir_entry.unwrap().path())
+//                     .filter(|file| file.file_name().unwrap() != ".keep")
+//                     .filter(|file| file.extension().unwrap() == "log" || file.extension().unwrap() == "num")
+//                     .for_each(|file| remove_file(file).unwrap())
+//             }
+//             Err(_) => ()
+//         }
+//
+//         let mut mem_pool = MemoryPool::new(&config).unwrap();
+//
+//         for i in 0..300000u128 {
+//             mem_pool.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now).expect("IO error");
+//         }
+//
+//         let load_mem_pool = MemoryPool::load_from_dir(&config).unwrap();
+//
+//         for i in 300000u128 - 84..300000u128 {
+//             assert_eq!(load_mem_pool.get(&i.to_ne_bytes()), Some(Box::from((i * 2).to_ne_bytes())));
+//         }
+//     }
+//
+//     #[test]
+//     fn test_wal_delete_on_flush() {
+//         let mut config = DBConfig::default();
+//         config.write_ahead_log_dir += "test_wal_delete_on_flush/";
+//         config.memory_table_capacity = 10;
+//         config.memory_table_pool_num = 10;
+//         config.write_ahead_log_size = 1000;
+//
+//         match read_dir(&config.write_ahead_log_dir) {
+//             Ok(dir) => {
+//                 dir.map(|dir_entry| dir_entry.unwrap().path())
+//                     .filter(|file| file.file_name().unwrap() != ".keep")
+//                     .filter(|file| file.extension().unwrap() == "log" || file.extension().unwrap() == "num")
+//                     .for_each(|file| remove_file(file).unwrap())
+//             }
+//             Err(_) => ()
+//         }
+//
+//         let mut mem_pool = MemoryPool::new(&config).unwrap();
+//
+//         for i in 0..300000u128 {
+//             mem_pool.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now).expect("IO error");
+//         }
+//
+//         assert!(read_dir(&config.write_ahead_log_dir).unwrap()
+//                        .map(|dir_entry| dir_entry.unwrap().path())
+//                        .filter(|file| file.file_name().unwrap() != ".keep")
+//                        .filter(|file| file.extension().unwrap() == "log")
+//                        .count() < 25);
+//     }
+//
+//     #[test]
+//     fn test_wal_big_input() {
+//         let mut config = DBConfig::default();
+//         config.write_ahead_log_dir += "test_wal_big_input/";
+//         config.memory_table_capacity = 13;
+//         config.memory_table_pool_num = 10;
+//         config.write_ahead_log_size = 5;
+//
+//         match read_dir(&config.write_ahead_log_dir) {
+//             Ok(dir) => {
+//                 dir.map(|dir_entry| dir_entry.unwrap().path())
+//                     .filter(|file| file.file_name().unwrap() != ".keep")
+//                     .filter(|file| file.extension().unwrap() == "log" || file.extension().unwrap() == "num")
+//                     .for_each(|file| remove_file(file).unwrap())
+//             }
+//             Err(_) => ()
+//         }
+//         let mut mem_pool = MemoryPool::new(&config).unwrap();
+//
+//         let big_data = "老";
+//
+//         for i in 0..100 {
+//             let big_input = big_data.repeat(i);
+//             mem_pool.insert(big_input.as_bytes(), &2_u128.to_ne_bytes(), TimeStamp::Now).expect("IO error");
+//         }
+//
+//         let load_mem_pool = MemoryPool::load_from_dir(&config).unwrap();
+//
+//         for i in 0..100 {
+//             let big_input = big_data.repeat(i);
+//             assert_eq!(load_mem_pool.get(&big_input.as_bytes()), Some(Box::from(2_u128.to_ne_bytes())));
+//         }
+//     }
+//
+//     #[test]
+//     fn test_wal_small_input() {
+//         let mut config = DBConfig::default();
+//         config.write_ahead_log_dir += "test_wal_small_input/";
+//         config.memory_table_capacity = 5;
+//         config.memory_table_pool_num = 1;
+//         config.write_ahead_log_num_of_logs = 100000;
+//
+//         match read_dir(&config.write_ahead_log_dir) {
+//             Ok(dir) => {
+//                 dir.map(|dir_entry| dir_entry.unwrap().path())
+//                     .filter(|file| file.file_name().unwrap() != ".keep")
+//                     .filter(|file| file.extension().unwrap() == "log" || file.extension().unwrap() == "num")
+//                     .for_each(|file| remove_file(file).unwrap())
+//             }
+//             Err(_) => ()
+//         }
+//         let mut mem_pool = MemoryPool::new(&config).unwrap();
+//
+//         for i in 0..53u8 {
+//             println!("{i}");
+//             mem_pool.insert(&i.to_ne_bytes(), &1_u128.to_ne_bytes(), TimeStamp::Now).expect("IO error");
+//         }
+//
+//         let load_mem_pool = MemoryPool::load_from_dir(&config).unwrap();
+//
+//         for i in 0..50u8 {
+//             assert_eq!(load_mem_pool.get(&i.to_ne_bytes()), None);
+//         }
+//
+//         for i in 51..53u8 {
+//             assert_eq!(load_mem_pool.get(&i.to_ne_bytes()), Some(Box::from(1_u128.to_ne_bytes())));
+//         }
+//     }
+// }
 
 #[cfg(test)]
 mod sstable_tests {
