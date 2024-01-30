@@ -1,5 +1,5 @@
 mod db_menu;
-pub(crate) mod initializer_menu;
+pub mod initializer_menu;
 mod count_min_sketch_menu;
 mod customize_menu;
 mod hyperloglog_menu;
@@ -19,7 +19,7 @@ pub trait UserMenu: std::fmt::Display + enum_iterator::Sequence {
 #[macro_export]
 macro_rules! impl_menu {
     ($menu: ty, $msg: expr, $($op: pat, $op_msg: expr),*) => {
-        impl crate::UserMenu for $menu {
+        impl crate::menus::UserMenu for $menu {
             fn get_message() -> &'static str {
                 $msg
             }
@@ -39,17 +39,16 @@ macro_rules! impl_menu {
 }
 
 /// Helper function to get u8 input
-fn get_input_u8(prompt_message: &str) -> &[u8] {
-    loop {
-        let input_str = Text::new(prompt_message)
-            .prompt()
-            .unwrap();
-        let input_bytes = input_str.as_bytes();
-        if !input_bytes.is_empty() {
-            return input_bytes;
-        }
-        println!("Invalid key. Please enter a valid byte sequence.");
+fn get_input_u8(prompt_message: &str) -> Option<Box<[u8]>> {
+    let input_str = Text::new(prompt_message)
+        .prompt()
+        .unwrap();
+    let input_bytes = input_str.as_bytes();
+    if !input_bytes.is_empty() {
+        return Some(Box::from(input_bytes))
     }
+
+    None
 }
 
 /// Helper function to print out the requirements and get usize input

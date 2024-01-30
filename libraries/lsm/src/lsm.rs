@@ -42,7 +42,7 @@ impl LSMConfig {
 }
 
 /// LSM(Log-Structured Merge Trees) struct for optimizing write-intensive workloads
-pub(crate) struct LSM {
+pub struct LSM {
     // Each vector represents one level containing directory names for SSTables
     sstable_directory_names: Vec<Vec<PathBuf>>,
     wal: WriteAheadLog,
@@ -63,7 +63,7 @@ impl LSM {
     /// # Returns
     ///
     /// LSM instance
-    fn new(dbconfig: &DBConfig) -> Result<Self, Box<dyn Error>> {
+    pub fn new(dbconfig: &DBConfig) -> Result<Self, Box<dyn Error>> {
         let lru_cache = LRUCache::new(dbconfig.cache_max_size);
         let mem_pool = MemoryPool::new(dbconfig)?;
         let wal = WriteAheadLog::new(dbconfig)?;
@@ -90,7 +90,7 @@ impl LSM {
     /// # Returns
     ///
     /// Folder name of our new SSTable.
-    fn get_directory_name(level: usize, in_single_file: bool) -> PathBuf {
+    pub fn get_directory_name(level: usize, in_single_file: bool) -> PathBuf {
         let suffix = String::from(if in_single_file { "s" } else { "m" });
 
         PathBuf::from(format!("sstable_{}_{}_{}", level + 1, TimeStamp::Now.get_time(), suffix))
@@ -148,7 +148,7 @@ impl LSM {
             .filter(|(_, path)| {
                 let sstable_base_path = parent_dir.join(path);
                 let in_single_file = LSM::is_in_single_file(path);
-                match SSTable::get_key_range(sstable_base_path.as_path(), in_single_file) {
+                match SSTable::get_key_range(sstable_base_path, in_single_file) {
                     Ok((min_key, max_key)) => max_key >= Box::from(main_max_key) && min_key <= Box::from(main_min_key),
                     Err(_) => false,
                 }
@@ -171,33 +171,33 @@ impl LSM {
     ///
     /// An io::Result containing bytes representing data associated with a given key.
     /// Bytes are wrapped in option because key may not be present in our database
-    fn get(&mut self, key: &[u8]) -> io::Result<Option<Box<[u8]>>> {
-        // todo!() da li vratiti bajte ili memory entry?
+    pub fn get(&mut self, key: &[u8]) -> io::Result<Option<MemoryEntry>> {
         // todo!() da li deserijalizacija bajtova moze biti problem ako se radi o probabilistickim strukturama??
-        if let Some(data) = self.mem_pool.get(key) {
-            let (key, memory_entry) = MemoryEntry::deserialize(data.as_ref())?;
-            self.lru_cache.insert(&key, Some(memory_entry));
-            return Ok(Some(data));
+        if let Some(memory_entry) = self.mem_pool.get(key) {
+            self.lru_cache.insert(&key, Some(memory_entry.clone()));
+            return Ok(Some(memory_entry.clone()));
         }
         if let Some(data) = self.lru_cache.get(key) {
-            let (key, memory_entry) = MemoryEntry::deserialize(data.as_ref())?;
-            self.lru_cache.insert(&key, Some(memory_entry));
-            return Ok(Some(data));
+            let (key, memory_entry) = match MemoryEntry::deserialize(data.as_ref()) {
+                Ok((key, memory_entry)) => (key, memory_entry),
+                Err(_) => return Ok(None),
+            };
+            self.lru_cache.insert(&key, Some(memory_entry.clone()));
+            return Ok(Some(memory_entry.clone()));
         }
         for level in &self.sstable_directory_names {
             for sstable_dir in level.iter().rev() {
                 let (path, in_single_file) = self.get_sstable_path(sstable_dir);
-                let mut sstable = SSTable::open(path.as_path(), in_single_file)?;
+                let mut sstable = SSTable::open(path, in_single_file)?;
                 if let Some(data) = sstable.get(key, self.config.index_density, &mut self.compression_dictionary) {
                     self.lru_cache.insert(key, Some(data.clone()));
-                    return Ok(Some(data.serialize(key)));
+                    return Ok(Some(data));
                 }
             }
         }
         self.lru_cache.insert(key, None);
         Ok(None)
     }
-
 
     /// Function that inserts entry into database, First it gets inserted into wal and then into read/write memory table
     /// Also gives signal for flushing process if needed
@@ -211,7 +211,7 @@ impl LSM {
     /// # Returns
     ///
     /// An io::Result representing the success of operation
-    fn insert(&mut self, key: &[u8], value: &[u8], time_stamp: TimeStamp) -> io::Result<()> {
+    pub fn insert(&mut self, key: &[u8], value: &[u8], time_stamp: TimeStamp) -> io::Result<()> {
         self.wal.insert(key, value, time_stamp)?;
         if let Some(memory_table) = self.mem_pool.insert(key, value, time_stamp)? {
             self.flush(memory_table)?;
@@ -233,7 +233,7 @@ impl LSM {
     /// # Returns
     ///
     /// An io::Result representing the success of operation
-    fn delete(&mut self, key: &[u8], time_stamp: TimeStamp) -> io::Result<()> {
+    pub fn delete(&mut self, key: &[u8], time_stamp: TimeStamp) -> io::Result<()> {
         self.wal.delete(key, time_stamp)?;
         if let Some(memory_table) = self.mem_pool.delete(key, time_stamp)? {
             self.flush(memory_table)?;
@@ -258,7 +258,7 @@ impl LSM {
         let directory_name = LSM::get_directory_name(0, in_single_file);
         let sstable_base_path = self.config.parent_dir.join(directory_name.as_path());
 
-        let mut sstable = SSTable::open(sstable_base_path.as_path(), in_single_file)?;
+        let mut sstable = SSTable::open(sstable_base_path, in_single_file)?;
         let flush_bytes = sstable.flush(mem_table, summary_density, index_density, Some(&mut self.lru_cache), &mut self.compression_dictionary)?;
         let mem_table_byte_size = flush_bytes.get_data_len();
         self.wal.add_to_starting_byte(mem_table_byte_size).unwrap();
@@ -300,13 +300,12 @@ impl LSM {
                 sstable_single_file.push(LSM::is_in_single_file(path));
             }
 
-            // Make a name for new SSTable and convert PathBuf into Path
-            let sstable_base_paths:Vec<_> = sstable_base_paths.iter().map(|path_buf| path_buf.as_path()).collect();
+            // Make a name for new SSTable
             let merged_directory = PathBuf::from(LSM::get_directory_name(level+1, merged_in_single_file));
             let merged_base_path = self.config.parent_dir.join(merged_directory.clone());
 
             // Merge them all together, push merged SSTable into sstable_directory_names and delete all SSTables involved in merging process
-            SSTable::merge(sstable_base_paths, sstable_single_file, merged_base_path.as_path(), merged_in_single_file, self.config.summary_density, self.config.index_density, &mut self.compression_dictionary)?;
+            SSTable::merge(sstable_base_paths, sstable_single_file, merged_base_path, merged_in_single_file, self.config.summary_density, self.config.index_density, &mut self.compression_dictionary)?;
             self.sstable_directory_names[level].clear();
             self.sstable_directory_names[level+1].push(merged_directory);
 
@@ -339,17 +338,17 @@ impl LSM {
             // Choose first SStable from given level
             let main_sstable_base_path = self.config.parent_dir.join(self.sstable_directory_names[level].remove(0));
             let in_single_file = LSM::is_in_single_file(&main_sstable_base_path);
-            let (main_min_key, main_max_key) = SSTable::get_key_range(main_sstable_base_path.as_path(), in_single_file)?;
+            let (main_min_key, main_max_key) = SSTable::get_key_range(main_sstable_base_path.to_owned(), in_single_file)?;
 
             // Find SStables with keys in similar range one level below
             let in_range_paths = LSM::find_similar_key_ranges(&self.sstable_directory_names, &self.config.parent_dir, &main_min_key, &main_max_key, level+1)?;
             let mut sstable_base_paths: Vec<_> = in_range_paths.clone()
                 .into_iter()
-                .map(|(_, path)| path.as_path())
+                .map(|(_, path)| path.to_owned())
                 .collect();
 
             // Put main SStable in vector and create vector of booleans indicating whether each SSTable is in a single file
-            sstable_base_paths.push(main_sstable_base_path.as_path());
+            sstable_base_paths.push(main_sstable_base_path.to_owned());
             let mut sstable_single_file = Vec::new();
             for path in &sstable_base_paths {
                 sstable_single_file.push(LSM::is_in_single_file(&path.to_owned().to_path_buf()));
@@ -360,7 +359,7 @@ impl LSM {
             let merged_base_path = self.config.parent_dir.join(merged_directory.clone());
 
             // Merge them all together
-            SSTable::merge(sstable_base_paths, sstable_single_file, merged_base_path.as_path(), merged_in_single_file, self.config.summary_density, self.config.index_density, &mut self.compression_dictionary)?;
+            SSTable::merge(sstable_base_paths, sstable_single_file, merged_base_path, merged_in_single_file, self.config.summary_density, self.config.index_density, &mut self.compression_dictionary)?;
 
             // Extract indexes of SSTable that need to be removed
             let indexes_to_delete: Vec<_> = in_range_paths
@@ -387,5 +386,22 @@ impl LSM {
             }
         }
         Ok(())
+    }
+
+    pub fn load_from_dir(dbconfig: &DBConfig) -> Result<Self, Box<dyn Error>>{
+        let lru_cache = LRUCache::new(dbconfig.cache_max_size);
+        let mem_pool = MemoryPool::load_from_dir(dbconfig)?; // todo luka nez sta god
+        let wal = WriteAheadLog::new(dbconfig)?;
+        Ok(LSM {
+            config: LSMConfig::from(dbconfig),
+            wal,
+            mem_pool,
+            lru_cache,
+            compression_dictionary: match dbconfig.use_compression {
+                true => Some(CompressionDictionary::load(dbconfig.compression_dictionary_path.as_str()).unwrap()),
+                false => None
+            },
+            sstable_directory_names: Vec::with_capacity(dbconfig.lsm_max_level)
+        })
     }
 }

@@ -7,7 +7,7 @@ use enum_iterator::Sequence;
 use inquire::{Confirm, Select};
 use colored::Colorize;
 use crate::impl_menu;
-use crate::menus::get_input_with_range;
+use crate::menus::{get_input_with_range, UserMenu};
 
 #[derive(Sequence)]
 enum CustomizeMenu {
@@ -23,6 +23,7 @@ enum CustomizeMenu {
     MemoryTableCapacity,
     MemoryTableType,
     MemoryTablePoolNum,
+    IndexDensity,
     SummaryDensity,
     SSTableSingleFile,
     SSTableDir,
@@ -96,7 +97,7 @@ pub fn customize_menu(dbconfig: &mut DBConfig) {
                 clearscreen::clear().expect("Failed to clear screen.");
                 let new_value = get_input_with_range(
                     "Enter new bloom filter capacity:",
-                    500000,
+                    10,
                     3000000,
                 );
                 dbconfig.bloom_filter_cap = new_value;
@@ -183,18 +184,17 @@ pub fn customize_menu(dbconfig: &mut DBConfig) {
                 let choice = Select::new("Select memory table type:", options)
                     .prompt();
                 let choice_str = choice.as_ref().map(|s| s.as_str()).unwrap_or("Invalid Selection");
-                let mut memory_table_type = MemoryTableType::SkipList; // default
-                match choice_str {
-                    "SkipList" => memory_table_type = MemoryTableType::SkipList,
-                    "HashMap" => memory_table_type = MemoryTableType::HashMap,
-                    "BTree" => memory_table_type = MemoryTableType::BTree,
+                let memory_table_type = match choice_str {
+                    "SkipList" => MemoryTableType::SkipList,
+                    "HashMap" => MemoryTableType::HashMap,
+                    "BTree" => MemoryTableType::BTree,
                     _ => {
                         println!("Invalid selection");
                         continue
                     }
-                }
-                dbconfig.memory_table_type = memory_table_type;
+                };
                 println!("Set memory table type to {}", memory_table_type);
+                dbconfig.memory_table_type = memory_table_type;
             }
             CustomizeMenu::MemoryTablePoolNum => {
                 clearscreen::clear().expect("Failed to clear screen.");
@@ -202,9 +202,15 @@ pub fn customize_menu(dbconfig: &mut DBConfig) {
                 dbconfig.memory_table_pool_num = new_value;
                 println!("Mem table pool num changed to {}", new_value);
             }
+            CustomizeMenu::IndexDensity => {
+                clearscreen::clear().expect("Failed to clear screen.");
+                let new_value = get_input_with_range("Enter new index density: ", 1, 1000);
+                dbconfig.index_density = new_value;
+                println!("Index density changed to {}", new_value);
+            }
             CustomizeMenu::SummaryDensity => {
                 clearscreen::clear().expect("Failed to clear screen.");
-                let new_value = get_input_with_range("Enter new summery density: ", 1, 5);
+                let new_value = get_input_with_range("Enter new summery density: ", 1, 1000);
                 dbconfig.summary_density = new_value;
                 println!("Summery density changed to {}", new_value);
             }
@@ -275,15 +281,14 @@ pub fn customize_menu(dbconfig: &mut DBConfig) {
                     .prompt();
 
                 let choice_str = choice.as_ref().map(|s| s.as_str()).unwrap_or("Invalid Selection");
-                let mut compaction_algorithm_type = CompactionAlgorithmType::SizeTiered; // default
-                match choice_str {
-                    "SizeTiered" => compaction_algorithm_type = CompactionAlgorithmType::SizeTiered,
-                    "Leveled" => compaction_algorithm_type = CompactionAlgorithmType::Leveled,
+                let compaction_algorithm_type= match choice_str {
+                    "SizeTiered" => CompactionAlgorithmType::SizeTiered,
+                    "Leveled" => CompactionAlgorithmType::Leveled,
                     _ => {
                         println!("Invalid selection");
                         continue
                     }
-                }
+                };
 
                 dbconfig.compaction_algorithm_type = compaction_algorithm_type;
                 println!("Set compaction algorithm type to {}", compaction_algorithm_type);

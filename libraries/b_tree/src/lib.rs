@@ -10,7 +10,7 @@ pub use order_error::OrderError;
 mod tests {
     use peak_alloc::PeakAlloc;
     use rand::Rng;
-    use segment_elements::{SegmentTrait, TimeStamp};
+    use segment_elements::{MemoryEntry, SegmentTrait, TimeStamp};
     use crate::b_tree::BTree;
 
     #[global_allocator]
@@ -34,15 +34,17 @@ mod tests {
 
             let mut added_elements = Vec::new();
             let mut rng = rand::thread_rng();
+            let const_timestamp = TimeStamp::Custom(123);
 
             for _ in 0..100000 {
                 let random_number: u128 = rng.gen_range(0..=1000000000);
                 added_elements.push(random_number);
-                b.insert(&random_number.to_ne_bytes(), &(random_number * 2).to_ne_bytes(), TimeStamp::Now);
+                b.insert(&random_number.to_ne_bytes(), &(random_number * 2).to_ne_bytes(), const_timestamp);
             }
 
             for random_number in added_elements {
-                assert_eq!(b.get(&random_number.to_ne_bytes()).unwrap(), Box::from((random_number * 2).to_ne_bytes()));
+                let mementry = MemoryEntry::from(&(random_number * 2).to_ne_bytes(), false, const_timestamp.get_time());
+                assert_eq!(b.get(&random_number.to_ne_bytes()).unwrap(), mementry);
             }
         }
     }
@@ -51,27 +53,29 @@ mod tests {
     fn insert_multiple_twice() {
         let mut b = BTree::new(4).unwrap();
 
+        let const_timestamp = TimeStamp::Custom(123);
+
         for i in 0..100u128 {
-            b.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now);
+            b.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), const_timestamp);
         }
 
-        b.insert(&50u128.to_ne_bytes(), &0u128.to_ne_bytes(), TimeStamp::Now);
-        b.insert(&60u128.to_ne_bytes(), &1u128.to_ne_bytes(), TimeStamp::Now);
-        b.insert(&31u128.to_ne_bytes(), &2u128.to_ne_bytes(), TimeStamp::Now);
-        b.insert(&34u128.to_ne_bytes(), &3u128.to_ne_bytes(), TimeStamp::Now);
-        b.insert(&89u128.to_ne_bytes(), &4u128.to_ne_bytes(), TimeStamp::Now);
-        b.insert(&23u128.to_ne_bytes(), &5u128.to_ne_bytes(), TimeStamp::Now);
+        b.insert(&50u128.to_ne_bytes(), &0u128.to_ne_bytes(), const_timestamp);
+        b.insert(&60u128.to_ne_bytes(), &1u128.to_ne_bytes(), const_timestamp);
+        b.insert(&31u128.to_ne_bytes(), &2u128.to_ne_bytes(), const_timestamp);
+        b.insert(&34u128.to_ne_bytes(), &3u128.to_ne_bytes(), const_timestamp);
+        b.insert(&89u128.to_ne_bytes(), &4u128.to_ne_bytes(), const_timestamp);
+        b.insert(&23u128.to_ne_bytes(), &5u128.to_ne_bytes(), const_timestamp);
 
-        assert_eq!(b.get(&50u128.to_ne_bytes()).unwrap(), Box::from(0u128.to_ne_bytes()));
-        assert_eq!(b.get(&60u128.to_ne_bytes()).unwrap(), Box::from(1u128.to_ne_bytes()));
-        assert_eq!(b.get(&31u128.to_ne_bytes()).unwrap(), Box::from(2u128.to_ne_bytes()));
-        assert_eq!(b.get(&34u128.to_ne_bytes()).unwrap(), Box::from(3u128.to_ne_bytes()));
-        assert_eq!(b.get(&89u128.to_ne_bytes()).unwrap(), Box::from(4u128.to_ne_bytes()));
-        assert_eq!(b.get(&23u128.to_ne_bytes()).unwrap(), Box::from(5u128.to_ne_bytes()));
+        assert_eq!(b.get(&50u128.to_ne_bytes()).unwrap(), MemoryEntry::from(&0u128.to_ne_bytes(), false, const_timestamp.get_time()));
+        assert_eq!(b.get(&60u128.to_ne_bytes()).unwrap(), MemoryEntry::from(&1u128.to_ne_bytes(), false, const_timestamp.get_time()));
+        assert_eq!(b.get(&31u128.to_ne_bytes()).unwrap(), MemoryEntry::from(&2u128.to_ne_bytes(), false, const_timestamp.get_time()));
+        assert_eq!(b.get(&34u128.to_ne_bytes()).unwrap(), MemoryEntry::from(&3u128.to_ne_bytes(), false, const_timestamp.get_time()));
+        assert_eq!(b.get(&89u128.to_ne_bytes()).unwrap(), MemoryEntry::from(&4u128.to_ne_bytes(), false, const_timestamp.get_time()));
+        assert_eq!(b.get(&23u128.to_ne_bytes()).unwrap(), MemoryEntry::from(&5u128.to_ne_bytes(), false, const_timestamp.get_time()));
 
-        assert_eq!(b.get(&70u128.to_ne_bytes()).unwrap(), Box::from(140u128.to_ne_bytes()));
-        assert_eq!(b.get(&80u128.to_ne_bytes()).unwrap(), Box::from(160u128.to_ne_bytes()));
-        assert_eq!(b.get(&90u128.to_ne_bytes()).unwrap(), Box::from(180u128.to_ne_bytes()));
+        assert_eq!(b.get(&70u128.to_ne_bytes()).unwrap(), MemoryEntry::from(&140u128.to_ne_bytes(), false, const_timestamp.get_time()));
+        assert_eq!(b.get(&80u128.to_ne_bytes()).unwrap(), MemoryEntry::from(&160u128.to_ne_bytes(), false, const_timestamp.get_time()));
+        assert_eq!(b.get(&90u128.to_ne_bytes()).unwrap(), MemoryEntry::from(&180u128.to_ne_bytes(), false, const_timestamp.get_time()));
     }
 
     #[test]
@@ -132,17 +136,19 @@ mod tests {
     fn test_insert_delete_len() {
         let mut b = BTree::new(5).unwrap();
 
+        let const_timestamp = TimeStamp::Custom(123);
+
         for i in 0..40u128 {
-            assert!(b.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now));
+            assert!(b.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), const_timestamp));
         }
 
         for i in 25..45u128 {
-            b.delete(&i.to_ne_bytes(), TimeStamp::Now);
+            b.delete(&i.to_ne_bytes(), const_timestamp);
         }
 
         assert_eq!(45, b.size());
-        assert_eq!(b.get(&20u128.to_ne_bytes()), Some(Box::from(40u128.to_ne_bytes())));
-        assert_eq!(b.get(&27u128.to_ne_bytes()), Some(Box::from([])));
+        assert_eq!(b.get(&20u128.to_ne_bytes()).unwrap(), MemoryEntry::from(&40u128.to_ne_bytes(), false, const_timestamp.get_time()));
+        assert_eq!(b.get(&27u128.to_ne_bytes()).unwrap(), MemoryEntry::from(&[], true, const_timestamp.get_time()));
     }
 
     #[test]

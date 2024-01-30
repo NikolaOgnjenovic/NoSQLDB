@@ -5,6 +5,8 @@ mod mem_pool;
 mod sstable;
 mod memtable;
 
+pub use lsm::LSM;
+
 #[cfg(test)]
 mod lsm_tests {
 
@@ -338,7 +340,7 @@ mod mem_pool_wal_tests {
 #[cfg(test)]
 mod sstable_tests {
     use std::fs::remove_dir_all;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
     use super::*;
     use tempfile::TempDir;
     use segment_elements::TimeStamp;
@@ -376,9 +378,8 @@ mod sstable_tests {
     fn test_flushing() {
         let multiplier = 2;
 
-        for range in (1..=100).step_by(50) {
-            // todo: uncomment hashmap when implemented
-            for mem_table_type in &[MemoryTableType::SkipList, /*MemoryTableType::HashMap,*/MemoryTableType::BTree] {
+        for range in (1..=51).step_by(50) {
+            for mem_table_type in &[MemoryTableType::SkipList, MemoryTableType::HashMap, MemoryTableType::BTree] {
                 check_flushed_table(true, &mem_table_type.clone(), range, multiplier);
                 check_flushed_table(false, &mem_table_type.clone(), range, multiplier);
             }
@@ -390,7 +391,7 @@ mod sstable_tests {
         insert_test_data(&mut mem_table, range, multiplier);
 
         // Create an SSTable and flush
-        let mut sstable = SSTable::open(&temp_dir.path(), in_single_file).expect("Failed to open SSTable");
+        let mut sstable = SSTable::open(PathBuf::from(temp_dir.path()), in_single_file).expect("Failed to open SSTable");
         sstable.flush(mem_table, summary_density, index_density, None, &mut None).expect("Failed to flush sstable");
 
         // Retrieve and validate data from the SSTable
@@ -434,7 +435,7 @@ mod sstable_tests {
         insert_test_data(&mut mem_table, range, multiplier);
 
         // Create an SSTable from the MemoryPool's inner_mem
-        let mut sstable = SSTable::open(&temp_dir.path(), in_single_file).expect("Failed to open SSTable");
+        let mut sstable = SSTable::open(PathBuf::from(temp_dir.path()), in_single_file).expect("Failed to open SSTable");
         sstable.flush(mem_table, summary_density, index_density, None, &mut None).expect("Failed to flush sstable");
 
         // Get the merkle tree from the SSTable
@@ -450,8 +451,7 @@ mod sstable_tests {
         let multiplier = 2;
 
         for range in (1..=10).step_by(10) {
-            // todo: uncomment hashmap when implemented
-            for mem_table_type in &[MemoryTableType::SkipList, /*MemoryTableType::HashMap,*/MemoryTableType::BTree] {
+            for mem_table_type in &[MemoryTableType::SkipList, MemoryTableType::HashMap, MemoryTableType::BTree] {
                 merge_sstables(vec![true, true], &mem_table_type.clone(), range, multiplier, true);
                 merge_sstables(vec![true, true], &mem_table_type.clone(), range, multiplier, false);
 
@@ -479,29 +479,29 @@ mod sstable_tests {
             insert_test_data(&mut mem_table, range, multiplier * (i + 1) as i32);
 
             let sstable_path = temp_dir.path().join("sstable".to_string() + (i + 1).to_string().as_str());
-            let mut sstable = SSTable::open(&sstable_path, in_single_file[i]).expect("Failed to open SSTable");
+            let mut sstable = SSTable::open(sstable_path.clone(), in_single_file[i]).expect("Failed to open SSTable");
 
             sstable.flush(mem_table, summary_density, index_density, None, &mut None).expect("Failed to flush sstable");
             sstable_paths.push(sstable_path);
         }
 
         //convert pathbuf to path
-        let sstable_paths:Vec<_> = sstable_paths.iter().map(|path_buf| path_buf.as_path()).collect();
+        let sstable_paths:Vec<_> = sstable_paths.iter().map(|path_buf| path_buf.to_owned()).collect();
 
         // Define the path for the merged SSTable
         let merged_sstable_path = temp_dir.path().join("merged_sstable");
 
         // Merge the two SSTables
-        SSTable::merge(sstable_paths.clone(), in_single_file, merged_sstable_path.as_path(), merged_in_single_file, summary_density, index_density, &mut None)
+        SSTable::merge(sstable_paths, in_single_file, merged_sstable_path.clone(), merged_in_single_file, summary_density, index_density, &mut None)
             .expect("Failed to merge SSTables");
 
-        verify_merged_sstable(&merged_sstable_path, index_density, range, multiplier, merged_in_single_file);
+        verify_merged_sstable(merged_sstable_path, index_density, range, multiplier, merged_in_single_file);
     }
 
     // Helper function to verify that the merged SSTable contains the correct data
-    fn verify_merged_sstable(merged_sstable_path: &Path, index_density: usize, range: i32, multiplier: i32, merged_in_single_file: bool) {
+    fn verify_merged_sstable(merged_sstable_path: PathBuf, index_density: usize, range: i32, multiplier: i32, merged_in_single_file: bool) {
         // Open an SSTable from the merged SSTable path
-        let mut merged_sstable = SSTable::open(merged_sstable_path, merged_in_single_file)
+        let mut merged_sstable = SSTable::open(merged_sstable_path.clone(), merged_in_single_file)
             .expect("Failed to create merged SSTable");
 
         // Retrieve and validate data from the merged SSTable
@@ -523,7 +523,7 @@ mod sstable_tests {
                 assert_eq!(actual_value, expected_value);
             } else {
                 // If the key is not found, fail the test
-                remove_dir_all(merged_sstable_path).expect("Failed to remove all dirs");
+                remove_dir_all(merged_sstable_path.clone()).expect("Failed to remove all dirs");
 
                 panic!("Key {:#?} not found in merged SSTable", key);
             }

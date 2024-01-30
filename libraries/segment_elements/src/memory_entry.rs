@@ -1,7 +1,9 @@
+use std::error::Error;
 use std::io;
 use crate::TimeStamp;
 use crc::{Crc, CRC_32_ISCSI};
 use compression::{variable_encode, variable_decode};
+use crate::crc_error::CRCError;
 
 /// Public struct that SegmentTrait implementations return on get.
 #[derive(Clone, Debug, PartialEq, PartialOrd)]
@@ -42,7 +44,7 @@ impl MemoryEntry {
         with_hasher.into_boxed_slice()
     }
 
-    pub fn deserialize(bytes: &[u8]) -> io::Result<(Box<[u8]>, Self)> {
+    pub fn deserialize(bytes: &[u8]) -> Result<(Box<[u8]>, Self), Box<dyn Error>> {
         let crc_hasher = Crc::<u32>::new(&CRC_32_ISCSI);
         let mut offset = 0;
 
@@ -95,7 +97,7 @@ impl MemoryEntry {
         }
 
         if crc_hasher.checksum(&bytes) != crc {
-            panic!("Crc isn't valid")
+            Err(Box::try_from(CRCError(crc)).unwrap())
         } else {
             let entry = MemoryEntry {
                 value,

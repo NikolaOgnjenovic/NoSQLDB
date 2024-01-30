@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::fs::{create_dir_all, File, OpenOptions, remove_dir_all};
 use std::io;
 use std::io::{Cursor, Read, Seek, SeekFrom, Write};
-use std::path::{Path};
+use std::path::PathBuf;
 use bloom_filter::BloomFilter;
 use lru_cache::LRUCache;
 use segment_elements::MemoryEntry;
@@ -82,9 +82,9 @@ impl FlushByteSizes {
 }
 
 /// Struct representing an SSTable (Sorted String Table) for storing key-value pairs on disk.
-pub(crate) struct SSTable<'a> {
+pub(crate) struct SSTable {
     // Base directory path where the SSTable files will be stored.
-    base_path: &'a Path,
+    base_path: PathBuf,
     // Flag indicating whether to store data in a single file or multiple files.
     in_single_file: bool,
     // Offset for data file when storing in single file.
@@ -101,7 +101,7 @@ pub(crate) struct SSTable<'a> {
     file_handles: HashMap<String, File>,
 }
 
-impl<'a> SSTable<'a> {
+impl SSTable {
     /// Opens an SSTable in the given base path.
     ///
     /// # Arguments
@@ -116,9 +116,9 @@ impl<'a> SSTable<'a> {
     /// # Errors
     ///
     /// Returns an `io::Error` if there is an issue when creating directories.
-    pub(crate) fn open(base_path: &'a Path, in_single_file: bool) -> io::Result<SSTable<'a>> {
+    pub(crate) fn open(base_path: PathBuf, in_single_file: bool) -> io::Result<SSTable> {
         // Create directory if it doesn't exist
-        create_dir_all(base_path)?;
+        create_dir_all(&base_path)?;
 
         Ok(Self {
             base_path,
@@ -453,10 +453,10 @@ impl<'a> SSTable<'a> {
     /// # Errors
     ///
     /// Returns an `io::Error` if the merging process fails.
-    pub(crate) fn merge(sstable_paths: Vec<&Path>, in_single_file: Vec<bool>, merged_base_path: &Path, merged_in_single_file: bool, summary_density: usize, index_density: usize, compression_dictionary: &mut Option<CompressionDictionary>) -> io::Result<()> {
-        create_dir_all(merged_base_path)?;
+    pub(crate) fn merge(sstable_paths: Vec<PathBuf>, in_single_file: Vec<bool>, merged_base_path: PathBuf, merged_in_single_file: bool, summary_density: usize, index_density: usize, compression_dictionary: &mut Option<CompressionDictionary>) -> io::Result<()> {
+        create_dir_all(&merged_base_path)?;
 
-        let merged_data = SSTable::merge_entries(sstable_paths.clone(), in_single_file)?;
+        let merged_data = SSTable::merge_entries(sstable_paths.to_owned(), in_single_file)?;
 
         let mut merged_sstable = SSTable::open(merged_base_path, merged_in_single_file)?;
 
@@ -488,7 +488,7 @@ impl<'a> SSTable<'a> {
     /// # Errors
     ///
     /// Returns an `io::Error` if there is an issue when reading from the SSTables or if deserialization fails.
-    fn merge_entries(sstable_paths: Vec<&'a Path>, in_single_file: Vec<bool>) -> io::Result<Vec<(Box<[u8]>, MemoryEntry)>> {
+    fn merge_entries(sstable_paths: Vec<PathBuf>, in_single_file: Vec<bool>) -> io::Result<Vec<(Box<[u8]>, MemoryEntry)>> {
         let number_of_tables = sstable_paths.len();
 
         // offsets for each sstable
@@ -496,7 +496,7 @@ impl<'a> SSTable<'a> {
         let mut file_ref_sstables = Vec::with_capacity(number_of_tables);
         for i in 0..number_of_tables {
             file_ref_sstables.push( Self {
-                base_path: sstable_paths[i],
+                base_path: sstable_paths[i].to_owned(),
                 in_single_file: in_single_file[i],
                 data_offset: 0,
                 index_offset: 0,
@@ -1066,7 +1066,7 @@ impl<'a> SSTable<'a> {
     /// # Errors
     ///
     /// Returns an `io::Error` if there's an issue when reading contents of SStable file.
-    pub(crate) fn get_key_range(sstable_base_path: &'a Path, in_single_file: bool) -> io::Result<(Box<[u8]>, Box<[u8]>)> {
+    pub(crate) fn get_key_range(sstable_base_path: PathBuf, in_single_file: bool) -> io::Result<(Box<[u8]>, Box<[u8]>)> {
         let mut open_options = OpenOptions::new();
         open_options.read(true).write(false).create(false);
 

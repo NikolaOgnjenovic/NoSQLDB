@@ -123,7 +123,7 @@ impl SegmentTrait for BTree {
 
     }
 
-    fn get(&self, key: &[u8]) -> Option<Box<[u8]>> {
+    fn get(&self, key: &[u8]) -> Option<MemoryEntry> {
         self.root.as_ref()?.get(key)
     }
 

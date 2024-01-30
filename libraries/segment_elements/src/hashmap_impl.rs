@@ -21,8 +21,8 @@ impl SegmentTrait for MemEntryHashMap {
         }
     }
 
-    fn get(&self, key: &[u8]) -> Option<Box<[u8]>> {
-        self.0.get(key).map(|entry| entry.get_value())
+    fn get(&self, key: &[u8]) -> Option<MemoryEntry> {
+        self.0.get(key).map(|entry| entry.clone())
     }
 
     fn serialize(&self) -> Box<[u8]> {

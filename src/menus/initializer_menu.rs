@@ -5,6 +5,7 @@ use db_config::DBConfig;
 use crate::impl_menu;
 use crate::menus::customize_menu::customize_menu;
 use crate::menus::db_menu::db_menu;
+use crate::menus::UserMenu;
 
 const CONFIG_FILE_PATH: &str = "config.json";
 
@@ -45,7 +46,7 @@ pub fn initializer_menu() {
                 clearscreen::clear().expect("Failed to clear screen.");
                 let default_dbconfig = DBConfig::default();
                 default_dbconfig.save(CONFIG_FILE_PATH).expect("Failed to revert back to default.");
-                dbconfig.load(CONFIG_FILE_PATH).expect("Failed to load from default.");
+                DBConfig::load(CONFIG_FILE_PATH).expect("Failed to load from default.");
                 println!("Configuration is set back to default.");
             }
             DBConfigMenu::Exit => {

@@ -2,11 +2,11 @@ use colored::Colorize;
 use enum_iterator::Sequence;
 use inquire::Text;
 use db_config::DBConfig;
-use db_lib::DB;
+use NoSQLDB::DB;
 use crate::impl_menu;
 use crate::menus::bloom_filter_menu::bloom_filter_menu;
 use crate::menus::count_min_sketch_menu::count_min_sketch_menu;
-use crate::menus::get_input_u8;
+use crate::menus::{get_input_u8, UserMenu};
 use crate::menus::hyperloglog_menu::hyperloglog_menu;
 
 #[derive(Sequence)]
@@ -47,6 +47,17 @@ pub fn db_menu(dbconfig: &mut DBConfig) {
                  clearscreen::clear().expect("Failed to clear screen.");
                 let key = get_input_u8("Enter key: ");
                 let value = get_input_u8("Enter value: ");
+                if key.is_none() {
+                    println!("Failed to serialize key into bytes.");
+                    continue;
+                }
+                if value.is_none() {
+                    println!("Failed to serialize value into bytes.");
+                    continue;
+                }
+
+                let key = &key.unwrap();
+                let value = &value.unwrap();
                 match db.insert(key, value, true) {
                     Ok(()) => println!("Insertion successful"),
                     Err(err) => eprintln!("Error during insertion: {}", err),
@@ -55,7 +66,13 @@ pub fn db_menu(dbconfig: &mut DBConfig) {
             DBMenu::Get => {
                  clearscreen::clear().expect("Failed to clear screen.");
                 let key = get_input_u8("Enter key: ");
-                match db.get(&key) {
+                if key.is_none() {
+                    println!("Failed to serialize key into bytes.");
+                    continue;
+                }
+                let key = &key.unwrap();
+
+                match db.get(&key).ok() {
                     Some(value) => println!("Value found: {:?}", value),
                     None => println!("Value not found for the given key."),
                 }
@@ -63,6 +80,12 @@ pub fn db_menu(dbconfig: &mut DBConfig) {
             DBMenu::Delete => {
                  clearscreen::clear().expect("Failed to clear screen.");
                 let key = get_input_u8("Enter key: ");
+                if key.is_none() {
+                    println!("Failed to serialize key into bytes.");
+                    continue;
+                }
+                let key = &key.unwrap();
+
                 db.delete(key).expect("Deletion error");
                 match db.delete(&key) {
                     Ok(()) => println!("Deletion successful."),

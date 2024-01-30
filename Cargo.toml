@@ -8,37 +8,20 @@ description = "NoSQL database project in the advanced algorithms and data struct
 license = "GPL-3.0"
 authors = ["Luka Bursać", "Momir Stanišić", "Mihajlo Orlović", "Nikola Ognjenović", "Viktor Srbljin"]
 
-[lib]
-name = "db_lib"
-path = "src/lib.rs"
-
-[[bin]]
-name = "db_bin"
-path = "src/cli.rs"
-
 [dependencies]
 db_config = { path = "libraries/db_config" }
 segment_elements = { path = "libraries/segment_elements" }
 lru_cache = { path = "libraries/lru_cache" }
-lsm = { path = "libraries/lsm" }
 bloom_filter = { path = "libraries/bloom_filter" }
 count_min_sketch = { path = "libraries/count_min_sketch" }
 hyperloglog = { path = "libraries/hyperloglog" }
 simhash = { path = "libraries/simhash" }
 lsm = {path = "libraries/lsm" }
+
 inquire = "0.6.2"
 clearscreen = "2.0.1"
 colored = "2.1.0"
 enum-iterator = "1.5.0"
-
-
-[lib]
-path = "src/lib.rs"
-name = "db_lib"
-
-[[bin]]
-path = "src/bin.rs"
-name = "nosql_engine"
 
 # All the libraries the package is built with
 [workspace]

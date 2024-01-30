@@ -3,6 +3,7 @@ mod memory_entry;
 mod timestamp;
 mod hashmap_impl;
 mod hashmap_iterator;
+pub mod crc_error;
 
 pub use segment_trait::SegmentTrait;
 pub use memory_entry::MemoryEntry;

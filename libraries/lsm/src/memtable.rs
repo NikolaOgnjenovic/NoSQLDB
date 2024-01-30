@@ -46,7 +46,7 @@ impl MemoryTable {
         self.len as f64 > 0.8 * self.capacity as f64
     }
 
-    pub(crate) fn get(&self, key: &[u8]) -> Option<Box<[u8]>> {
+    pub(crate) fn get(&self, key: &[u8]) -> Option<MemoryEntry> {
         self.inner_mem.get(key)
     }
 

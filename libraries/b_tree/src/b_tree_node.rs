@@ -39,7 +39,7 @@ impl Node {
         }
     }
 
-    pub(crate) fn get(&self, key: &[u8]) -> Option<Box<[u8]>> {
+    pub(crate) fn get(&self, key: &[u8]) -> Option<MemoryEntry> {
         let mut node_index = 0;
 
         while node_index < self.n && key.cmp(&self.entries[node_index].as_ref().unwrap().key) == Ordering::Greater {
@@ -47,7 +47,7 @@ impl Node {
         }
 
         if node_index < self.n && key.cmp(&*self.entries[node_index].as_ref().unwrap().key) == Ordering::Equal {
-            Some(self.entries[node_index].as_ref().unwrap().mem_entry.serialize(key))
+            Some(self.entries[node_index].as_ref().unwrap().mem_entry.clone())
         } else if self.is_leaf {
             None
         } else {

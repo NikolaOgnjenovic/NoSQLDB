@@ -99,7 +99,7 @@ impl Default for DBConfig {
             token_bucket_num: 0,
             token_bucket_interval: 0,
             use_compression: false,
-            compression_dictionary_path: "./dictionary.cli".to_string(),
+            compression_dictionary_path: "./dictionary.bin".to_string(),
         }
     }
 }
