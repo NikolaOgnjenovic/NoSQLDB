@@ -218,6 +218,7 @@ impl SSTable {
                 Some(compression_dictionary) => compression_dictionary.encode(&key.clone()).unwrap(),
                 None => key.clone()
             };
+            // todo: use variable encoding or not (option) for MemoryEntry.Serialize
             let entry_data = entry.serialize(&encoded_key);
 
             if let Some(&mut ref mut lru) = lru_cache {
