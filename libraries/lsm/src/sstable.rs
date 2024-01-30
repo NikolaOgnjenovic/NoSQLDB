@@ -11,6 +11,7 @@ use lru_cache::LRUCache;
 use segment_elements::MemoryEntry;
 use merkle_tree::merkle_tree::MerkleTree;
 use compression::CompressionDictionary;
+use crate::lsm::ScanType;
 use crate::memtable::MemoryTable;
 use crate::sstable::sstable_element_type::SSTableElementType;
 
@@ -118,7 +119,7 @@ impl SSTable {
     /// Returns an `io::Error` if there is an issue when creating directories.
     pub(crate) fn open(base_path: PathBuf, in_single_file: bool) -> io::Result<SSTable> {
         // Create directory if it doesn't exist
-        create_dir_all(&base_path)?;
+        create_dir_all(base_path.to_owned())?;
 
         Ok(Self {
             base_path,
@@ -453,12 +454,12 @@ impl SSTable {
     /// # Errors
     ///
     /// Returns an `io::Error` if the merging process fails.
-    pub(crate) fn merge(sstable_paths: Vec<PathBuf>, in_single_file: Vec<bool>, merged_base_path: PathBuf, merged_in_single_file: bool, summary_density: usize, index_density: usize, compression_dictionary: &mut Option<CompressionDictionary>) -> io::Result<()> {
-        create_dir_all(&merged_base_path)?;
+    pub(crate) fn merge(sstable_paths: Vec<PathBuf>, in_single_file: Vec<bool>, merged_base_path: &PathBuf, merged_in_single_file: bool, summary_density: usize, index_density: usize, compression_dictionary: &mut Option<CompressionDictionary>) -> io::Result<()> {
+        create_dir_all(merged_base_path)?;
 
-        let merged_data = SSTable::merge_entries(sstable_paths.to_owned(), in_single_file)?;
+        let merged_data = SSTable::merge_entries(sstable_paths.clone(), in_single_file, None)?;
 
-        let mut merged_sstable = SSTable::open(merged_base_path, merged_in_single_file)?;
+        let mut merged_sstable = SSTable::open(merged_base_path.to_owned(), merged_in_single_file)?;
 
         // Flush the new SSTable to disk
         merged_sstable.flush_to_disk(merged_data, summary_density, index_density, None, compression_dictionary)?;
@@ -488,11 +489,11 @@ impl SSTable {
     /// # Errors
     ///
     /// Returns an `io::Error` if there is an issue when reading from the SSTables or if deserialization fails.
-    fn merge_entries(sstable_paths: Vec<PathBuf>, in_single_file: Vec<bool>) -> io::Result<Vec<(Box<[u8]>, MemoryEntry)>> {
+    pub(crate) fn merge_entries(sstable_paths: Vec<PathBuf>, in_single_file: Vec<bool>, total_entry_offsets: Option<Vec<u64>>) -> io::Result<Vec<(Box<[u8]>, MemoryEntry)>> {
         let number_of_tables = sstable_paths.len();
 
         // offsets for each sstable
-        let mut total_entry_offsets = vec![0; number_of_tables];
+        let mut total_entry_offsets = total_entry_offsets.unwrap_or(vec![0; number_of_tables]);
         let mut file_ref_sstables = Vec::with_capacity(number_of_tables);
         for i in 0..number_of_tables {
             file_ref_sstables.push( Self {
@@ -528,7 +529,7 @@ impl SSTable {
                 .collect();
 
             // find the indexes of min keys
-            let min_key_indexes = SSTable::find_min_keys(&entries);
+            let min_key_indexes = SSTable::find_min_keys(&entries, true);
 
             // filter only the entries containing min key
             let min_entries: Vec<_> =  min_key_indexes
@@ -547,9 +548,6 @@ impl SSTable {
             let max_index = SSTable::find_max_timestamp(&min_entries);
             merged_entries.push(min_entries[max_index].1.as_ref().unwrap().0.clone());
         }
-
-
-
         Ok(merged_entries)
     }
 
@@ -563,7 +561,7 @@ impl SSTable {
     /// # Returns
     ///
     /// An index of entry with the biggest timestamp
-    fn find_max_timestamp(entries: &Vec<(usize, &Option<((Box<[u8]>, MemoryEntry), u64)>)>) -> usize {
+    pub(crate) fn find_max_timestamp(entries: &Vec<(usize, &Option<((Box<[u8]>, MemoryEntry), u64)>)>) -> usize {
         let mut max_index = 0;
         let mut max_timestamp = entries[max_index].1.as_ref().unwrap().0.1.get_timestamp();
         for (index, element) in entries {
@@ -586,11 +584,16 @@ impl SSTable {
     /// # Returns
     ///
     /// A Vector of indexes of entries with minimal keys
-    fn find_min_keys(entries: &Vec<(usize, &Option<((Box<[u8]>, MemoryEntry), u64)>)>) -> Vec<usize> {
-        let mut min_key = entries[0].1.as_ref().unwrap().0.0.clone();
+    pub(crate) fn find_min_keys(entries: &Vec<(usize, &Option<((Box<[u8]>, MemoryEntry), u64)>)>, merging: bool) -> Vec<usize> {
+        let mut min_key:Box<[u8]> = Box::new([255u8;255]);
         let mut min_indexes = vec![];
         for (index, element) in entries {
             let element = element.as_ref().unwrap();
+            if !merging {
+                 if element.0.1.get_tombstone() {
+                     continue;
+                 }
+            }
             let key = &element.0.0;
             let compare_result = min_key.cmp(key);
             if compare_result == Ordering::Equal {
@@ -758,7 +761,7 @@ impl SSTable {
     /// # Returns
     ///
     /// An Option containing a pair of the key & MemoryEntry pair and the memory entry bytes length if successful, otherwise None.
-    fn get_entry_from_data_file(&mut self, offset: u64, index_density: Option<usize>, key: Option<&[u8]>) -> Option<((Box<[u8]>, MemoryEntry), u64)> {
+    pub(crate) fn get_entry_from_data_file(&mut self, offset: u64, index_density: Option<usize>, key: Option<&[u8]>) -> Option<((Box<[u8]>, MemoryEntry), u64)> {
         let mut traversed_offset: u64 = 0;
 
         // Merge reads a single entry from the given offset without looping through index_density number of entries
@@ -1107,6 +1110,96 @@ impl SSTable {
         let max_key = max_key_bytes.into_boxed_slice();
 
         Ok((min_key, max_key))
+    }
+
+    /// prvo kroz index svih sstabela idemo dok ne dodjemo do keya koji je veci od minimalnog i onda vrnemo offset
+    pub(crate) fn get_sstable_offset(sstable_base_path: PathBuf, in_single_file: bool, searched_key: &[u8], scan_type: ScanType) -> io::Result<u64> {
+        let mut offset = 0;
+
+        let mut open_options = OpenOptions::new();
+        open_options.read(true).write(false).create(false);
+
+        // Adjust the file path accordingly to in_single_file argument
+        let file_path = if in_single_file {
+            sstable_base_path.join("SSTable.db")
+        } else {
+            sstable_base_path.join("SSTable-Index.db")
+        };
+        let mut file_handle = open_options.open(file_path)?;
+
+        // Position the file cursor on beginning of summary data
+        if in_single_file {
+            file_handle.seek(SeekFrom::Start(std::mem::size_of::<usize>() as u64))?;
+
+            let mut index_offset_bytes = [0u8; std::mem::size_of::<usize>()];
+            file_handle.read_exact(&mut index_offset_bytes)?;
+            let index_offset = usize::from_ne_bytes(index_offset_bytes) as u64;
+
+            file_handle.seek(SeekFrom::Start(index_offset))?;
+        }
+
+        loop {
+            let mut key_len_bytes = [0u8; std::mem::size_of::<usize>()];
+            file_handle.read_exact(&mut key_len_bytes)?;
+            let key_len = usize::from_ne_bytes(key_len_bytes);
+
+            let mut key_bytes = vec![0u8; key_len];
+            file_handle.read_exact(&mut key_bytes)?;
+            let key = key_bytes.into_boxed_slice();
+
+            let mut offset_bytes = [0u8; std::mem::size_of::<usize>()];
+            file_handle.read_exact(&mut offset_bytes)?;
+            let current_offset = usize::from_ne_bytes(offset_bytes);
+
+            match scan_type {
+                ScanType::RangeScan => {
+                    if key.as_ref() >= searched_key {
+                break;
+                }
+                    offset = current_offset;
+                }
+                ScanType::PrefixScan => {
+                    if key.starts_with(searched_key) {
+                        break;
+                    }
+                    offset = current_offset;
+                }
+            }
+
+
+        }
+
+        Ok(offset as u64)
+    }
+
+    ///ova funkcija mora postojati jer je jebeni index proredjen mamu mu jebem u picku
+    /// idem ovom funkcijom dok ne naidjem na prvi key koji je veci od mog i tada ne updateujem offset vec vrnem taj offset nazad
+    pub(crate) fn update_sstable_offsets(sstables: &mut Vec<SSTable>, in_single_files: Vec<bool>, mut current_offsets: Vec<u64>, searched_key: &[u8], scan_type: ScanType) -> io::Result<Vec<u64>> {
+        for (index, sstable) in sstables.iter_mut().enumerate() {
+            loop {
+                let data = sstable.get_entry_from_data_file(current_offsets[index], None, None);
+                if let Some(((key, memory_entry), offset)) = data {
+                    match scan_type {
+                        ScanType::RangeScan => {
+                            if key.as_ref() >= searched_key {
+                                break;
+                            }
+                            current_offsets[index] += offset;
+                        }
+                        ScanType::PrefixScan => {
+                            if key.starts_with(searched_key) {
+                                break;
+                            }
+                            current_offsets[index] += offset;
+                        }
+                    }
+                }
+                else {
+                    break;
+                }
+            }
+        }
+        Ok(current_offsets)
     }
 
     /// Writes the provided data to a file with the given path postfix and returns a mutable reference to the file.

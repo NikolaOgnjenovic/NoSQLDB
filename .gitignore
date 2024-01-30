@@ -7,3 +7,4 @@ Cargo.lock
 **/config.json
 **/*.log
 **/*.num
+**/*.db
