@@ -3,7 +3,7 @@ use std::io;
 use b_tree::BTree;
 use db_config::{DBConfig, MemoryTableType};
 use skip_list::SkipList;
-use segment_elements::{MemoryEntry, TimeStamp};
+use segment_elements::{MemoryEntry, TimeStamp, MemEntryHashMap};
 use write_ahead_log::WriteAheadLog;
 
 pub(crate) struct MemoryTable {
@@ -17,7 +17,7 @@ impl MemoryTable {
     pub(crate) fn new(dbconfig: &DBConfig) -> Result<Self, Box<dyn Error>> {
         let inner_mem: Box<dyn segment_elements::SegmentTrait + Send> = match dbconfig.memory_table_type {
             MemoryTableType::SkipList => Box::new(SkipList::new(dbconfig.skip_list_max_level)),
-            MemoryTableType::HashMap => todo!(),
+            MemoryTableType::HashMap => Box::new(MemEntryHashMap::new()),
             MemoryTableType::BTree => Box::new(BTree::new(dbconfig.b_tree_order)?)
         };
 
