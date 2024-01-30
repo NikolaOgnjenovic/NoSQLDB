@@ -47,7 +47,7 @@ impl Node {
         }
 
         if node_index < self.n && key.cmp(&*self.entries[node_index].as_ref().unwrap().key) == Ordering::Equal {
-            Some(self.entries[node_index].as_ref().unwrap().mem_entry.get_value())
+            Some(self.entries[node_index].as_ref().unwrap().mem_entry.serialize(key))
         } else if self.is_leaf {
             None
         } else {
@@ -410,15 +410,3 @@ impl Node {
         }
     }
 }
-
-pub fn compare_keys(a: &[u8], b: &[u8]) -> Ordering {
-    for (&byte_a, &byte_b) in a.iter().rev().zip(b.iter().rev()) {
-        match byte_a.cmp(&byte_b) {
-            Ordering::Less => return Ordering::Less,
-            Ordering::Greater => return Ordering::Greater,
-            Ordering::Equal => continue,
-        }
-    }
-    Ordering::Equal
-}
-

@@ -24,27 +24,27 @@ impl MemoryPool {
             config: dbconfig.clone(),
             read_only_tables: VecDeque::with_capacity(dbconfig.memory_table_pool_num),
             read_write_table: MemoryTable::new(dbconfig)?,
-            thread_pool: ThreadPool::new(100)
+            thread_pool: ThreadPool::new(100),
         })
     }
 
     /// Inserts the key with the corresponding value in the read write memory table.
-    pub(crate) fn insert(&mut self, key: &[u8], value: &[u8], time_stamp: TimeStamp) -> io::Result<()> {
-        if self.read_write_table.insert(key, value, time_stamp, true)? {
-            self.swap();
+    pub(crate) fn insert(&mut self, key: &[u8], value: &[u8], time_stamp: TimeStamp) -> io::Result<Option<MemoryTable>> {
+        if self.read_write_table.insert(key, value, time_stamp) {
+            return self.swap();
         }
 
-        Ok(())
+        Ok(None)
     }
 
     /// Logically deletes an element in-place, and updates the number of elements if
-    /// the delete is "adding" a new element.
-    pub(crate) fn delete(&mut self, key: &[u8], time_stamp: TimeStamp) -> io::Result<()> {
-        if self.read_write_table.delete(key, time_stamp, true)? {
-            self.swap();
+    /// the deletion is "adding" a new element.
+    pub(crate) fn delete(&mut self, key: &[u8], time_stamp: TimeStamp) -> io::Result<Option<MemoryTable>> {
+        if self.read_write_table.delete(key, time_stamp) {
+            return self.swap();
         }
 
-        Ok(())
+        Ok(None)
     }
 
     /// Tries to retrieve key's data from all memory tables currently loaded in memory.
@@ -79,14 +79,14 @@ impl MemoryPool {
         None
     }
 
-    // /// Joins all threads that are writing memory tables. This is a blocking operation.
-    // pub(crate) fn join_concurrent_writes(&mut self) {
-    //     self.thread_pool.join();
-    // }
+    /// Joins all threads that are writing memory tables. This is a blocking operation.
+    pub(crate) fn join_concurrent_writes(&mut self) {
+        self.thread_pool.join();
+    }
 
     /// Swaps the current read write memory table with a new one. Checks if the number of read only
     /// memory tables exceeds the capacity, and flushes the last one if necessary.
-    fn swap(&mut self) {
+    fn swap(&mut self) -> io::Result<Option<MemoryTable>> {
         // unwrap allowed because any error would have been cleared in the pool creation
         // unchecked unwrap allows faster performance as it doesn't do any runtime checks
         let old_read_write = std::mem::replace(
@@ -97,8 +97,10 @@ impl MemoryPool {
         if self.read_only_tables.len() == self.config.memory_table_pool_num {
             // unwrap allowed because if condition will never be true when unwrap can panic
             let to_be_flushed = unsafe { self.read_only_tables.pop_back().unwrap_unchecked() };
-            self.flush_concurrent(to_be_flushed);
+            return Ok(Some(to_be_flushed));
         }
+
+        Ok(None)
     }
 
     // fn flush_concurrent(&mut self, table: MemoryTable) {
@@ -130,9 +132,13 @@ impl MemoryPool {
             };
 
             if entry.tombstone {
-                pool.read_write_table.delete(&entry.key, TimeStamp::Custom(entry.timestamp), false)?;
+                if pool.read_write_table.delete(&entry.key, TimeStamp::Custom(entry.timestamp)) {
+                    pool.swap();
+                }
             } else {
-                pool.read_write_table.insert(&entry.key, &entry.value.unwrap(), TimeStamp::Custom(entry.timestamp), false)?;
+                if pool.read_write_table.insert(&entry.key, &entry.value.unwrap(), TimeStamp::Custom(entry.timestamp)) {
+                    pool.swap();
+                }
             }
         }
 

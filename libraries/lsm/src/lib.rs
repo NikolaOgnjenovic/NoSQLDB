@@ -10,9 +10,8 @@ mod lsm_tests {
 
 }
 
-/// Tests must be run in sequentially.
 #[cfg(test)]
-mod mem_pool_tests {
+mod mem_pool_wal_tests {
     use std::fs;
     use std::fs::{read_dir, remove_file};
     use std::path::Path;
@@ -21,16 +20,22 @@ mod mem_pool_tests {
     use crate::mem_pool::MemoryPool;
 
     #[test]
-    fn test_async_wal_flush() {
+    fn test_wal_reconstruction() {
         let mut config = DBConfig::default();
-        config.memory_table_capacity = 100_000;
-        config.memory_table_pool_num = 15;
+        config.write_ahead_log_dir += "test_wal_reconstruction/";
+        config.memory_table_capacity = 1000;
+        config.write_ahead_log_num_of_logs = 1000;
+        config.memory_table_pool_num = 20;
 
-        read_dir(&config.write_ahead_log_dir).unwrap()
-            .map(|dir_entry| dir_entry.unwrap().path())
-            .filter(|file| file.file_name().unwrap() != ".keep")
-            .filter(|file| file.extension().unwrap() == "log")
-            .for_each(|file| remove_file(file).unwrap());
+        match read_dir(&config.write_ahead_log_dir) {
+            Ok(dir) => {
+                dir.map(|dir_entry| dir_entry.unwrap().path())
+                    .filter(|file| file.file_name().unwrap() != ".keep")
+                    .filter(|file| file.extension().unwrap() == "log" || file.extension().unwrap() == "num")
+                    .for_each(|file| remove_file(file).unwrap())
+            }
+            Err(_) => ()
+        }
 
         let mut mem_pool = MemoryPool::new(&config).unwrap();
 
@@ -38,11 +43,9 @@ mod mem_pool_tests {
             mem_pool.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now).expect("IO error");
         }
 
-        mem_pool.join_concurrent_writes();
-
         let load_mem_pool = MemoryPool::load_from_dir(&config).unwrap();
 
-        for i in (0..1_000_000u32).rev() {
+        for i in 985000..1_000_000u32 {
             assert_eq!(load_mem_pool.get(&i.to_ne_bytes()), Some(Box::from((i * 2).to_ne_bytes())));
         }
     }
@@ -50,23 +53,26 @@ mod mem_pool_tests {
     #[test]
     fn test_wal_size_cap() {
         let mut config = DBConfig::default();
+        config.write_ahead_log_dir += "test_wal_size_cap/";
         config.memory_table_capacity = 10;
         config.memory_table_pool_num = 3;
         config.write_ahead_log_size = 50;
 
-        read_dir(&config.write_ahead_log_dir).unwrap()
-            .map(|dir_entry| dir_entry.unwrap().path())
-            .filter(|file| file.file_name().unwrap() != ".keep")
-            .filter(|file| file.extension().unwrap() == "log")
-            .for_each(|file| remove_file(file).unwrap());
+        match read_dir(&config.write_ahead_log_dir) {
+            Ok(dir) => {
+                dir.map(|dir_entry| dir_entry.unwrap().path())
+                    .filter(|file| file.file_name().unwrap() != ".keep")
+                    .filter(|file| file.extension().unwrap() == "log" || file.extension().unwrap() == "num")
+                    .for_each(|file| remove_file(file).unwrap())
+            }
+            Err(_) => ()
+        }
 
         let mut mem_pool = MemoryPool::new(&config).unwrap();
 
         for i in 0..5u128 {
             mem_pool.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now).expect("IO error");
         }
-
-        mem_pool.join_concurrent_writes();
 
         for file in read_dir(&config.write_ahead_log_dir).unwrap()
             .map(|dir_entry| dir_entry.unwrap().path())
@@ -85,23 +91,26 @@ mod mem_pool_tests {
     #[test]
     fn test_wal_num_cap() {
         let mut config = DBConfig::default();
-        config.memory_table_capacity = 10;
+        config.write_ahead_log_dir += "test_wal_num_cap/";
+        config.memory_table_capacity = 100;
         config.memory_table_pool_num = 3;
-        config.write_ahead_log_num_of_logs = 3;
+        config.write_ahead_log_num_of_logs = 1;
 
-        read_dir(&config.write_ahead_log_dir).unwrap()
-            .map(|dir_entry| dir_entry.unwrap().path())
-            .filter(|file| file.file_name().unwrap() != ".keep")
-            .filter(|file| file.extension().unwrap() == "log")
-            .for_each(|file| remove_file(file).unwrap());
+        match read_dir(&config.write_ahead_log_dir) {
+            Ok(dir) => {
+                dir.map(|dir_entry| dir_entry.unwrap().path())
+                    .filter(|file| file.file_name().unwrap() != ".keep")
+                    .filter(|file| file.extension().unwrap() == "log" || file.extension().unwrap() == "num")
+                    .for_each(|file| remove_file(file).unwrap())
+            }
+            Err(_) => ()
+        }
 
         let mut mem_pool = MemoryPool::new(&config).unwrap();
 
-        for i in 0..10u128 {
+        for i in 0..100u128 {
             mem_pool.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now).expect("IO error");
         }
-
-        mem_pool.join_concurrent_writes();
 
         for file in read_dir(&config.write_ahead_log_dir).unwrap()
             .map(|dir_entry| dir_entry.unwrap().path())
@@ -112,7 +121,7 @@ mod mem_pool_tests {
 
         let load_mem_pool = MemoryPool::load_from_dir(&config).unwrap();
 
-        for i in 0..10u128 {
+        for i in 0..100u128 {
             assert_eq!(load_mem_pool.get(&i.to_ne_bytes()), Some(Box::from((i * 2).to_ne_bytes())));
         }
     }
@@ -120,23 +129,26 @@ mod mem_pool_tests {
     #[test]
     fn test_wal_size_cap2() {
         let mut config = DBConfig::default();
+        config.write_ahead_log_dir += "test_wal_size_cap2/";
         config.memory_table_capacity = 10;
         config.memory_table_pool_num = 3;
         config.write_ahead_log_size = 10;
 
-        read_dir(&config.write_ahead_log_dir).unwrap()
-            .map(|dir_entry| dir_entry.unwrap().path())
-            .filter(|file| file.file_name().unwrap() != ".keep")
-            .filter(|file| file.extension().unwrap() == "log")
-            .for_each(|file| remove_file(file).unwrap());
+        match read_dir(&config.write_ahead_log_dir) {
+            Ok(dir) => {
+                dir.map(|dir_entry| dir_entry.unwrap().path())
+                    .filter(|file| file.file_name().unwrap() != ".keep")
+                    .filter(|file| file.extension().unwrap() == "log" || file.extension().unwrap() == "num")
+                    .for_each(|file| remove_file(file).unwrap())
+            }
+            Err(_) => ()
+        }
 
         let mut mem_pool = MemoryPool::new(&config).unwrap();
 
         for i in 0..10u128 {
             mem_pool.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now).expect("IO error");
         }
-
-        mem_pool.join_concurrent_writes();
 
         for file in read_dir(&config.write_ahead_log_dir).unwrap()
             .map(|dir_entry| dir_entry.unwrap().path())
@@ -155,24 +167,27 @@ mod mem_pool_tests {
     #[test]
     fn test_wal_num_and_size_cap() {
         let mut config = DBConfig::default();
+        config.write_ahead_log_dir += "test_wal_num_and_size_cap/";
         config.memory_table_capacity = 10;
         config.memory_table_pool_num = 3;
         config.write_ahead_log_num_of_logs = 1;
         config.write_ahead_log_size = 10;
 
-        read_dir(&config.write_ahead_log_dir).unwrap()
-            .map(|dir_entry| dir_entry.unwrap().path())
-            .filter(|file| file.file_name().unwrap() != ".keep")
-            .filter(|file| file.extension().unwrap() == "log")
-            .for_each(|file| remove_file(file).unwrap());
+        match read_dir(&config.write_ahead_log_dir) {
+            Ok(dir) => {
+                dir.map(|dir_entry| dir_entry.unwrap().path())
+                    .filter(|file| file.file_name().unwrap() != ".keep")
+                    .filter(|file| file.extension().unwrap() == "log" || file.extension().unwrap() == "num")
+                    .for_each(|file| remove_file(file).unwrap())
+            }
+            Err(_) => ()
+        }
 
         let mut mem_pool = MemoryPool::new(&config).unwrap();
 
         for i in 0..10u128 {
             mem_pool.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now).expect("IO error");
         }
-
-        mem_pool.join_concurrent_writes();
 
         for file in read_dir(&config.write_ahead_log_dir).unwrap()
             .map(|dir_entry| dir_entry.unwrap().path())
@@ -189,17 +204,22 @@ mod mem_pool_tests {
     }
 
     #[test]
-    fn wal_delete_on_flush_test() {
+    fn test_wal_one_file_correct_reload() {
         let mut config = DBConfig::default();
+        config.write_ahead_log_dir += "test_wal_one_file_correct_reload/";
         config.memory_table_capacity = 10;
         config.memory_table_pool_num = 10;
-        config.write_ahead_log_num_of_logs = 1000;
+        config.write_ahead_log_num_of_logs = 300001;
 
-        read_dir(&config.write_ahead_log_dir).unwrap()
-            .map(|dir_entry| dir_entry.unwrap().path())
-            .filter(|file| file.file_name().unwrap() != ".keep")
-            .filter(|file| file.extension().unwrap() == "log")
-            .for_each(|file| remove_file(file).unwrap());
+        match read_dir(&config.write_ahead_log_dir) {
+            Ok(dir) => {
+                dir.map(|dir_entry| dir_entry.unwrap().path())
+                    .filter(|file| file.file_name().unwrap() != ".keep")
+                    .filter(|file| file.extension().unwrap() == "log" || file.extension().unwrap() == "num")
+                    .for_each(|file| remove_file(file).unwrap())
+            }
+            Err(_) => ()
+        }
 
         let mut mem_pool = MemoryPool::new(&config).unwrap();
 
@@ -207,13 +227,111 @@ mod mem_pool_tests {
             mem_pool.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now).expect("IO error");
         }
 
-        mem_pool.join_concurrent_writes();
+        let load_mem_pool = MemoryPool::load_from_dir(&config).unwrap();
 
-        assert_eq!(read_dir(&config.write_ahead_log_dir).unwrap()
+        for i in 300000u128 - 84..300000u128 {
+            assert_eq!(load_mem_pool.get(&i.to_ne_bytes()), Some(Box::from((i * 2).to_ne_bytes())));
+        }
+    }
+
+    #[test]
+    fn test_wal_delete_on_flush() {
+        let mut config = DBConfig::default();
+        config.write_ahead_log_dir += "test_wal_delete_on_flush/";
+        config.memory_table_capacity = 10;
+        config.memory_table_pool_num = 10;
+        config.write_ahead_log_size = 1000;
+
+        match read_dir(&config.write_ahead_log_dir) {
+            Ok(dir) => {
+                dir.map(|dir_entry| dir_entry.unwrap().path())
+                    .filter(|file| file.file_name().unwrap() != ".keep")
+                    .filter(|file| file.extension().unwrap() == "log" || file.extension().unwrap() == "num")
+                    .for_each(|file| remove_file(file).unwrap())
+            }
+            Err(_) => ()
+        }
+
+        let mut mem_pool = MemoryPool::new(&config).unwrap();
+
+        for i in 0..300000u128 {
+            mem_pool.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now).expect("IO error");
+        }
+
+        assert!(read_dir(&config.write_ahead_log_dir).unwrap()
                        .map(|dir_entry| dir_entry.unwrap().path())
                        .filter(|file| file.file_name().unwrap() != ".keep")
                        .filter(|file| file.extension().unwrap() == "log")
-                       .count(), 10);
+                       .count() < 25);
+    }
+
+    #[test]
+    fn test_wal_big_input() {
+        let mut config = DBConfig::default();
+        config.write_ahead_log_dir += "test_wal_big_input/";
+        config.memory_table_capacity = 13;
+        config.memory_table_pool_num = 10;
+        config.write_ahead_log_size = 5;
+
+        match read_dir(&config.write_ahead_log_dir) {
+            Ok(dir) => {
+                dir.map(|dir_entry| dir_entry.unwrap().path())
+                    .filter(|file| file.file_name().unwrap() != ".keep")
+                    .filter(|file| file.extension().unwrap() == "log" || file.extension().unwrap() == "num")
+                    .for_each(|file| remove_file(file).unwrap())
+            }
+            Err(_) => ()
+        }
+        let mut mem_pool = MemoryPool::new(&config).unwrap();
+
+        let big_data = "老";
+
+        for i in 0..100 {
+            let big_input = big_data.repeat(i);
+            mem_pool.insert(big_input.as_bytes(), &2_u128.to_ne_bytes(), TimeStamp::Now).expect("IO error");
+        }
+
+        let load_mem_pool = MemoryPool::load_from_dir(&config).unwrap();
+
+        for i in 0..100 {
+            let big_input = big_data.repeat(i);
+            assert_eq!(load_mem_pool.get(&big_input.as_bytes()), Some(Box::from(2_u128.to_ne_bytes())));
+        }
+    }
+
+    #[test]
+    fn test_wal_small_input() {
+        let mut config = DBConfig::default();
+        config.write_ahead_log_dir += "test_wal_small_input/";
+        config.memory_table_capacity = 5;
+        config.memory_table_pool_num = 1;
+        config.write_ahead_log_num_of_logs = 100000;
+
+        match read_dir(&config.write_ahead_log_dir) {
+            Ok(dir) => {
+                dir.map(|dir_entry| dir_entry.unwrap().path())
+                    .filter(|file| file.file_name().unwrap() != ".keep")
+                    .filter(|file| file.extension().unwrap() == "log" || file.extension().unwrap() == "num")
+                    .for_each(|file| remove_file(file).unwrap())
+            }
+            Err(_) => ()
+        }
+        let mut mem_pool = MemoryPool::new(&config).unwrap();
+
+        for i in 0..53u8 {
+            println!("{i}");
+            mem_pool.insert(&i.to_ne_bytes(), &1_u128.to_ne_bytes(), TimeStamp::Now).expect("IO error");
+        }
+
+        let load_mem_pool = MemoryPool::load_from_dir(&config).unwrap();
+
+        for i in 0..50u8 {
+            assert_eq!(load_mem_pool.get(&i.to_ne_bytes()), None);
+        }
+
+        for i in 51..53u8 {
+            assert_eq!(load_mem_pool.get(&i.to_ne_bytes()), Some(Box::from(1_u128.to_ne_bytes())));
+        }
     }
 }
 
@@ -223,33 +341,34 @@ mod sstable_tests {
     use std::path::Path;
     use super::*;
     use tempfile::TempDir;
-    use segment_elements::{SegmentTrait, TimeStamp};
+    use segment_elements::TimeStamp;
     use db_config::{DBConfig, MemoryTableType};
     use crate::memtable::MemoryTable;
 
     // Helper function to get default config and inner mem of memory type
-    fn get_density_and_mem_table(mem_table_type: &MemoryTableType) -> (usize, MemoryTable) {
-        let db_config = DBConfig::default();
+    fn get_density_and_mem_table(mem_table_type: &MemoryTableType) -> (usize, usize, MemoryTable) {
+        let mut db_config = DBConfig::default();
+        db_config.memory_table_type = mem_table_type.clone();
         let mem_table = MemoryTable::new(&db_config).expect("Failed to create memory table");
 
-        (db_config.summary_density, mem_table)
+        (db_config.summary_density, db_config.index_density, mem_table)
     }
 
     // Helper function to set up the test environment
-    fn setup_test_environment(mem_table_type: &MemoryTableType) -> (TempDir, MemoryTable, usize) {
+    fn setup_test_environment(mem_table_type: &MemoryTableType) -> (TempDir, MemoryTable, usize, usize) {
         // Create a temporary directory for testing
         let temp_dir = TempDir::new().expect("Failed to create temp directory");
-        let (summary_density, mem_table) = get_density_and_mem_table(mem_table_type);
-        (temp_dir, mem_table, summary_density)
+        let (summary_density, index_density, mem_table) = get_density_and_mem_table(mem_table_type);
+        (temp_dir, mem_table, summary_density, index_density)
     }
 
     // Helper function to insert test data into the inner memory
-    fn insert_test_data(mut mem_table: &mut MemoryTable, range: i32, multiplier: i32) {
+    fn insert_test_data(mem_table: &mut MemoryTable, range: i32, multiplier: i32) {
         for i in 0..range {
             let key: i32 = i;
             let value: i32 = i * multiplier;
             let timestamp = TimeStamp::Now;
-            mem_table.insert(&key.to_ne_bytes(), &value.to_ne_bytes(), timestamp, false).expect("Failed to insert into mem table");
+            mem_table.insert(&key.to_ne_bytes(), &value.to_ne_bytes(), timestamp);
         }
     }
 
@@ -267,20 +386,20 @@ mod sstable_tests {
     }
 
     fn check_flushed_table(in_single_file: bool, mem_table_type: &MemoryTableType, range: i32, multiplier: i32) {
-        let (temp_dir, mut mem_table, summary_density) = setup_test_environment(mem_table_type);
+        let (temp_dir, mut mem_table, summary_density, index_density) = setup_test_environment(mem_table_type);
         insert_test_data(&mut mem_table, range, multiplier);
 
         // Create an SSTable and flush
         let mut sstable = SSTable::open(&temp_dir.path(), in_single_file).expect("Failed to open SSTable");
-        sstable.flush(mem_table, summary_density, &mut None).expect("Failed to flush sstable");
+        sstable.flush(mem_table, summary_density, index_density, None, &mut None).expect("Failed to flush sstable");
 
-        //Retrieve and validate data from the SSTable
+        // Retrieve and validate data from the SSTable
         for i in 0..range {
             let key: i32 = i;
             let expected_value: i32 = i * multiplier;
 
             // Retrieve value from the SSTable
-            if let Some(entry) = sstable.get(&key.to_ne_bytes(), &mut None) {
+            if let Some(entry) = sstable.get(&key.to_ne_bytes(), index_density, &mut None) {
                 // Get the value using the get_value method
                 let actual_value_bytes: Box<[u8]> = entry.get_value();
 
@@ -311,12 +430,12 @@ mod sstable_tests {
     }
 
     fn check_merkle_tree(in_single_file: bool, mem_table_type: &MemoryTableType, range: i32, multiplier: i32) {
-        let (temp_dir, mut mem_table, summary_density) = setup_test_environment(mem_table_type);
+        let (temp_dir, mut mem_table, summary_density, index_density) = setup_test_environment(mem_table_type);
         insert_test_data(&mut mem_table, range, multiplier);
 
         // Create an SSTable from the MemoryPool's inner_mem
         let mut sstable = SSTable::open(&temp_dir.path(), in_single_file).expect("Failed to open SSTable");
-        sstable.flush(mem_table, summary_density, &mut None).expect("Failed to flush sstable");
+        sstable.flush(mem_table, summary_density, index_density, None, &mut None).expect("Failed to flush sstable");
 
         // Get the merkle tree from the SSTable
         let merkle_tree = sstable.get_merkle().expect("Failed to get merkle tree");
@@ -349,21 +468,20 @@ mod sstable_tests {
     }
 
     fn merge_sstables(in_single_file: Vec<bool>, mem_table_type: &MemoryTableType, range: i32, multiplier: i32, merged_in_single_file: bool) {
-
-        //contains paths to all sstables
+        // contains paths to all sstables
         let mut sstable_paths = Vec::new();
 
-        let (temp_dir, mut inner_mem, summary_density) = setup_test_environment(mem_table_type);
-
-        //generate data for all sstables nad insert paths to sstable_paths
+        let (temp_dir, _, summary_density, index_density) = setup_test_environment(mem_table_type);
+      
+        // generate data for all sstables nad insert paths to sstable_paths
         for i in 0..in_single_file.len() {
-            let (_, mut mem_table) = get_density_and_mem_table(mem_table_type);
+            let (_, _, mut mem_table) = get_density_and_mem_table(mem_table_type);
             insert_test_data(&mut mem_table, range, multiplier * (i + 1) as i32);
 
             let sstable_path = temp_dir.path().join("sstable".to_string() + (i + 1).to_string().as_str());
             let mut sstable = SSTable::open(&sstable_path, in_single_file[i]).expect("Failed to open SSTable");
 
-            sstable.flush(mem_table, summary_density, &mut None).expect("Failed to flush sstable");
+            sstable.flush(mem_table, summary_density, index_density, None, &mut None).expect("Failed to flush sstable");
             sstable_paths.push(sstable_path);
         }
 
@@ -372,20 +490,16 @@ mod sstable_tests {
 
         // Define the path for the merged SSTable
         let merged_sstable_path = temp_dir.path().join("merged_sstable");
-        // Define the database configuration
-        let db_config = DBConfig::default();
 
         // Merge the two SSTables
-        SSTable::merge(sstable_paths.clone(), in_single_file, merged_sstable_path.as_path(), merged_in_single_file, summary_density, &mut None)
+        SSTable::merge(sstable_paths.clone(), in_single_file, merged_sstable_path.as_path(), merged_in_single_file, summary_density, index_density, &mut None)
             .expect("Failed to merge SSTables");
 
-        verify_merged_sstable(&merged_sstable_path, mem_table_type, range, multiplier, merged_in_single_file);
+        verify_merged_sstable(&merged_sstable_path, index_density, range, multiplier, merged_in_single_file);
     }
 
     // Helper function to verify that the merged SSTable contains the correct data
-    fn verify_merged_sstable(merged_sstable_path: &Path, mem_table_type: &MemoryTableType, range: i32, multiplier: i32, merged_in_single_file: bool) {
-        let (_, inner_mem) = get_density_and_mem_table(mem_table_type);
-
+    fn verify_merged_sstable(merged_sstable_path: &Path, index_density: usize, range: i32, multiplier: i32, merged_in_single_file: bool) {
         // Open an SSTable from the merged SSTable path
         let mut merged_sstable = SSTable::open(merged_sstable_path, merged_in_single_file)
             .expect("Failed to create merged SSTable");
@@ -396,7 +510,7 @@ mod sstable_tests {
             let expected_value: i32 = i * multiplier * 2;
 
             // Retrieve value from the merged SSTable
-            if let Some(entry) = merged_sstable.get(&key.to_ne_bytes(), &mut None) {
+            if let Some(entry) = merged_sstable.get(&key.to_ne_bytes(), index_density, &mut None) {
                 // Get the value using the get_value method
                 let actual_value_bytes: Box<[u8]> = entry.get_value();
 

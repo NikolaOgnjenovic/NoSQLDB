@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 use segment_elements::{MemoryEntry, SegmentTrait, TimeStamp};
-use crate::b_tree_node::{Node, Entry, compare_keys};
+use crate::b_tree_node::{Node, Entry};
 use crate::b_tree_iterator::BTreeIterator;
 use crate::order_error::OrderError;
 use bloom_filter::BloomFilter;

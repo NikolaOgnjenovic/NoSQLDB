@@ -7,3 +7,4 @@ authors = ["Luka Bursać", "Mihajlo Orlović"]
 
 [dependencies]
 crc = "3.0.1"
+compression = { path = "../compression" }

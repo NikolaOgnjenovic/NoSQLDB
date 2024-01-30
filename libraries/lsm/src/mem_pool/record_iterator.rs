@@ -13,7 +13,8 @@ pub(crate) struct Record {
 }
 
 pub(crate) struct RecordIterator {
-    all_read_bytes: Vec<u8>,
+    files: Vec<PathBuf>,
+    read_bytes: Vec<u8>,
     crc_hasher: Crc<u32>,
     data_pointer: usize
 }
@@ -30,20 +31,58 @@ impl RecordIterator {
             })
             .collect::<Vec<PathBuf>>();
 
-        files.sort();
+        files.sort_by(|a, b| b.cmp(a));
 
         let mut all_read_bytes = Vec::new();
 
-        for file in files {
-            let mut file = OpenOptions::new().read(true).open(file)?;
-            file.read_to_end(&mut all_read_bytes)?;
+        let starting_byte = {
+            let mut byte_file = OpenOptions::new().read(true).open(dir.join("byte_index.num"))?;
+            let mut byte_buffer = [0u8; 8];
+            byte_file.read_exact(&mut byte_buffer).ok();
+            usize::from_ne_bytes(byte_buffer)
+        };
+
+        let mut iterator = RecordIterator {
+            files,
+            read_bytes: all_read_bytes,
+            data_pointer: starting_byte,
+            crc_hasher: Crc::<u32>::new(&CRC_32_ISCSI)
+        };
+
+        iterator.read_at_least(starting_byte)?;
+
+        Ok(iterator)
+    }
+
+    fn read_next_file(&mut self) -> io::Result<Option<usize>> {
+        match self.files.pop() {
+            Some(file) => Ok(Some(
+                OpenOptions::new()
+                    .read(true)
+                    .open(file)?
+                    .read_to_end(&mut self.read_bytes)?
+            )),
+            None => Ok(None)
+        }
+    }
+
+    fn read_at_least(&mut self, num_bytes: usize) -> io::Result<()> {
+        // In case we already have the bytes in the buffer
+        if self.data_pointer + num_bytes <= self.read_bytes.len() {
+            return Ok(())
         }
 
-        Ok(RecordIterator {
-            all_read_bytes,
-            data_pointer: 0,
-            crc_hasher: Crc::<u32>::new(&CRC_32_ISCSI)
-        })
+        let mut already_read_bytes = 0;
+
+        while let Some(num_read_bytes) = self.read_next_file()? {
+            already_read_bytes += num_read_bytes;
+
+            if already_read_bytes >= num_bytes {
+                break;
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -51,51 +90,57 @@ impl Iterator for RecordIterator {
     type Item = Result<Record, CRCError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.data_pointer >= self.all_read_bytes.len() {
+        self.read_at_least(37).ok()?;
+
+        if self.data_pointer >= self.read_bytes.len() {
             return None;
         }
 
          let crc = {
-            let crc_buffer = &self.all_read_bytes[self.data_pointer..self.data_pointer + 4];
+            let crc_buffer = &self.read_bytes[self.data_pointer..self.data_pointer + 4];
             u32::from_ne_bytes(crc_buffer.try_into().ok()?)
         };
 
         self.data_pointer += 4;
 
         let timestamp = {
-            let timestamp_buffer = &self.all_read_bytes[self.data_pointer..self.data_pointer + 16];
+            let timestamp_buffer = &self.read_bytes[self.data_pointer..self.data_pointer + 16];
             u128::from_ne_bytes(timestamp_buffer.try_into().ok()?)
         };
 
         self.data_pointer += 16;
 
         let tombstone = {
-            let tombstone_buffer = &self.all_read_bytes[self.data_pointer..self.data_pointer + 1];
+            let tombstone_buffer = &self.read_bytes[self.data_pointer..self.data_pointer + 1];
             u8::from_ne_bytes(tombstone_buffer.try_into().ok()?) != 0
         };
 
         self.data_pointer += 1;
 
         let key_size = {
-            let key_size_buffer = &self.all_read_bytes[self.data_pointer..self.data_pointer + 8];
+            let key_size_buffer = &self.read_bytes[self.data_pointer..self.data_pointer + 8];
             usize::from_ne_bytes(key_size_buffer.try_into().ok()?)
         };
 
         self.data_pointer += 8;
 
         let value_size = {
-            let value_size_buffer = &self.all_read_bytes[self.data_pointer..self.data_pointer + 8];
+            let value_size_buffer = &self.read_bytes[self.data_pointer..self.data_pointer + 8];
             usize::from_ne_bytes(value_size_buffer.try_into().ok()?)
         };
 
         self.data_pointer += 8;
 
-        let key = self.all_read_bytes[self.data_pointer..self.data_pointer + key_size].to_vec().into_boxed_slice();
+        self.read_at_least(key_size).ok()?;
+
+        let key = self.read_bytes[self.data_pointer..self.data_pointer + key_size].to_vec().into_boxed_slice();
 
         self.data_pointer += key_size;
 
         let value = if !tombstone {
-            let value_buf = self.all_read_bytes[self.data_pointer..self.data_pointer + value_size].to_vec().into_boxed_slice();
+            self.read_at_least(value_size).ok()?;
+
+            let value_buf = self.read_bytes[self.data_pointer..self.data_pointer + value_size].to_vec().into_boxed_slice();
 
             self.data_pointer += value_size;
 
