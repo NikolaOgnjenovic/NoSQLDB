@@ -10,10 +10,15 @@ use crate::sstable::SSTable;
 use db_config::{ DBConfig, CompactionAlgorithmType };
 use write_ahead_log::WriteAheadLog;
 use lru_cache::LRUCache;
-use crate::lsm::ScanType::RangeScan;
+
 
 use crate::mem_pool::MemoryPool;
 use crate::memtable::MemoryTable;
+
+pub(crate) enum ScanType {
+    RangeScan,
+    PrefixScan,
+}
 
 struct LSMConfig {
     // Base directory path where all other SSTable directories will be stored
@@ -87,12 +92,7 @@ impl LSM {
             config: LSMConfig::from(dbconfig),
             wal,
             mem_pool,
-            lru_cacheies/lsm/src/lib.rs
-libraries/lsm/src/lsm.rs
-libraries/lsm/src/mem_pool.rs
-libraries/lsm/src/sstable.rs
-libraries/segment_elements/src/lib.rs
-libraries/segment_elements/src/memory_entry.rs ,
+            lru_cache,
             compression_dictionary: match dbconfig.use_compression {
                 true => Some(CompressionDictionary::load(dbconfig.compression_dictionary_path.as_str()).unwrap()),
                 false => None
@@ -195,16 +195,11 @@ libraries/segment_elements/src/memory_entry.rs ,
     /// An io::Result containing bytes representing data associated with a given key.
     /// Bytes are wrapped in option because key may not be present in our database
     pub fn get(&mut self, key: &[u8]) -> io::Result<Option<MemoryEntry>> {
-        // todo!() da li deserijalizacija bajtova moze biti problem ako se radi o probabilistickim strukturama??
         if let Some(memory_entry) = self.mem_pool.get(key) {
             self.lru_cache.insert(&key, Some(memory_entry.clone()));
             return Ok(Some(memory_entry.clone()));
         }
-        if let Some(data) = self.lru_cache.get(key) {
-            let (key, memory_entry) = match MemoryEntry::deserialize(data.as_ref()) {
-                Ok((key, memory_entry)) => (key, memory_entry),
-                Err(_) => return Ok(None),
-            };
+        if let Some(memory_entry) = self.lru_cache.get(key) {
             self.lru_cache.insert(&key, Some(memory_entry.clone()));
             return Ok(Some(memory_entry.clone()));
         }
@@ -685,11 +680,6 @@ libraries/segment_elements/src/memory_entry.rs ,
 
 
         return Some((return_entry, offsets))
-    }
-
-    pub(crate) enum ScanType {
-        RangeScan,
-        PrefixScan,
     }
 
     pub fn load_from_dir(dbconfig: &DBConfig) -> Result<Self, Box<dyn Error>>{

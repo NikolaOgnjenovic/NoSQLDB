@@ -81,6 +81,11 @@ impl SegmentTrait for BTree {
             self.root.as_mut().unwrap().update(key, value, time_stamp);
             return false;
         }
+        let tombstone = if value.is_empty() {
+            true
+        } else {
+            false
+        };
 
         match self.root.take() {
             None => {
@@ -99,13 +104,13 @@ impl SegmentTrait for BTree {
 
                     // choose whether the second child receives the new key, if false the key is given to the first
                     let second = key.cmp(&new_root.entries[0].as_ref().unwrap().key) == Ordering::Greater;
-                    new_root.children[second as usize].as_mut().unwrap().insert_non_full(key, value, false, time_stamp);
+                    new_root.children[second as usize].as_mut().unwrap().insert_non_full(key, value, tombstone, time_stamp);
 
                     self.root = Some(new_root);
                 } else {
                     // filling up the root node
                     self.root = Some(root);
-                    self.root.as_mut().unwrap().insert_non_full(key, value, false, time_stamp);
+                    self.root.as_mut().unwrap().insert_non_full(key, value, tombstone, time_stamp);
                 }
             }
         }

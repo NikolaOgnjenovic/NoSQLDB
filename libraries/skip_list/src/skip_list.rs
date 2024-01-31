@@ -108,10 +108,16 @@ impl segment_elements::SegmentTrait for SkipList {
 			updates[i] = Some(Arc::clone(&node));
 		}
 
+		let tombstone = if value.is_empty() {
+			true
+		} else {
+			false
+		};
+
 		let level = SkipList::random_gen(self);
 		let node_to_insert = Arc::new(Mutex::new(Node::new(
 			Some(Box::from(key)),
-			Some(MemoryEntry::from(value, false, time_stamp.get_time())),
+			Some(MemoryEntry::from(value, tombstone, time_stamp.get_time())),
 			level,
 			self.max_level
 		)));

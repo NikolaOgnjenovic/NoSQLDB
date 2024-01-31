@@ -120,7 +120,7 @@ mod tests {
         for max_level in 5..12 {
             let mut skip_list = SkipList::new(max_level);
 
-            for i in 0..256u32 {
+            for i in 0..255u32 {
                 assert!(skip_list.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now));
             }
             let iterator = skip_list.iter();

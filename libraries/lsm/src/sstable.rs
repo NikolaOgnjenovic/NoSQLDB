@@ -221,7 +221,7 @@ impl SSTable {
             let entry_data = entry.serialize(&encoded_key);
 
             if let Some(&mut ref mut lru) = lru_cache {
-                lru.update(&key, entry);
+                lru.insert(&key, Some(entry));
             }
 
             data.extend_from_slice(&entry_data);
