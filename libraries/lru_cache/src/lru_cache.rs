@@ -51,22 +51,22 @@ impl LRUCache {
 
             self.list.push_head(node.unwrap().borrow().el.clone());
             return Some(value);
-
         }
-
         None
     }
 
+    pub fn update(&mut self, key: &[u8], memory_entry: Option<MemoryEntry>) {
+        let entry = get_entry(key, &memory_entry);
+        let node = self.map.get(key);
+        if let Some(node) = node {
+            node.borrow_mut().el = entry;
+        }
+    }
+
     pub fn insert(&mut self, key: &[u8], memory_entry: Option<MemoryEntry>) {
-        let entry = if memory_entry.is_some() {
-            let memory_entry = memory_entry.unwrap();
-            Entry::from(key, memory_entry.get_value().as_ref(), memory_entry.get_tombstone(), TimeStamp::Custom(memory_entry.get_timestamp()))
-        } else {
-            Entry::from(key, &[], true, TimeStamp::Now)
-        };
+        let entry = get_entry(key, &memory_entry);
         if self.map.contains_key(key) {
-            let node = self.map.get(key);
-            node.unwrap().borrow_mut().el = entry;
+            self.update(key, memory_entry);
             return;
         }
         self.list.push_head(entry);
@@ -79,5 +79,14 @@ impl LRUCache {
             self.map.remove(popped.unwrap().borrow().el.key.as_ref());
             self.size -= 1;
         }
+    }
+}
+
+fn get_entry(key: &[u8], memory_entry: &Option<MemoryEntry>) -> Entry {
+    if memory_entry.is_some() {
+        let memory_entry = memory_entry.as_ref().unwrap();
+        Entry::from(key, memory_entry.get_value().as_ref(), memory_entry.get_tombstone(), TimeStamp::Custom(memory_entry.get_timestamp()))
+    } else {
+        Entry::from(key, &[], true, TimeStamp::Now)
     }
 }

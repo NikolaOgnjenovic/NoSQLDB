@@ -220,7 +220,7 @@ impl SSTable {
             };
             let entry_data = entry.serialize(&encoded_key, use_variable_encoding);
             if let Some(&mut ref mut lru) = lru_cache {
-                lru.insert(&key, Some(entry));
+                lru.update(&key, Some(entry));
             }
 
             data.extend_from_slice(&entry_data);
