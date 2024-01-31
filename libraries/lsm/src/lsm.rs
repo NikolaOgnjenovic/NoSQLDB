@@ -9,7 +9,6 @@ use crate::sstable::SSTable;
 use db_config::{ DBConfig, CompactionAlgorithmType };
 use write_ahead_log::WriteAheadLog;
 use lru_cache::LRUCache;
-
 use crate::mem_pool::MemoryPool;
 use crate::memtable::MemoryTable;
 
@@ -195,16 +194,11 @@ impl LSM {
     /// An io::Result containing bytes representing data associated with a given key.
     /// Bytes are wrapped in option because key may not be present in our database
     pub fn get(&mut self, key: &[u8]) -> io::Result<Option<MemoryEntry>> {
-        // todo!() da li deserijalizacija bajtova moze biti problem ako se radi o probabilistickim strukturama??
         if let Some(memory_entry) = self.mem_pool.get(key) {
             self.lru_cache.insert(&key, Some(memory_entry.clone()));
             return Ok(Some(memory_entry.clone()));
         }
-        if let Some(data) = self.lru_cache.get(key) {
-            let (key, memory_entry) = match MemoryEntry::deserialize(data.as_ref(), false) {
-                Ok((key, memory_entry)) => (key, memory_entry),
-                Err(_) => return Ok(None),
-            };
+        if let Some(memory_entry) = self.lru_cache.get(key) {
             self.lru_cache.insert(&key, Some(memory_entry.clone()));
             return Ok(Some(memory_entry.clone()));
         }

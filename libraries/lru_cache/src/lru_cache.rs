@@ -30,10 +30,10 @@ impl LRUCache {
         self.capacity
     }
 
-    pub fn get(&mut self, key: &[u8]) -> Option<Box<[u8]>> {
+    pub fn get(&mut self, key: &[u8]) -> Option<MemoryEntry> {
         if self.map.contains_key(key) {
             let node = self.map.get(key);
-            let value = node.unwrap().borrow().el.mem_entry.clone().serialize(key, false);
+            let value = node.unwrap().borrow().el.mem_entry.clone();
             let prev_node = node.unwrap().as_ref().borrow_mut().prev.take();
             let next_node = node.unwrap().as_ref().borrow_mut().next.take();
 
@@ -57,14 +57,6 @@ impl LRUCache {
         None
     }
 
-    pub fn update(&mut self, key: &[u8], memory_entry: MemoryEntry) {
-        if self.map.contains_key(key) {
-            let node = self.map.get(key);
-            node.unwrap().borrow_mut().el = Entry::from(key, &memory_entry.get_value(), memory_entry.get_tombstone(), TimeStamp::Custom(memory_entry.get_timestamp()));
-            return;
-        }
-    }
-
     pub fn insert(&mut self, key: &[u8], memory_entry: Option<MemoryEntry>) {
         let entry = if memory_entry.is_some() {
             let memory_entry = memory_entry.unwrap();
@@ -72,6 +64,11 @@ impl LRUCache {
         } else {
             Entry::from(key, &[], true, TimeStamp::Now)
         };
+        if self.map.contains_key(key) {
+            let node = self.map.get(key);
+            node.unwrap().borrow_mut().el = entry;
+            return;
+        }
         self.list.push_head(entry);
         let node = self.list.peak_head();
         self.map.insert(Box::from(key), node.unwrap());
