@@ -281,6 +281,8 @@ impl LSM {
         let mut sstable = SSTable::open(sstable_base_path.to_owned(), in_single_file)?;
         let flush_bytes = sstable.flush(mem_table, summary_density, index_density, Some(&mut self.lru_cache), &mut self.compression_dictionary, use_variable_encoding)?;
         let (min, max) = SSTable::get_key_range(sstable_base_path, in_single_file)?;
+        println!(" flushed min {:?}", min);
+        println!("flushed max {:?}", max);
         let mem_table_byte_size = flush_bytes.get_data_len();
         self.wal.add_to_starting_byte(mem_table_byte_size).unwrap();
         self.wal.remove_flushed_wals().unwrap();
@@ -406,6 +408,10 @@ impl LSM {
                 .filter(|&(index, _)| !indexes_to_delete.contains(&&index))
                 .map(|(_, &ref elem)| elem.clone())
                 .collect();
+
+            let (min, max) = SSTable::get_key_range(merged_base_path, merged_in_single_file)?;
+            println!(" merged min {:?}", min);
+            println!(" merged max{:?}", max);
 
             // Replace this vector with existing in sstable_directory_names and append merged directory to it
             kept_sstable_directories.push(merged_directory);

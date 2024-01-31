@@ -22,12 +22,13 @@ mod lsm_tests {
     #[test]
     fn test_flushing() -> io::Result<()> {
         let mut db_config = DBConfig::default();
-        db_config.memory_table_pool_num = 3;
-        db_config.memory_table_capacity = 100;
+        db_config.memory_table_pool_num = 2;
+        db_config.memory_table_capacity = 1000;
+        db_config.lsm_max_per_level = 3;
         db_config.sstable_single_file = true;
-        db_config.compaction_algorithm_type = CompactionAlgorithmType::Leveled;
+        db_config.compaction_algorithm_type = CompactionAlgorithmType::SizeTiered;
         let mut lsm = LSM::new(&db_config).unwrap();
-        for i in 478..822usize {
+        for i in 0..30000usize {
             lsm.insert(&i.to_ne_bytes(), &i.to_ne_bytes(), TimeStamp::Now)?;
         }
         //fs::create_dir_all(&db_config.sstable_dir)?;
