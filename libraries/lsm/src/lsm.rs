@@ -196,25 +196,28 @@ impl LSM {
     ///
     /// An io::Result containing bytes representing data associated with a given key.
     /// Bytes are wrapped in option because key may not be present in our database
-    pub fn get(&mut self, key: &[u8]) -> io::Result<Option<MemoryEntry>> {
+    pub fn get(&mut self, key: &[u8]) -> io::Result<Option<Box<[u8]>>> {
         if let Some(memory_entry) = self.mem_pool.get(key) {
             self.lru_cache.insert(&key, Some(memory_entry.clone()));
-            return Ok(Some(memory_entry.clone()));
+            return Ok(Some(memory_entry.get_value()));
         }
+
         if let Some(memory_entry) = self.lru_cache.get(key) {
             self.lru_cache.insert(&key, Some(memory_entry.clone()));
-            return Ok(Some(memory_entry.clone()));
+            return Ok(Some(memory_entry.get_value()));
         }
+
         for level in &self.sstable_directory_names {
             for sstable_dir in level.iter().rev() {
                 let (path, in_single_file) = self.get_sstable_path(sstable_dir);
                 let mut sstable = SSTable::open(path, in_single_file)?;
                 if let Some(data) = sstable.get(key, self.config.index_density, &mut self.compression_dictionary, self.config.use_variable_encoding) {
                     self.lru_cache.insert(key, Some(data.clone()));
-                    return Ok(Some(data));
+                    return Ok(Some(data.get_value()));
                 }
             }
         }
+
         self.lru_cache.insert(key, None);
         Ok(None)
     }
@@ -285,7 +288,10 @@ impl LSM {
         println!(" flushed min {:?}", min);
         println!("flushed max {:?}", max);
         let mem_table_byte_size = flush_bytes.get_data_len();
+
+        // adds the memory table wal equivalent byte size to the wal starting point counter
         self.wal.add_to_starting_byte(mem_table_byte_size).unwrap();
+        // removes all the data up to the starting point
         self.wal.remove_flushed_wals().unwrap();
 
         self.sstable_directory_names[0].push(PathBuf::from(directory_name));
@@ -701,20 +707,22 @@ impl LSM {
         return Some((return_entry, offsets))
     }
 
-    pub fn load_from_dir(dbconfig: &DBConfig) -> Result<Self, Box<dyn Error>>{
-        let lru_cache = LRUCache::new(dbconfig.cache_max_size);
-        let mem_pool = MemoryPool::load_from_dir(dbconfig)?; // todo luka nez sta god
-        let wal = WriteAheadLog::new(dbconfig)?;
-        Ok(LSM {
-            config: LSMConfig::from(dbconfig),
-            wal,
-            mem_pool,
-            lru_cache,
-            compression_dictionary: match dbconfig.use_compression {
-                true => Some(CompressionDictionary::load(dbconfig.compression_dictionary_path.as_str()).unwrap()),
-                false => None
-            },
-            sstable_directory_names: Vec::with_capacity(dbconfig.lsm_max_level)
-        })
+    pub fn load_from_dir(dbconfig: &DBConfig) -> Result<Self, Box<dyn Error>> {
+        let (mem_pool, tables_to_be_flushed) =
+            MemoryPool::load_from_dir(dbconfig)?;
+
+        let mut new_lsm = LSM::new(dbconfig)?;
+        new_lsm.mem_pool = mem_pool;
+
+        for table in tables_to_be_flushed {
+            new_lsm.flush(table)?;
+        }
+
+        Ok(new_lsm)
+    }
+
+    pub fn finalize(self) {
+        self.wal.close();
+        // when adding concurrent sstable flushes, join all threads here
     }
 }

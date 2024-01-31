@@ -114,8 +114,9 @@ impl MemoryPool {
     }
 
     /// Loads from every log file in the given directory.
-    pub(crate) fn load_from_dir(config: &DBConfig) -> Result<MemoryPool, Box<dyn Error>> {
+    pub(crate) fn load_from_dir(config: &DBConfig) -> Result<(MemoryPool, Vec<MemoryTable>), Box<dyn Error>> {
         let mut pool = MemoryPool::new(config)?;
+        let mut to_be_flushed = vec![];
 
         for entry in RecordIterator::new(Path::new(&config.write_ahead_log_dir))? {
             let entry = match entry {
@@ -131,7 +132,9 @@ impl MemoryPool {
                     .read_write_table
                     .delete(&entry.key, TimeStamp::Custom(entry.timestamp))
                 {
-                    pool.swap()?;
+                    if let Some(table) = pool.swap()? {
+                        to_be_flushed.push(table);
+                    }
                 }
             } else {
                 if pool.read_write_table.insert(
@@ -139,11 +142,13 @@ impl MemoryPool {
                     &entry.value.unwrap(),
                     TimeStamp::Custom(entry.timestamp),
                 ) {
-                    pool.swap()?;
+                    if let Some(table) = pool.swap()? {
+                        to_be_flushed.push(table);
+                    }
                 }
             }
         }
 
-        Ok(pool)
+        Ok((pool, to_be_flushed))
     }
 }

@@ -71,20 +71,13 @@ impl DB {
 
     /// Retrieves the data that is associated to a given key.
     pub fn get(&mut self, key: &[u8]) -> std::io::Result<Option<Box<[u8]>>> {
-        if let Some(memory_entry) = self.lsm.get(key)? {
-            return Ok(Some(memory_entry.get_value()));
-        }
-
-        // todo sstable get, komplikovano
-
-        todo!()
+        self.lsm.get(key)
     }
 
     /// Should be called before the program exit to gracefully finish all memory tables writes,
     /// SStable merges and compactions.
     pub fn shut_down(&mut self) {
-        //self.lsm.join_concurrent_writes();
-        // todo join sstable LSM merge-ove i kompakcije
+        self.lsm.finalize();
     }
 
     /// Gets the value Bloom filter associated with the given key.

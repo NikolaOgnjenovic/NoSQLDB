@@ -131,4 +131,12 @@ impl WriteAheadLog {
             .set(byte_index - subtract_bytes as usize)?;
         Ok(())
     }
+
+    pub fn close(mut self) {
+        for mut file in &mut self.files {
+            file.close_file();
+        }
+
+        self.last_byte_file.close();
+    }
 }
