@@ -1,6 +1,6 @@
 /// Enum representing an SSTable element type used for reading and writing different kinds of data.
 #[derive(PartialEq)]
-pub(crate) enum SSTableElementType {
+pub enum SSTableElementType {
     DataEntryValue,
     DataEntryWithoutValue,
     Index,

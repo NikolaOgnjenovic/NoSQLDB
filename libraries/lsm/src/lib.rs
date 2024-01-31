@@ -15,7 +15,7 @@ mod lsm_tests {
     use super::*;
     use tempfile::TempDir;
     use segment_elements::TimeStamp;
-    use db_config::{DBConfig, MemoryTableType};
+    use db_config::{CompactionAlgorithmType, DBConfig, MemoryTableType};
     use crate::lsm::LSM;
     use crate::memtable::MemoryTable;
 
@@ -24,9 +24,11 @@ mod lsm_tests {
         let mut db_config = DBConfig::default();
         db_config.memory_table_pool_num = 3;
         db_config.memory_table_capacity = 100;
+        db_config.sstable_single_file = true;
+        db_config.compaction_algorithm_type = CompactionAlgorithmType::Leveled;
         let mut lsm = LSM::new(&db_config).unwrap();
-        for i in 0..301usize {
-            lsm.insert(&i.to_ne_bytes(), &(i).to_ne_bytes(), TimeStamp::Now)?;
+        for i in 478..822usize {
+            lsm.insert(&i.to_ne_bytes(), &i.to_ne_bytes(), TimeStamp::Now)?;
         }
         //fs::create_dir_all(&db_config.sstable_dir)?;
         list_files_and_folders(db_config.sstable_dir)?;
@@ -45,8 +47,6 @@ mod lsm_tests {
                 println!("File: {}", file_name);
             } else if path.is_dir() {
                 println!("Folder: {}", file_name);
-                // If you want to list the contents of the directory, you can use recursion
-                list_files_and_folders((&path.to_string_lossy()).to_string())?;
             } else {
                 println!("Unknown: {}", file_name);
             }

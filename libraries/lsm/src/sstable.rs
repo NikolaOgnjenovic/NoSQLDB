@@ -1,4 +1,4 @@
-mod sstable_element_type;
+pub(crate) mod sstable_element_type;
 
 use std::cmp::{Ordering};
 use std::collections::HashMap;
@@ -520,11 +520,10 @@ impl SSTable {
                 break;
             }
 
-            // remove the None values
+            // add indexes
             let entries: Vec<_> = option_entries
                 .iter()
                 .enumerate()
-                .filter(|(_, elem)| elem.is_some())
                 .collect();
 
             // find the indexes of min keys
@@ -545,7 +544,7 @@ impl SSTable {
 
             // insert entry with the biggest timestamp
             let max_index = SSTable::find_max_timestamp(&min_entries);
-            merged_entries.push(min_entries[max_index].1.as_ref().unwrap().0.clone());
+            merged_entries.push(entries[max_index].1.as_ref().unwrap().0.clone());
         }
         Ok(merged_entries)
     }
@@ -562,8 +561,9 @@ impl SSTable {
     /// An index of entry with the biggest timestamp
     pub(crate) fn find_max_timestamp(entries: &Vec<(usize, &Option<((Box<[u8]>, MemoryEntry), u64)>)>) -> usize {
         let mut max_index = 0;
-        let mut max_timestamp = entries[max_index].1.as_ref().unwrap().0.1.get_timestamp();
+        let mut max_timestamp = 0;
         for (index, element) in entries {
+            if element.is_none() { continue; }
             let timestamp = element.as_ref().unwrap().0.1.get_timestamp();
             if timestamp > max_timestamp {
                 max_index = *index;
@@ -587,6 +587,7 @@ impl SSTable {
         let mut min_key: Box<[u8]> = Box::new([255u8; 255]);
         let mut min_indexes = vec![];
         for (index, element) in entries {
+            if element.is_none() { continue; }
             let element = element.as_ref().unwrap();
             if !merging {
                 if element.0.1.get_tombstone() {
@@ -857,7 +858,7 @@ impl SSTable {
     /// # Errors
     ///
     /// Returns an `io::Error` if there's an issue when reading the cursor data.
-    fn get_cursor_data(&mut self, in_single_file: bool, path_postfix: &str, sstable_element_type: SSTableElementType, total_entry_offset: Option<u64>, use_variable_encoding: bool) -> io::Result<Cursor<Vec<u8>>> {
+    pub(crate) fn get_cursor_data(&mut self, in_single_file: bool, path_postfix: &str, sstable_element_type: SSTableElementType, total_entry_offset: Option<u64>, use_variable_encoding: bool) -> io::Result<Cursor<Vec<u8>>> {
         let mut buffer = Vec::new();
         let total_entry_offset = total_entry_offset.unwrap_or(0);
 
@@ -1110,7 +1111,7 @@ impl SSTable {
 
         // Position the file cursor on beginning of summary data
         if in_single_file {
-            file_handle.seek(SeekFrom::Start(2 * std::mem::size_of::<usize>() as u64))?;
+            file_handle.seek(SeekFrom::Start((SSTableElementType::Summary.get_id() * std::mem::size_of::<usize>()) as u64))?;
 
             let mut summary_offset_bytes = [0u8; std::mem::size_of::<usize>()];
             file_handle.read_exact(&mut summary_offset_bytes)?;

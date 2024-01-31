@@ -1,7 +1,8 @@
 use std::cmp::Ordering;
 use std::error::Error;
-use std::fs::read_dir;
+use std::fs::{read_dir, remove_dir_all};
 use std::io;
+use std::io::{BufRead, Cursor, Read};
 use std::path::PathBuf;
 use segment_elements::{MemoryEntry, TimeStamp};
 use compression::CompressionDictionary;
@@ -84,7 +85,8 @@ impl LSM {
 
         for dir in dirs {
             let level = dir.to_str().unwrap().split("_").collect::<Vec<&str>>()[1].parse::<usize>().unwrap();
-            sstable_directory_names[level-1].push(dir);
+            let path = PathBuf::from(dir.to_str().unwrap().split("/").last().unwrap());
+            sstable_directory_names[level-1].push(path);
         }
 
         Ok(LSM {
@@ -171,7 +173,7 @@ impl LSM {
                 let sstable_base_path = parent_dir.join(path);
                 let in_single_file = LSM::is_in_single_file(path);
                 match SSTable::get_key_range(sstable_base_path, in_single_file) {
-                    Ok((min_key, max_key)) => max_key >= Box::from(main_max_key) && min_key <= Box::from(main_min_key),
+                    Ok((min_key, max_key)) => max_key >= Box::from(main_min_key) && min_key <= Box::from(main_max_key),
                     Err(_) => false,
                 }
             })
@@ -276,8 +278,9 @@ impl LSM {
         let sstable_base_path = self.config.parent_dir.join(directory_name.as_path());
         let use_variable_encoding = self.config.use_variable_encoding;
 
-        let mut sstable = SSTable::open(sstable_base_path, in_single_file)?;
+        let mut sstable = SSTable::open(sstable_base_path.to_owned(), in_single_file)?;
         let flush_bytes = sstable.flush(mem_table, summary_density, index_density, Some(&mut self.lru_cache), &mut self.compression_dictionary, use_variable_encoding)?;
+        let (min, max) = SSTable::get_key_range(sstable_base_path, in_single_file)?;
         let mem_table_byte_size = flush_bytes.get_data_len();
         self.wal.add_to_starting_byte(mem_table_byte_size).unwrap();
         self.wal.remove_flushed_wals().unwrap();
@@ -291,6 +294,13 @@ impl LSM {
             }
         }
 
+        Ok(())
+    }
+
+    fn remove_all_compacted(sstable_base_paths: Vec<PathBuf>) -> io::Result<()> {
+        for dir in sstable_base_paths {
+            remove_dir_all(dir)?;
+        }
         Ok(())
     }
 
@@ -325,13 +335,14 @@ impl LSM {
             let merged_base_path = self.config.parent_dir.join(merged_directory.clone());
 
             // Merge them all together, push merged SSTable into sstable_directory_names and delete all SSTables involved in merging process
-            SSTable::merge(sstable_base_paths, sstable_single_file, &merged_base_path, merged_in_single_file, self.config.summary_density, self.config.index_density, &mut self.compression_dictionary, use_variable_encoding)?;
+            SSTable::merge(sstable_base_paths.clone(), sstable_single_file, &merged_base_path, merged_in_single_file, self.config.summary_density, self.config.index_density, &mut self.compression_dictionary, use_variable_encoding)?;
             self.sstable_directory_names[level].clear();
+            Self::remove_all_compacted(sstable_base_paths)?;
             self.sstable_directory_names[level+1].push(merged_directory);
 
             // Check for possibility of another compaction occurring
             level += 1;
-            if level >= self.config.max_level {
+            if level >= self.config.max_level - 1 {
                 break;
             }
         }
@@ -365,7 +376,7 @@ impl LSM {
             let in_range_paths = LSM::find_similar_key_ranges(&self.sstable_directory_names, &self.config.parent_dir, &main_min_key, &main_max_key, level+1)?;
             let mut sstable_base_paths: Vec<_> = in_range_paths.clone()
                 .into_iter()
-                .map(|(_, path)| path.to_owned())
+                .map(|(_, path)| self.config.parent_dir.join(path.to_owned()))
                 .collect();
 
             // Put main SStable in vector and create vector of booleans indicating whether each SSTable is in a single file
@@ -380,7 +391,7 @@ impl LSM {
             let merged_base_path = self.config.parent_dir.join(merged_directory.clone());
 
             // Merge them all together
-            SSTable::merge(sstable_base_paths, sstable_single_file, &merged_base_path.to_path_buf(), merged_in_single_file, self.config.summary_density, self.config.index_density, &mut self.compression_dictionary, use_variable_encoding)?;
+            SSTable::merge(sstable_base_paths.clone(), sstable_single_file, &merged_base_path.to_path_buf(), merged_in_single_file, self.config.summary_density, self.config.index_density, &mut self.compression_dictionary, use_variable_encoding)?;
 
             // Extract indexes of SSTable that need to be removed
             let indexes_to_delete: Vec<_> = in_range_paths
@@ -398,11 +409,12 @@ impl LSM {
 
             // Replace this vector with existing in sstable_directory_names and append merged directory to it
             kept_sstable_directories.push(merged_directory);
+            Self::remove_all_compacted(sstable_base_paths)?;
             self.sstable_directory_names[level+1] = kept_sstable_directories;
 
             // Check for possibility of another compaction occurring
             level += 1;
-            if level >= self.config.max_level {
+            if level >= self.config.max_level - 1 {
                 break;
             }
         }
@@ -493,7 +505,7 @@ impl LSM {
 
         let min_key_indexes = LSM::find_min_keys(&entries);
 
-        let min_entries: Vec<_> =  min_key_indexes
+        let min_entries: Vec<_> = min_key_indexes
             .iter()
             .map(|index| entries[*index].clone())
             .collect();
