@@ -1,16 +1,16 @@
-use std::collections::VecDeque;
-use std::{fs, io};
-use std::path::PathBuf;
+use crate::wal_byte_index::WALByteIndex;
+use crate::wal_file::WALFile;
 use crc::{Crc, CRC_32_ISCSI};
 use db_config::DBConfig;
 use segment_elements::TimeStamp;
-use crate::wal_byte_index::WALByteIndex;
-use crate::wal_file::WALFile;
+use std::collections::VecDeque;
+use std::path::PathBuf;
+use std::{fs, io};
 
 struct WALConfig {
     wal_dir: PathBuf,
     wal_max_entries: usize,
-    wal_max_size: usize
+    wal_max_size: usize,
 }
 
 impl WALConfig {
@@ -18,7 +18,7 @@ impl WALConfig {
         Self {
             wal_dir: PathBuf::from(&dbconfig.write_ahead_log_dir),
             wal_max_size: dbconfig.write_ahead_log_size,
-            wal_max_entries: dbconfig.write_ahead_log_num_of_logs
+            wal_max_entries: dbconfig.write_ahead_log_num_of_logs,
         }
     }
 }
@@ -27,7 +27,7 @@ pub struct WriteAheadLog {
     crc_hasher: Crc<u32>,
     config: WALConfig,
     last_byte_file: WALByteIndex,
-    files: VecDeque<WALFile>
+    files: VecDeque<WALFile>,
 }
 
 impl WriteAheadLog {
@@ -58,7 +58,10 @@ impl WriteAheadLog {
 
         let checksum_bytes = Vec::from(self.crc_hasher.checksum(&record_bytes).to_ne_bytes());
 
-        let complete_bytes = checksum_bytes.into_iter().chain(record_bytes.into_iter()).collect::<Vec<u8>>();
+        let complete_bytes = checksum_bytes
+            .into_iter()
+            .chain(record_bytes)
+            .collect::<Vec<u8>>();
 
         self.push_all_bytes(complete_bytes)?;
 
@@ -76,7 +79,10 @@ impl WriteAheadLog {
 
         let checksum_bytes = Vec::from(self.crc_hasher.checksum(&record_bytes).to_ne_bytes());
 
-        let complete_bytes = checksum_bytes.into_iter().chain(record_bytes.into_iter()).collect::<Vec<u8>>();
+        let complete_bytes = checksum_bytes
+            .into_iter()
+            .chain(record_bytes)
+            .collect::<Vec<u8>>();
 
         self.push_all_bytes(complete_bytes)?;
 
@@ -121,8 +127,8 @@ impl WriteAheadLog {
             file_num += 1;
         }
 
-        self.last_byte_file.set(byte_index - subtract_bytes as usize)?;
+        self.last_byte_file
+            .set(byte_index - subtract_bytes as usize)?;
         Ok(())
     }
 }
-

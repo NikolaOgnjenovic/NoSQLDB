@@ -1,13 +1,13 @@
 mod db_config;
 
+pub use db_config::CompactionAlgorithmType;
 pub use db_config::DBConfig;
 pub use db_config::MemoryTableType;
-pub use db_config::CompactionAlgorithmType;
 
 #[cfg(test)]
 mod tests {
-    use crate::db_config::MemoryTableType;
     use super::DBConfig;
+    use crate::db_config::MemoryTableType;
 
     #[test]
     fn save_load() {

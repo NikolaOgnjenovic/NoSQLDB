@@ -1,7 +1,7 @@
+use phf::{phf_set, Set};
 use regex::Regex;
 use std::collections::HashMap;
 use twox_hash::xxh3::hash64;
-use phf::{phf_set, Set};
 
 static STOP_WORDS: Set<&'static str> = phf_set! {
     "i", "me", "my", "myself", "we", "our", "ours", "ourselves", "you", "your", "yours",
@@ -46,12 +46,12 @@ pub fn sim_hash(text: &str) -> u64 {
         let mut bit_sum = 0i32;
 
         for (hash, count) in word_hashes.iter() {
-                let bit = (hash >> bit) & 1;
-                if bit == 1 {
-                    bit_sum += *count;
-                } else {
-                    bit_sum -= *count;
-                }
+            let bit = (hash >> bit) & 1;
+            if bit == 1 {
+                bit_sum += *count;
+            } else {
+                bit_sum -= *count;
+            }
         }
 
         if bit_sum > 0 {

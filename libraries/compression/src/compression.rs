@@ -1,11 +1,10 @@
 use bitvec::macros::internal::funty::Fundamental;
-use std::io::{Error, ErrorKind, Read, Write};
 use bitvec::prelude::{BitArray, Msb0};
-use std::collections::HashMap;
-use bitvec::view::BitView;
 use bitvec::vec::BitVec;
+use bitvec::view::BitView;
+use std::collections::HashMap;
 use std::fs::File;
-
+use std::io::{Error, ErrorKind, Read, Write};
 
 pub struct CompressionDictionary {
     file: File,
@@ -23,10 +22,10 @@ impl CompressionDictionary {
         let mut buffer = Vec::new();
         let mut file_cursor: usize = 0;
 
-        let mut file = match File::open(&file_path) {
+        let mut file = match File::open(file_path) {
             Ok(file) => file,
             Err(_) => {
-                let file = File::create(&file_path)?;
+                let file = File::create(file_path)?;
                 return Ok(CompressionDictionary { file, list, map });
             }
         };
@@ -37,7 +36,8 @@ impl CompressionDictionary {
             let (key_length, offset) = variable_decode(&buffer[file_cursor..]);
             file_cursor += offset;
 
-            let key_decoded: Box<[u8]> = Box::from(&buffer[file_cursor..file_cursor + key_length.unwrap() as usize]);
+            let key_decoded: Box<[u8]> =
+                Box::from(&buffer[file_cursor..file_cursor + key_length.unwrap() as usize]);
             file_cursor += key_length.unwrap() as usize;
             if !map.contains_key(&key_decoded) {
                 map.insert(key_decoded.clone(), list.len() as u64);
@@ -45,7 +45,7 @@ impl CompressionDictionary {
             }
         }
 
-        return Ok(CompressionDictionary { file, list, map });
+        Ok(CompressionDictionary { file, list, map })
     }
 
     /// Adds `keys` to the dictionary.
@@ -69,12 +69,12 @@ impl CompressionDictionary {
 
     /// For a given `key` returns the encoded key from the dictionary.
     /// If it's not already in the dictionary, it will be automatically added.
-    pub fn encode(&mut self, key: &Box<[u8]>) -> std::io::Result<Box<[u8]>> {
+    pub fn encode(&mut self, key: &[u8]) -> std::io::Result<Box<[u8]>> {
         match self.map.get(key) {
             Some(value) => Ok(Box::from(value.to_ne_bytes())),
             None => {
-                self.map.insert(key.clone(), self.list.len() as u64);
-                self.list.push(key.clone());
+                self.map.insert(Box::from(key), self.list.len() as u64);
+                self.list.push(Box::from(key));
                 let mut buffer = Vec::new();
                 buffer.extend_from_slice(variable_encode(key.len() as u128).as_ref());
                 buffer.extend_from_slice(key);
@@ -86,7 +86,7 @@ impl CompressionDictionary {
 
     /// For a given `key` returns the decoded key from the dictionary.
     /// If the encoded key is not in the dictionary return an error.
-    pub fn decode(&self, key: &Box<[u8]>) -> std::io::Result<Box<[u8]>> {
+    pub fn decode(&self, key: &[u8]) -> std::io::Result<Box<[u8]>> {
         let key_encoded = {
             let mut key_encoded_bytes = [0u8; 8];
             key_encoded_bytes.copy_from_slice(key);
@@ -95,7 +95,10 @@ impl CompressionDictionary {
 
         match self.list.get(key_encoded) {
             Some(key_decoded) => Ok(key_decoded.clone()),
-            None => Err(Error::new(ErrorKind::InvalidData, "Encoded key is not in the dictionary!"))
+            None => Err(Error::new(
+                ErrorKind::InvalidData,
+                "Encoded key is not in the dictionary!",
+            )),
         }
     }
 }
@@ -110,8 +113,16 @@ pub fn variable_encode(number_value: u128) -> Box<[u8]> {
     }
 
     let leading_zeros = bit_array.leading_zeros();
-    let significant_bytes = if leading_zeros == 128 { 7 } else { 128 - leading_zeros };
-    let remainder_bytes = if significant_bytes % 7 != 0 { 7 - significant_bytes % 7 } else { 0 };
+    let significant_bytes = if leading_zeros == 128 {
+        7
+    } else {
+        128 - leading_zeros
+    };
+    let remainder_bytes = if significant_bytes % 7 != 0 {
+        7 - significant_bytes % 7
+    } else {
+        0
+    };
     let start_index = 128 - significant_bytes - remainder_bytes;
     let chunks = &mut bit_array[start_index..128].chunks(7).peekable();
 
@@ -128,7 +139,7 @@ pub fn variable_encode(number_value: u128) -> Box<[u8]> {
         buffer.push(byte);
     }
 
-    return buffer.into_boxed_slice();
+    buffer.into_boxed_slice()
 }
 
 /// For given `buffer` returns the first encoded value, and it's encoded length in bytes representing new offset.

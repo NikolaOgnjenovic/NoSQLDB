@@ -5,7 +5,7 @@ use sha256::digest;
 pub struct Node {
     pub hash: String,
     pub left_child: Option<Box<Node>>,
-    pub right_child: Option<Box<Node>>
+    pub right_child: Option<Box<Node>>,
 }
 
 impl Node {
@@ -14,7 +14,7 @@ impl Node {
         Node {
             hash: digest(data),
             left_child: None,
-            right_child: None
+            right_child: None,
         }
     }
 
@@ -23,7 +23,7 @@ impl Node {
         Node {
             hash: String::from(""),
             left_child: None,
-            right_child: None
+            right_child: None,
         }
     }
 
@@ -35,17 +35,13 @@ impl Node {
 
         let concatenated_hashes = format!(
             "{}{}",
-            left_child
-                .as_ref()
-                .map_or("", |node| node.hash.as_str()),
-            right_child
-                .as_ref()
-                .map_or("", |node| node.hash.as_str())
+            left_child.as_ref().map_or("", |node| node.hash.as_str()),
+            right_child.as_ref().map_or("", |node| node.hash.as_str())
         );
         Node {
             hash: digest(concatenated_hashes),
             left_child,
-            right_child
+            right_child,
         }
     }
 
@@ -54,7 +50,7 @@ impl Node {
         Node {
             hash,
             left_child: None,
-            right_child: None
+            right_child: None,
         }
     }
 
@@ -67,7 +63,7 @@ impl Node {
 /// Represents a Merkle tree.
 #[derive(Debug)]
 pub struct MerkleTree {
-    pub root: Option<Box<Node>>
+    pub root: Option<Box<Node>>,
 }
 
 impl MerkleTree {
@@ -75,10 +71,7 @@ impl MerkleTree {
     pub fn new(data: &[u8]) -> MerkleTree {
         let mut tree = MerkleTree { root: None };
 
-        let nodes: Vec<Node> = data
-            .chunks(1024)
-            .map(Node::new)
-            .collect();
+        let nodes: Vec<Node> = data.chunks(1024).map(Node::new).collect();
 
         tree.build_tree(nodes);
 
@@ -99,7 +92,10 @@ impl MerkleTree {
                     new_nodes.push(left.clone());
                 }
                 [left, right] => {
-                    let parent = Node::new_with_children(Some(Box::from(left.clone())), Some(Box::from(right.clone())));
+                    let parent = Node::new_with_children(
+                        Some(Box::from(left.clone())),
+                        Some(Box::from(right.clone())),
+                    );
                     new_nodes.push(parent);
                 }
                 _ => unreachable!(),
@@ -117,15 +113,26 @@ impl MerkleTree {
     pub fn get_different_chunks_indices(&self, checking: &MerkleTree) -> Vec<usize> {
         let mut different_chunk_indices = Vec::new();
 
-        if let (Some(self_root), Some(checking_root)) = (self.root.as_ref(), checking.root.as_ref()) {
-            Self::find_different_chunk_indices(self_root, checking_root, &mut different_chunk_indices, 0);
+        if let (Some(self_root), Some(checking_root)) = (self.root.as_ref(), checking.root.as_ref())
+        {
+            Self::find_different_chunk_indices(
+                self_root,
+                checking_root,
+                &mut different_chunk_indices,
+                0,
+            );
         }
 
         different_chunk_indices
     }
 
     /// Recursively finds the indices of chunks that are different between two Merkle trees.
-    fn find_different_chunk_indices(root1: &Node, root2: &Node, indices: &mut Vec<usize>, current_index: usize) {
+    fn find_different_chunk_indices(
+        root1: &Node,
+        root2: &Node,
+        indices: &mut Vec<usize>,
+        current_index: usize,
+    ) {
         if root1.is_leaf() && root2.is_leaf() && root1.hash != root2.hash {
             indices.push(current_index);
             return;
@@ -167,9 +174,7 @@ impl MerkleTree {
 
         let nodes: Vec<Node> = data
             .chunks(1024)
-            .map(|d| {
-                Node::new_with_hash(String::from_utf8(d.to_vec()).unwrap())
-            })
+            .map(|d| Node::new_with_hash(String::from_utf8(d.to_vec()).unwrap()))
             .collect();
 
         tree.build_tree(nodes);

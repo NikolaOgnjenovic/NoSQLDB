@@ -1,14 +1,13 @@
-use bitvec::prelude::{BitVec};
+use bitvec::prelude::BitVec;
+use std::io::Result;
 use twox_hash::xxh3::hash64_with_seed;
-use std::io::{Result};
 
 pub struct BloomFilter {
     data: BitVec,
-    hash_fun_count: u8
+    hash_fun_count: u8,
 }
 
 impl BloomFilter {
-
     /// Creates a new Bloom filter with a given false positive probability and capacity.
     ///
     /// The `probability` parameter represents the desired false positive probability,

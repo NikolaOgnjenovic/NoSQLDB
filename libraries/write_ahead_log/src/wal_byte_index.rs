@@ -5,7 +5,7 @@ use std::path::Path;
 
 pub(crate) struct WALByteIndex {
     file: Option<File>,
-    current_value: usize
+    current_value: usize,
 }
 
 impl WALByteIndex {
@@ -19,7 +19,7 @@ impl WALByteIndex {
 
         let mut val = Self {
             file: Some(file),
-            current_value: 0
+            current_value: 0,
         };
 
         let mut byte_buffer = [0u8; 8];
@@ -44,7 +44,11 @@ impl WALByteIndex {
             return Ok(());
         }
 
-        self.file.as_mut().unwrap().seek(SeekFrom::Start(0)).map(|_| ())?;
+        self.file
+            .as_mut()
+            .unwrap()
+            .seek(SeekFrom::Start(0))
+            .map(|_| ())?;
         self.file.as_mut().unwrap().write_all(&byte.to_ne_bytes())?;
         self.file.as_mut().unwrap().flush()
     }

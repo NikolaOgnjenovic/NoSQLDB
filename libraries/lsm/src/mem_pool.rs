@@ -1,20 +1,18 @@
 mod record_iterator;
 
+use crate::mem_pool::record_iterator::RecordIterator;
+use crate::memtable::MemoryTable;
+use db_config::DBConfig;
+use segment_elements::{MemoryEntry, TimeStamp};
 use std::collections::VecDeque;
 use std::error::Error;
 use std::io;
 use std::path::Path;
-use threadpool::ThreadPool;
-use segment_elements::{MemoryEntry, TimeStamp};
-use db_config::DBConfig;
-use crate::memtable::MemoryTable;
-use crate::mem_pool::record_iterator::RecordIterator;
 
 pub(crate) struct MemoryPool {
     read_write_table: MemoryTable,
     read_only_tables: VecDeque<MemoryTable>,
     config: DBConfig,
-    thread_pool: ThreadPool,
 }
 
 impl MemoryPool {
@@ -23,12 +21,16 @@ impl MemoryPool {
             config: dbconfig.clone(),
             read_only_tables: VecDeque::with_capacity(dbconfig.memory_table_pool_num),
             read_write_table: MemoryTable::new(dbconfig)?,
-            thread_pool: ThreadPool::new(100),
         })
     }
 
     /// Inserts the key with the corresponding value in the read write memory table.
-    pub(crate) fn insert(&mut self, key: &[u8], value: &[u8], time_stamp: TimeStamp) -> io::Result<Option<MemoryTable>> {
+    pub(crate) fn insert(
+        &mut self,
+        key: &[u8],
+        value: &[u8],
+        time_stamp: TimeStamp,
+    ) -> io::Result<Option<MemoryTable>> {
         if self.read_write_table.insert(key, value, time_stamp) {
             return self.swap();
         }
@@ -38,7 +40,11 @@ impl MemoryPool {
 
     /// Logically deletes an element in-place, and updates the number of elements if
     /// the deletion is "adding" a new element.
-    pub(crate) fn delete(&mut self, key: &[u8], time_stamp: TimeStamp) -> io::Result<Option<MemoryTable>> {
+    pub(crate) fn delete(
+        &mut self,
+        key: &[u8],
+        time_stamp: TimeStamp,
+    ) -> io::Result<Option<MemoryTable>> {
         if self.read_write_table.delete(key, time_stamp) {
             return self.swap();
         }
@@ -58,7 +64,7 @@ impl MemoryPool {
                 Some(data)
             } else {
                 None
-            }
+            };
         }
 
         for table in &self.read_only_tables {
@@ -71,16 +77,11 @@ impl MemoryPool {
                     Some(memory_entry)
                 } else {
                     None
-                }
+                };
             }
         }
 
         None
-    }
-
-    /// Joins all threads that are writing memory tables. This is a blocking operation.
-    pub(crate) fn join_concurrent_writes(&mut self) {
-        self.thread_pool.join();
     }
 
     /// Swaps the current read write memory table with a new one. Checks if the number of read only
@@ -88,9 +89,9 @@ impl MemoryPool {
     fn swap(&mut self) -> io::Result<Option<MemoryTable>> {
         // unwrap allowed because any error would have been cleared in the pool creation
         // unchecked unwrap allows faster performance as it doesn't do any runtime checks
-        let old_read_write = std::mem::replace(
-            &mut self.read_write_table, unsafe { MemoryTable::new(&self.config).unwrap_unchecked() }
-        );
+        let old_read_write = std::mem::replace(&mut self.read_write_table, unsafe {
+            MemoryTable::new(&self.config).unwrap_unchecked()
+        });
 
         self.read_only_tables.push_front(old_read_write);
         if self.read_only_tables.len() == self.config.memory_table_pool_num {
@@ -111,20 +112,6 @@ impl MemoryPool {
 
         memory_tables
     }
-    // fn flush_concurrent(&mut self, table: MemoryTable) {
-    //     let density_move = self.config.summary_density;
-    //
-    //     self.thread_pool.execute(move || {
-    //         // todo: LSM sturktura treba da pozove kreiranje nove sstabele i potencionalno da ona radi kompakcije i
-    //         // todo mergeovanje ovde, a ako ne ovde onda se radi u main db strukturi
-    //         println!("FLUSH");
-    //
-    //         match table.finalize() {
-    //             Ok(_) => (),
-    //             Err(e) => eprintln!("WAL couldn't be deleted. Error: {}", e)
-    //         };
-    //     });
-    // }
 
     /// Loads from every log file in the given directory.
     pub(crate) fn load_from_dir(config: &DBConfig) -> Result<MemoryPool, Box<dyn Error>> {
@@ -135,17 +122,24 @@ impl MemoryPool {
                 Ok(entry) => entry,
                 Err(e) => {
                     eprintln!("{}", e);
-                    continue
+                    continue;
                 }
             };
 
             if entry.tombstone {
-                if pool.read_write_table.delete(&entry.key, TimeStamp::Custom(entry.timestamp)) {
-                    pool.swap();
+                if pool
+                    .read_write_table
+                    .delete(&entry.key, TimeStamp::Custom(entry.timestamp))
+                {
+                    pool.swap()?;
                 }
             } else {
-                if pool.read_write_table.insert(&entry.key, &entry.value.unwrap(), TimeStamp::Custom(entry.timestamp)) {
-                    pool.swap();
+                if pool.read_write_table.insert(
+                    &entry.key,
+                    &entry.value.unwrap(),
+                    TimeStamp::Custom(entry.timestamp),
+                ) {
+                    pool.swap()?;
                 }
             }
         }

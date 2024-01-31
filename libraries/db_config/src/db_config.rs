@@ -1,7 +1,7 @@
-use std::fmt;
-use std::io::{BufReader, Error, ErrorKind, Write};
 use serde::{Deserialize, Serialize};
+use std::fmt;
 use std::fs::File;
+use std::io::{BufReader, Error, ErrorKind, Write};
 
 /// Options for the implementation of memory table
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
@@ -70,9 +70,6 @@ pub struct DBConfig {
     pub compression_dictionary_path: String,
 }
 
-
-
-
 /// Default values for configuration parameters, used if properties are missing in JSON file
 impl Default for DBConfig {
     fn default() -> DBConfig {
@@ -109,7 +106,9 @@ impl Default for DBConfig {
 impl DBConfig {
     /// Creates new instance of configuration with default values
     pub fn new() -> Self {
-        DBConfig { ..Default::default() }
+        DBConfig {
+            ..Default::default()
+        }
     }
 
     /// Loads and returns configuration from JSON file from `file_path`
