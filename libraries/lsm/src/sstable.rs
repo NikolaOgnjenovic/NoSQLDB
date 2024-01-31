@@ -10,7 +10,7 @@ use bloom_filter::BloomFilter;
 use lru_cache::LRUCache;
 use segment_elements::{deserialize_header, deserialize_usize_value, MemoryEntry};
 use merkle_tree::merkle_tree::MerkleTree;
-use compression::CompressionDictionary;
+use compression::{CompressionDictionary, variable_decode, variable_encode};
 use crate::lsm::ScanType;
 use crate::memtable::MemoryTable;
 use crate::sstable::sstable_element_type::SSTableElementType;
@@ -219,7 +219,6 @@ impl SSTable {
                 None => key.clone()
             };
             let entry_data = entry.serialize(&encoded_key, use_variable_encoding);
-
             if let Some(&mut ref mut lru) = lru_cache {
                 lru.update(&key, entry);
             }
@@ -755,18 +754,20 @@ impl SSTable {
     ///
     /// * `offset` - The offset in the data file to read the MemoryEntry from.
     /// * `index_density` - The number of entries that are read before returning None if the key is not found.
-    /// * `key` - The key that is being searched for.
+    /// * `expected_key` - The key that is being searched for.
     ///
     /// # Returns
     ///
     /// An Option containing a pair of the key & MemoryEntry pair and the memory entry bytes length if successful, otherwise None.
-    pub(crate) fn get_entry_from_data_file(&mut self, offset: u64, index_density: Option<usize>, key: Option<&[u8]>, use_variable_encoding: bool) -> Option<((Box<[u8]>, MemoryEntry), u64)> {
+    pub(crate) fn get_entry_from_data_file(&mut self, offset: u64, index_density: Option<usize>, expected_key: Option<&[u8]>, use_variable_encoding: bool) -> Option<((Box<[u8]>, MemoryEntry), u64)> {
         let (mut crc, mut timestamp, mut tombstone, mut key_len, mut offset_to_key_len, mut length) = (0u32, 0u128, false, 0usize, 0usize, 0usize);
         let mut traversed_offset = 0;
 
+        let mut unwrapped_key = vec![];
+
         // Merge reads a single entry from the given offset without looping through index_density number of entries
         // Traverse through index_density entries to find the given key only if both are not None
-        if let (Some(index_density), Some(key)) = (index_density, key) {
+        if let (Some(index_density), Some(key)) = (index_density, expected_key) {
             if index_density < 1 {
                 return None;
             }
@@ -779,6 +780,7 @@ impl SSTable {
                 buffer_offset += length;
 
                 if &buffer[buffer_offset..] == key {
+                    unwrapped_key.extend_from_slice(&buffer[buffer_offset..]);
                     break;
                 }
 
@@ -790,20 +792,48 @@ impl SSTable {
             if traversed_entries == 1 + index_density {
                 return None;
             }
+        } else {
+            let buffer = self.get_cursor_data(self.in_single_file, "SSTable-Data.db", SSTableElementType::DataEntryWithoutValue, Some(offset), use_variable_encoding).ok()?.into_inner();
+            if buffer.len() == 0 {
+                return None;
+            }
+            let (_, mut buffer_offset) = deserialize_usize_value(&buffer, false);
+            (crc, timestamp, tombstone, key_len, offset_to_key_len, length, _) = deserialize_header(&buffer[buffer_offset..], false);
+            buffer_offset += length;
+
+            unwrapped_key.extend_from_slice(&buffer[buffer_offset..]);
         }
+
         // Deserialize the last read memory entry bytes
         let data_entry_value = self.get_cursor_data(self.in_single_file, "SSTable-Data.db", SSTableElementType::DataEntryValue, Some(offset + traversed_offset + offset_to_key_len as u64), use_variable_encoding).ok()?.into_inner();
 
         let mut data_entry_bytes = Vec::new();
-        data_entry_bytes.extend(crc.to_ne_bytes());
-        data_entry_bytes.extend(timestamp.to_ne_bytes());
+
+        let crc_bytes = if use_variable_encoding {
+            variable_encode(crc as u128)
+        } else {
+            Box::new(crc.to_ne_bytes())
+        };
+
+        data_entry_bytes.extend(crc_bytes.to_vec().as_slice());
+
+        let timestamp_bytes = if use_variable_encoding { variable_encode(timestamp) } else { Box::new(timestamp.to_ne_bytes()) };
+        data_entry_bytes.extend_from_slice(&timestamp_bytes);
+
         data_entry_bytes.extend((tombstone as u8).to_ne_bytes());
-        data_entry_bytes.extend(key_len.to_ne_bytes());
-        data_entry_bytes.extend(data_entry_value.len().to_ne_bytes());
-        data_entry_bytes.extend(key.unwrap());
+
+        let key_len_bytes = if use_variable_encoding { variable_encode(unwrapped_key.len() as u128) } else { Box::new(unwrapped_key.len().to_ne_bytes()) };
+        data_entry_bytes.extend_from_slice(&key_len_bytes);
+
+        if !tombstone {
+            let value_len_bytes = if use_variable_encoding { variable_encode(data_entry_value.len() as u128) } else { Box::new(data_entry_value.len().to_ne_bytes()) };
+            data_entry_bytes.extend_from_slice(&value_len_bytes);
+        }
+
+        data_entry_bytes.extend(unwrapped_key);
         data_entry_bytes.extend(data_entry_value);
 
-        match MemoryEntry::deserialize(&data_entry_bytes, false) {
+        match MemoryEntry::deserialize(&data_entry_bytes, use_variable_encoding) {
             Ok(entry) => Some((entry, data_entry_bytes.len() as u64)),
             Err(_) => None,
         }
@@ -873,23 +903,29 @@ impl SSTable {
                     return Ok(Cursor::new(Vec::new()));
                 }
 
-                let header_max_length = 4 + 16 + 1 + 2 * std::mem::size_of::<usize>(); // CRC + timestamp + tombstone + key_length + value_length
-                let header_max_length = if use_variable_encoding { ((header_max_length * 8) as f64 / 7.0).ceil() as usize } else { header_max_length };
+                // CRC + timestamp + tombstone + key_length + value_length
+                let mut header_max_length = 4 + 16 + 1 + 2 * std::mem::size_of::<usize>();
+                if use_variable_encoding {
+                    header_max_length = ((header_max_length * 8) as f64 / 7.0).ceil() as usize;
+                }
                 let mut header_bytes = vec![0u8; header_max_length];
-
                 // If EOF, return empty vec
                 let result = file.read(&mut header_bytes);
-                if result.is_err() || result.unwrap() == 0 {
-                    return Ok(Cursor::new(Vec::new()));
-                }
+                let result_len = match result {
+                    Ok(len) => {
+                        if len == 0 {
+                            return Ok(Cursor::new(Vec::new()));
+                        }
+                        len
+                    },
+                    Err(_) => return Ok(Cursor::new(Vec::new())), // Handle error or zero bytes read
+                };
 
                 let (crc, timestamp, tombstone, key_len, value_len, header_len, offset_to_key_len) = deserialize_header(&header_bytes, use_variable_encoding);
                 let entry_length = header_len + key_len + value_len;
-
-                file.seek(SeekFrom::Current(header_bytes.len() as i64 - header_len as i64)).ok();
+                file.seek(SeekFrom::Current(header_len as i64 - result_len as i64)).ok();
                 let mut key = vec![0u8; key_len];
                 file.read_exact(&mut key).ok();
-
                 buffer.extend_from_slice(&entry_length.to_ne_bytes());
                 buffer.extend_from_slice(&crc.to_ne_bytes());
                 buffer.extend_from_slice(&timestamp.to_ne_bytes());
@@ -899,7 +935,6 @@ impl SSTable {
                 buffer.extend_from_slice(&key);
             }
             SSTableElementType::DataEntryValue => {
-                // todo: Idk jel ovaj seek treba i vamo dodavati, nemam dovoljno koncentracije u ovo doba noći za to, proveriti sa mrmijem
                 let result = file.seek(SeekFrom::Start(file_element_offset + total_entry_offset));
 
                 if let Err(err) = result {
@@ -911,25 +946,37 @@ impl SSTable {
                     return Ok(Cursor::new(Vec::new()));
                 }
 
-                let header_max_length = 2 * std::mem::size_of::<usize>(); // key_length + value_length
-                let header_max_length = if use_variable_encoding { ((header_max_length * 8) as f64 / 7.0).ceil() as usize } else { header_max_length };
-                let mut header_bytes = vec![0u8; header_max_length];
+                // key_length + value_length
+                let mut key_val_len_max_len = 2 * std::mem::size_of::<usize>();
+                if use_variable_encoding {
+                    key_val_len_max_len = ((key_val_len_max_len * 8) as f64 / 7.0).ceil() as usize;
+                }
+                let mut key_val_len_bytes = vec![0u8; key_val_len_max_len];
 
                 // If EOF, return empty vec
-                let result = file.read(&mut header_bytes);
-                if result.is_err() || result.unwrap() == 0 {
-                    return Ok(Cursor::new(Vec::new()));
-                }
+                let result = file.read(&mut key_val_len_bytes);
+                let result_len = match result {
+                    Ok(len) => {
+                        if len == 0 {
+                            return Ok(Cursor::new(Vec::new()));
+                        }
+                        len
+                    },
+                    Err(_) => return Ok(Cursor::new(Vec::new())), // Handle error or zero bytes read
+                };
 
                 let mut offset = 0;
 
-                let (key_len, length) = deserialize_usize_value(&header_bytes[offset..], use_variable_encoding);
+                let (key_len, length) = deserialize_usize_value(&key_val_len_bytes[offset..], use_variable_encoding);
                 offset += length;
 
-                let (value_len, length) = deserialize_usize_value(&header_bytes[offset..], use_variable_encoding);
+                let (value_len, length) = deserialize_usize_value(&key_val_len_bytes[offset..], use_variable_encoding);
                 offset += length;
+                let seek_backwards_offset = offset as i64 - result_len as i64;
 
-                file.seek(SeekFrom::Current(header_bytes.len() as i64 - offset as i64 + key_len as i64)).ok();
+                file.seek(SeekFrom::Current(seek_backwards_offset)).ok();
+                let mut key_bytes = vec![0u8; key_len];
+                file.read_exact(&mut key_bytes)?;
                 let mut value = vec![0u8; value_len];
                 file.read_exact(&mut value).ok();
 

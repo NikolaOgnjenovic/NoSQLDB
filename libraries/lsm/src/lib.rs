@@ -584,7 +584,7 @@ mod sstable_tests {
                 // If the key is not found, fail the test
                 remove_dir_all(merged_sstable_path.clone()).expect("Failed to remove all dirs");
 
-                panic!("Key {:#?} not found in merged SSTable", key);
+                 panic!("Key {:#?} not found in merged SSTable", key);
             }
         }
         remove_dir_all(merged_sstable_path).expect("Failed to remove all dirs");
