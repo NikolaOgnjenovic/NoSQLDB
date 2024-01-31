@@ -33,7 +33,7 @@ impl LRUCache {
     pub fn get(&mut self, key: &[u8]) -> Option<Box<[u8]>> {
         if self.map.contains_key(key) {
             let node = self.map.get(key);
-            let value = node.unwrap().borrow().el.mem_entry.clone().serialize(key);
+            let value = node.unwrap().borrow().el.mem_entry.clone().serialize(key, false);
             let prev_node = node.unwrap().as_ref().borrow_mut().prev.take();
             let next_node = node.unwrap().as_ref().borrow_mut().next.take();
 

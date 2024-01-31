@@ -66,6 +66,7 @@ pub struct DBConfig {
     pub token_bucket_num: usize,
     pub token_bucket_interval: usize,
     pub use_compression: bool,
+    pub use_variable_encoding: bool,
     pub compression_dictionary_path: String,
 }
 
@@ -99,6 +100,7 @@ impl Default for DBConfig {
             token_bucket_num: 0,
             token_bucket_interval: 0,
             use_compression: false,
+            use_variable_encoding: true,
             compression_dictionary_path: "./dictionary.bin".to_string(),
         }
     }

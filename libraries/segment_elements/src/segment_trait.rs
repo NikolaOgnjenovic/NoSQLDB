@@ -11,7 +11,7 @@ pub trait SegmentTrait {
     /// Returns the value of some key if it exists.
     fn get(&self, key: &[u8]) -> Option<MemoryEntry>;
     /// Returns bytes of the structure.
-    fn serialize(&self) -> Box<[u8]>;
+    fn serialize(&self, use_variable_encoding: bool) -> Box<[u8]>;
     /// Empties all inner elements of structure.
     fn empty(&mut self);
     /// Returns an iterator over the elements of the structure.

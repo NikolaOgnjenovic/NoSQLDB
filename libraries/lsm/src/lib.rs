@@ -383,7 +383,7 @@ mod lsm_tests {
 #[cfg(test)]
 mod sstable_tests {
     use std::fs::remove_dir_all;
-    use std::path::{Path, PathBuf};
+    use std::path::PathBuf;
     use super::*;
     use tempfile::TempDir;
     use segment_elements::TimeStamp;
@@ -423,19 +423,21 @@ mod sstable_tests {
 
         for range in (1..=51).step_by(50) {
             for mem_table_type in &[MemoryTableType::SkipList, MemoryTableType::HashMap, MemoryTableType::BTree] {
-                check_flushed_table(true, &mem_table_type.clone(), range, multiplier);
-                check_flushed_table(false, &mem_table_type.clone(), range, multiplier);
+                check_flushed_table(true, &mem_table_type.clone(), range, multiplier, true);
+                check_flushed_table(true, &mem_table_type.clone(), range, multiplier, false);
+                check_flushed_table(false, &mem_table_type.clone(), range, multiplier, true);
+                check_flushed_table(false, &mem_table_type.clone(), range, multiplier, false);
             }
         }
     }
 
-    fn check_flushed_table(in_single_file: bool, mem_table_type: &MemoryTableType, range: i32, multiplier: i32) {
+    fn check_flushed_table(in_single_file: bool, mem_table_type: &MemoryTableType, range: i32, multiplier: i32, use_variable_encoding: bool) {
         let (temp_dir, mut mem_table, summary_density, index_density) = setup_test_environment(mem_table_type);
         insert_test_data(&mut mem_table, range, multiplier);
 
         // Create an SSTable and flush
         let mut sstable = SSTable::open((&temp_dir.path()).to_path_buf(), in_single_file).expect("Failed to open SSTable");
-        sstable.flush(mem_table, summary_density, index_density, None, &mut None).expect("Failed to flush sstable");
+        sstable.flush(mem_table, summary_density, index_density, None, &mut None, use_variable_encoding).expect("Failed to flush sstable");
 
         // Retrieve and validate data from the SSTable
         for i in 0..range {
@@ -443,7 +445,7 @@ mod sstable_tests {
             let expected_value: i32 = i * multiplier;
 
             // Retrieve value from the SSTable
-            if let Some(entry) = sstable.get(&key.to_ne_bytes(), index_density, &mut None) {
+            if let Some(entry) = sstable.get(&key.to_ne_bytes(), index_density, &mut None, use_variable_encoding) {
                 // Get the value using the get_value method
                 let actual_value_bytes: Box<[u8]> = entry.get_value();
 
@@ -467,19 +469,21 @@ mod sstable_tests {
 
         for range in (1..=100).step_by(50) {
             for mem_table_type in &[MemoryTableType::SkipList, /*MemoryTableType::HashMap,*/MemoryTableType::BTree] {
-                check_merkle_tree(true, &mem_table_type.clone(), range, multiplier);
-                check_merkle_tree(false, &mem_table_type.clone(), range, multiplier);
+                check_merkle_tree(true, &mem_table_type.clone(), range, multiplier, true);
+                check_merkle_tree(true, &mem_table_type.clone(), range, multiplier, false);
+                check_merkle_tree(false, &mem_table_type.clone(), range, multiplier, true);
+                check_merkle_tree(false, &mem_table_type.clone(), range, multiplier, false);
             }
         }
     }
 
-    fn check_merkle_tree(in_single_file: bool, mem_table_type: &MemoryTableType, range: i32, multiplier: i32) {
+    fn check_merkle_tree(in_single_file: bool, mem_table_type: &MemoryTableType, range: i32, multiplier: i32, use_variable_encoding: bool) {
         let (temp_dir, mut mem_table, summary_density, index_density) = setup_test_environment(mem_table_type);
         insert_test_data(&mut mem_table, range, multiplier);
 
         // Create an SSTable from the MemoryPool's inner_mem
         let mut sstable = SSTable::open((&temp_dir.path()).to_path_buf(), in_single_file).expect("Failed to open SSTable");
-        sstable.flush(mem_table, summary_density, index_density, None, &mut None).expect("Failed to flush sstable");
+        sstable.flush(mem_table, summary_density, index_density, None, &mut None, use_variable_encoding).expect("Failed to flush sstable");
 
         // Get the merkle tree from the SSTable
         let merkle_tree = sstable.get_merkle().expect("Failed to get merkle tree");
@@ -495,27 +499,39 @@ mod sstable_tests {
 
         for range in (1..=10).step_by(10) {
             for mem_table_type in &[MemoryTableType::SkipList, MemoryTableType::HashMap, MemoryTableType::BTree] {
-                merge_sstables(vec![true, true], &mem_table_type.clone(), range, multiplier, true);
-                merge_sstables(vec![true, true], &mem_table_type.clone(), range, multiplier, false);
+                merge_sstables(vec![true, true], &mem_table_type.clone(), range, multiplier, true, true);
+                merge_sstables(vec![true, true], &mem_table_type.clone(), range, multiplier, false, true);
 
-                merge_sstables(vec![true, false], &mem_table_type.clone(), range, multiplier, true);
-                merge_sstables(vec![true, false], &mem_table_type.clone(), range, multiplier, false);
+                merge_sstables(vec![true, false], &mem_table_type.clone(), range, multiplier, true, true);
+                merge_sstables(vec![true, false], &mem_table_type.clone(), range, multiplier, false, true);
 
-                merge_sstables(vec![false, true], &mem_table_type.clone(), range, multiplier, true);
-                merge_sstables(vec![false, true], &mem_table_type.clone(), range, multiplier, false);
+                merge_sstables(vec![false, true], &mem_table_type.clone(), range, multiplier, true, true);
+                merge_sstables(vec![false, true], &mem_table_type.clone(), range, multiplier, false, true);
 
-                merge_sstables(vec![false, false], &mem_table_type.clone(), range, multiplier, true);
-                merge_sstables(vec![false, false], &mem_table_type.clone(), range, multiplier, false);
+                merge_sstables(vec![false, false], &mem_table_type.clone(), range, multiplier, true, true);
+                merge_sstables(vec![false, false], &mem_table_type.clone(), range, multiplier, false, true);
+
+                merge_sstables(vec![true, true], &mem_table_type.clone(), range, multiplier, true, false);
+                merge_sstables(vec![true, true], &mem_table_type.clone(), range, multiplier, false, false);
+
+                merge_sstables(vec![true, false], &mem_table_type.clone(), range, multiplier, true, false);
+                merge_sstables(vec![true, false], &mem_table_type.clone(), range, multiplier, false, false);
+
+                merge_sstables(vec![false, true], &mem_table_type.clone(), range, multiplier, true, false);
+                merge_sstables(vec![false, true], &mem_table_type.clone(), range, multiplier, false, false);
+
+                merge_sstables(vec![false, false], &mem_table_type.clone(), range, multiplier, true, false);
+                merge_sstables(vec![false, false], &mem_table_type.clone(), range, multiplier, false, false);
             }
         }
     }
 
-    fn merge_sstables(in_single_file: Vec<bool>, mem_table_type: &MemoryTableType, range: i32, multiplier: i32, merged_in_single_file: bool) {
+    fn merge_sstables(in_single_file: Vec<bool>, mem_table_type: &MemoryTableType, range: i32, multiplier: i32, merged_in_single_file: bool, use_variable_encoding: bool) {
         // contains paths to all sstables
         let mut sstable_paths = Vec::new();
 
         let (temp_dir, _, summary_density, index_density) = setup_test_environment(mem_table_type);
-      
+
         // generate data for all sstables nad insert paths to sstable_paths
         for i in 0..in_single_file.len() {
             let (_, _, mut mem_table) = get_density_and_mem_table(mem_table_type);
@@ -524,25 +540,25 @@ mod sstable_tests {
             let sstable_path = temp_dir.path().join("sstable".to_string() + (i + 1).to_string().as_str());
             let mut sstable = SSTable::open(sstable_path.to_owned(), in_single_file[i]).expect("Failed to open SSTable");
 
-            sstable.flush(mem_table, summary_density, index_density, None, &mut None).expect("Failed to flush sstable");
+            sstable.flush(mem_table, summary_density, index_density, None, &mut None, use_variable_encoding).expect("Failed to flush sstable");
             sstable_paths.push(sstable_path.to_owned());
         }
 
         //convert pathbuf to path
-        let sstable_paths:Vec<_> = sstable_paths.iter().map(|path_buf| path_buf.to_owned()).collect();
+        let sstable_paths: Vec<_> = sstable_paths.iter().map(|path_buf| path_buf.to_owned()).collect();
 
         // Define the path for the merged SSTable
         let merged_sstable_path = temp_dir.path().join("merged_sstable");
 
         // Merge the two SSTables
-        SSTable::merge(sstable_paths, in_single_file, &merged_sstable_path.to_owned(), merged_in_single_file, summary_density, index_density, &mut None)
+        SSTable::merge(sstable_paths, in_single_file, &merged_sstable_path.to_owned(), merged_in_single_file, summary_density, index_density, &mut None, use_variable_encoding)
             .expect("Failed to merge SSTables");
 
-        verify_merged_sstable(merged_sstable_path, index_density, range, multiplier, merged_in_single_file);
+        verify_merged_sstable(&merged_sstable_path, index_density, range, multiplier, merged_in_single_file, use_variable_encoding);
     }
 
     // Helper function to verify that the merged SSTable contains the correct data
-    fn verify_merged_sstable(merged_sstable_path: PathBuf, index_density: usize, range: i32, multiplier: i32, merged_in_single_file: bool) {
+    fn verify_merged_sstable(merged_sstable_path: &PathBuf, index_density: usize, range: i32, multiplier: i32, merged_in_single_file: bool, use_variable_encoding: bool) {
         // Open an SSTable from the merged SSTable path
         let mut merged_sstable = SSTable::open(merged_sstable_path.to_path_buf(), merged_in_single_file)
             .expect("Failed to create merged SSTable");
@@ -553,7 +569,7 @@ mod sstable_tests {
             let expected_value: i32 = i * multiplier * 2;
 
             // Retrieve value from the merged SSTable
-            if let Some(entry) = merged_sstable.get(&key.to_ne_bytes(), index_density, &mut None) {
+            if let Some(entry) = merged_sstable.get(&key.to_ne_bytes(), index_density, &mut None, use_variable_encoding) {
                 // Get the value using the get_value method
                 let actual_value_bytes: Box<[u8]> = entry.get_value();
 
