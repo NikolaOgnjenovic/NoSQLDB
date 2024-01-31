@@ -190,7 +190,7 @@ impl segment_elements::SegmentTrait for SkipList {
 	}
 
 	/// Function that serializes skip list and creates data_block, index file and filter for SSTable
-	fn serialize(&self) -> Box<[u8]> {
+	fn serialize(&self, use_variable_encoding: bool) -> Box<[u8]> {
 		let mut ss_table_bytes = vec![];
 		let mut data_bytes:Vec<u8> = vec![];
 		let mut index_bytes = vec![];
@@ -200,7 +200,7 @@ impl segment_elements::SegmentTrait for SkipList {
 		for entry in self.iter() {
 			let key = entry.0;
 			let memory_entry = entry.1;
-			let entry_bytes = memory_entry.serialize(&key);
+			let entry_bytes = memory_entry.serialize(&key, use_variable_encoding);
 			data_bytes.extend(entry_bytes.iter());
 
 			//index structure contains key_len(8 bytes), key and offset in data block(8 bytes)

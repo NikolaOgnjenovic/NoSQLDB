@@ -1,8 +1,7 @@
-use std::cmp::{min, Ordering};
+use std::cmp::Ordering;
 use std::error::Error;
-use std::fs::{File, read_dir};
+use std::fs::read_dir;
 use std::io;
-use std::io::BufRead;
 use std::path::PathBuf;
 use segment_elements::{MemoryEntry, TimeStamp};
 use compression::CompressionDictionary;
@@ -10,8 +9,6 @@ use crate::sstable::SSTable;
 use db_config::{ DBConfig, CompactionAlgorithmType };
 use write_ahead_log::WriteAheadLog;
 use lru_cache::LRUCache;
-
-
 use crate::mem_pool::MemoryPool;
 use crate::memtable::MemoryTable;
 
@@ -33,6 +30,7 @@ struct LSMConfig {
     summary_density: usize,
     index_density: usize,
     compaction_enabled: bool,
+    use_variable_encoding: bool,
 }
 
 impl LSMConfig {
@@ -43,6 +41,7 @@ impl LSMConfig {
             max_per_level: dbconfig.lsm_max_per_level,
             compaction_algorithm: dbconfig.compaction_algorithm_type,
             compaction_enabled: dbconfig.compaction_enabled,
+            use_variable_encoding: dbconfig.use_variable_encoding,
             in_single_file: dbconfig.sstable_single_file,
             summary_density: dbconfig.summary_density,
             index_density: dbconfig.index_density
@@ -207,7 +206,7 @@ impl LSM {
             for sstable_dir in level.iter().rev() {
                 let (path, in_single_file) = self.get_sstable_path(sstable_dir);
                 let mut sstable = SSTable::open(path, in_single_file)?;
-                if let Some(data) = sstable.get(key, self.config.index_density, &mut self.compression_dictionary) {
+                if let Some(data) = sstable.get(key, self.config.index_density, &mut self.compression_dictionary, self.config.use_variable_encoding) {
                     self.lru_cache.insert(key, Some(data.clone()));
                     return Ok(Some(data));
                 }
@@ -275,9 +274,10 @@ impl LSM {
         let index_density = self.config.index_density;
         let directory_name = LSM::get_directory_name(0, in_single_file);
         let sstable_base_path = self.config.parent_dir.join(directory_name.as_path());
+        let use_variable_encoding = self.config.use_variable_encoding;
 
         let mut sstable = SSTable::open(sstable_base_path, in_single_file)?;
-        let flush_bytes = sstable.flush(mem_table, summary_density, index_density, Some(&mut self.lru_cache), &mut self.compression_dictionary)?;
+        let flush_bytes = sstable.flush(mem_table, summary_density, index_density, Some(&mut self.lru_cache), &mut self.compression_dictionary, use_variable_encoding)?;
         let mem_table_byte_size = flush_bytes.get_data_len();
         self.wal.add_to_starting_byte(mem_table_byte_size).unwrap();
         self.wal.remove_flushed_wals().unwrap();
@@ -305,6 +305,7 @@ impl LSM {
     ///
     /// io::Result indicating success of SSTable merging process
     fn size_tiered_compaction(&mut self, mut level: usize) -> io::Result<()> {
+        let use_variable_encoding = self.config.use_variable_encoding;
         let merged_in_single_file = self.config.in_single_file;
 
         while self.sstable_directory_names[level].len() > self.config.max_per_level {
@@ -324,7 +325,7 @@ impl LSM {
             let merged_base_path = self.config.parent_dir.join(merged_directory.clone());
 
             // Merge them all together, push merged SSTable into sstable_directory_names and delete all SSTables involved in merging process
-            SSTable::merge(sstable_base_paths, sstable_single_file, &merged_base_path, merged_in_single_file, self.config.summary_density, self.config.index_density, &mut self.compression_dictionary)?;
+            SSTable::merge(sstable_base_paths, sstable_single_file, &merged_base_path, merged_in_single_file, self.config.summary_density, self.config.index_density, &mut self.compression_dictionary, use_variable_encoding)?;
             self.sstable_directory_names[level].clear();
             self.sstable_directory_names[level+1].push(merged_directory);
 
@@ -351,6 +352,7 @@ impl LSM {
     ///
     /// io::Result indicating success of SSTable merging process
     fn leveled_compaction(&mut self, mut level: usize) -> io::Result<()> {
+        let use_variable_encoding = self.config.use_variable_encoding;
         let merged_in_single_file = self.config.in_single_file;
 
         while self.sstable_directory_names[level].len() > self.config.max_per_level {
@@ -378,7 +380,7 @@ impl LSM {
             let merged_base_path = self.config.parent_dir.join(merged_directory.clone());
 
             // Merge them all together
-            SSTable::merge(sstable_base_paths, sstable_single_file, &merged_base_path.to_path_buf(), merged_in_single_file, self.config.summary_density, self.config.index_density, &mut self.compression_dictionary)?;
+            SSTable::merge(sstable_base_paths, sstable_single_file, &merged_base_path.to_path_buf(), merged_in_single_file, self.config.summary_density, self.config.index_density, &mut self.compression_dictionary, use_variable_encoding)?;
 
             // Extract indexes of SSTable that need to be removed
             let indexes_to_delete: Vec<_> = in_range_paths
@@ -508,16 +510,14 @@ impl LSM {
         scanned_entries
     }
 
-    fn get_range_scan_parameters(&self, min_key: &[u8], max_key: &[u8]) -> io::Result<(Vec<(Box<[u8]>, MemoryEntry)>, usize, Vec<SSTable>, Vec<(u64)>)> {
+    fn get_range_scan_parameters(&self, min_key: &[u8], max_key: &[u8]) -> io::Result<(Vec<(Box<[u8]>, MemoryEntry)>, usize, Vec<SSTable>, Vec<u64>)> {
         //dobavi prvo merged memory entries
         let memory_tables = self.mem_pool.get_all_tables();
-        let mut entries: Vec<_> = memory_tables
+        let entries: Vec<_> = memory_tables
             .iter()
             .map(|table| LSM::get_keys_from_mem_table(table, Some(min_key), Some(max_key), None, ScanType::RangeScan))
             .collect();
         let merged_memory_entries = LSM::merge_scanned_entries(entries);
-
-
 
         //dobavi sve sstabele koji imaju key u zadatom opsegu
         let mut sstable_paths = Vec::new();
@@ -555,17 +555,17 @@ impl LSM {
             })
             .collect();
 
-        let updated_offsets = SSTable::update_sstable_offsets(&mut sstables, in_single_files, data_offsets, min_key, ScanType::RangeScan)?;
+        let updated_offsets = SSTable::update_sstable_offsets(&mut sstables, in_single_files, data_offsets, min_key, ScanType::RangeScan, self.config.use_variable_encoding)?;
         let memory_offset = 0;
 
         //vrati potrebne podatke za scan
         Ok((merged_memory_entries, memory_offset, sstables, updated_offsets))
     }
 
-    fn get_prefix_scan_parameters(&self, prefix: &[u8]) -> io::Result<(Vec<(Box<[u8]>, MemoryEntry)>, usize, Vec<SSTable>, Vec<(u64)>)> {
+    fn get_prefix_scan_parameters(&self, prefix: &[u8]) -> io::Result<(Vec<(Box<[u8]>, MemoryEntry)>, usize, Vec<SSTable>, Vec<u64>)> {
         //dobavi prvo merged memory entries
         let memory_tables = self.mem_pool.get_all_tables();
-        let mut entries: Vec<_> = memory_tables
+        let entries: Vec<_> = memory_tables
             .iter()
             .map(|table| LSM::get_keys_from_mem_table(table, None, None, Some(prefix), ScanType::PrefixScan))
             .collect();
@@ -608,14 +608,14 @@ impl LSM {
             })
             .collect();
 
-        let updated_offsets = SSTable::update_sstable_offsets(&mut sstables, in_single_files, data_offsets, prefix, ScanType::PrefixScan)?;
+        let updated_offsets = SSTable::update_sstable_offsets(&mut sstables, in_single_files, data_offsets, prefix, ScanType::PrefixScan, self.config.use_variable_encoding)?;
         let memory_offset = 0;
 
         //vrati potrebne podatke za scan
         Ok((merged_memory_entries, memory_offset, sstables, updated_offsets))
     }
 
-    fn next(merged_memory_entries: Vec<(Box<[u8]>, MemoryEntry)>, memory_offset: usize, mut sstables: Vec<SSTable>, mut offsets: Vec<(u64)>, searched_key: &[u8], scan_type: ScanType) -> Option<((Box<[u8]>, MemoryEntry), Vec<u64>)> {
+    fn next(merged_memory_entries: Vec<(Box<[u8]>, MemoryEntry)>, memory_offset: usize, mut sstables: Vec<SSTable>, mut offsets: Vec<u64>, searched_key: &[u8], scan_type: ScanType, use_variable_encoding: bool) -> Option<((Box<[u8]>, MemoryEntry), Vec<u64>)> {
         //za offset memory entrija stoji 1 jer se pomeramo 1 po jedan u vektoru
         let memory_table_entry = if memory_offset < merged_memory_entries.len() {
             Option::from((merged_memory_entries[memory_offset].clone(), 1u64))
@@ -627,7 +627,7 @@ impl LSM {
         let mut option_entries: Vec<Option<_>> = sstables
             .iter_mut()
             .zip(offsets.iter())
-            .map(|(sstable, offset)| sstable.get_entry_from_data_file(*offset, None, None))
+            .map(|(sstable, offset)| sstable.get_entry_from_data_file(*offset, None, None, use_variable_encoding))
             .collect();
 
         option_entries.push(memory_table_entry);
