@@ -48,12 +48,8 @@ impl MemoryEntry {
 
         let crc = crc_hasher.checksum(&entry_bytes);
         let crc_bytes = if use_variable_encoding { variable_encode(crc as u128) } else { Box::new(crc.to_ne_bytes()) };
-        println!("Serializing key {:#?}. Header len: {:#?}", key, crc_bytes.len() + timestamp_bytes.len() + 1 + key_len_bytes.len() + value_len_bytes.len());
-        println!("Key len: {:#?}, value len: {:#?}", key.len(), self.value.len());
         with_hasher.extend(crc_bytes.as_ref());
         with_hasher.extend(entry_bytes);
-        println!("hasher: {:#?}", with_hasher);
-        println!("\n\n");
         with_hasher.into_boxed_slice()
     }
 
@@ -91,7 +87,6 @@ impl MemoryEntry {
         }
 
         if crc_hasher.checksum(&bytes) != crc {
-            println!("Checksum failed");
             Err(Box::try_from(CRCError(crc)).unwrap())
         } else {
             let entry = MemoryEntry {
