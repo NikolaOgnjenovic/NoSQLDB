@@ -1,9 +1,8 @@
-use std::cmp::Ordering;
-use segment_elements::{MemoryEntry, SegmentTrait, TimeStamp};
-use crate::b_tree_node::{Node, Entry};
 use crate::b_tree_iterator::BTreeIterator;
+use crate::b_tree_node::{Entry, Node};
 use crate::order_error::OrderError;
-use bloom_filter::BloomFilter;
+use segment_elements::{MemoryEntry, SegmentTrait, TimeStamp};
+use std::cmp::Ordering;
 
 /// BTree for keeping arbitrary key and value bytes.
 pub struct BTree {
@@ -21,7 +20,7 @@ impl BTree {
             Ok(BTree {
                 root: None,
                 order,
-                length:0,
+                length: 0,
             })
         }
     }
@@ -63,15 +62,11 @@ impl BTree {
             stack.push(root);
             entry_stack.push(0);
         }
-        let mut iterator = BTreeIterator {
-            stack,
-            entry_stack,
-        };
+        let mut iterator = BTreeIterator { stack, entry_stack };
 
         iterator.find_leftmost_child();
-        return iterator;
+        iterator
     }
-
 }
 
 impl SegmentTrait for BTree {
@@ -81,11 +76,8 @@ impl SegmentTrait for BTree {
             self.root.as_mut().unwrap().update(key, value, time_stamp);
             return false;
         }
-        let tombstone = if value.is_empty() {
-            true
-        } else {
-            false
-        };
+
+        let tombstone = value.is_empty();
 
         match self.root.take() {
             None => {
@@ -94,7 +86,7 @@ impl SegmentTrait for BTree {
                 new_root.n = 1;
 
                 self.root = Some(new_root);
-            },
+            }
             Some(root) => {
                 if root.n == (2 * self.order - 1) {
                     // making a new node
@@ -103,68 +95,43 @@ impl SegmentTrait for BTree {
                     new_root.split_children(0);
 
                     // choose whether the second child receives the new key, if false the key is given to the first
-                    let second = key.cmp(&new_root.entries[0].as_ref().unwrap().key) == Ordering::Greater;
-                    new_root.children[second as usize].as_mut().unwrap().insert_non_full(key, value, tombstone, time_stamp);
+                    let second =
+                        key.cmp(&new_root.entries[0].as_ref().unwrap().key) == Ordering::Greater;
+                    new_root.children[second as usize]
+                        .as_mut()
+                        .unwrap()
+                        .insert_non_full(key, value, tombstone, time_stamp);
 
                     self.root = Some(new_root);
                 } else {
                     // filling up the root node
                     self.root = Some(root);
-                    self.root.as_mut().unwrap().insert_non_full(key, value, tombstone, time_stamp);
+                    self.root
+                        .as_mut()
+                        .unwrap()
+                        .insert_non_full(key, value, tombstone, time_stamp);
                 }
             }
         }
+
         self.length += 1;
         true
     }
 
     fn delete(&mut self, key: &[u8], time_stamp: TimeStamp) -> bool {
-        if self.get(key).is_some(){
-            self.root.as_mut().unwrap().logical_deletion(key, time_stamp)
+        if self.get(key).is_some() {
+            self.root
+                .as_mut()
+                .unwrap()
+                .logical_deletion(key, time_stamp)
         } else {
             self.insert(key, &[], time_stamp);
             true
         }
-
     }
 
     fn get(&self, key: &[u8]) -> Option<MemoryEntry> {
         self.root.as_ref()?.get(key)
-    }
-
-    fn serialize(&self, use_variable_encoding: bool) -> Box<[u8]> {
-        let mut ss_table_bytes = vec![];
-        let mut data_bytes:Vec<u8> = vec![];
-        let mut index_bytes = vec![];
-        let mut offset = 0;
-        let mut filter = BloomFilter::new(0.01, self.length);
-
-        let iterator = self.iter();
-        for entry in iterator {
-            let key = entry.0;
-            let memory_entry = entry.1;
-            let entry_bytes = memory_entry.serialize(&key, use_variable_encoding);
-            data_bytes.extend(entry_bytes.iter());
-
-            //index structure contains key_len(8 bytes), key and offset in data block(8 bytes)
-            index_bytes.extend(usize::to_ne_bytes(key.len()));
-            index_bytes.extend(key.iter());
-            index_bytes.extend(usize::to_ne_bytes(offset));
-
-            filter.add(&key);
-
-            offset += entry_bytes.len();
-        }
-
-        let filter_bytes = filter.serialize();
-
-        ss_table_bytes.extend(usize::to_ne_bytes(data_bytes.len()));
-        ss_table_bytes.extend(data_bytes);
-        ss_table_bytes.extend(usize::to_ne_bytes(index_bytes.len()));
-        ss_table_bytes.extend(index_bytes);
-        ss_table_bytes.extend(usize::to_ne_bytes(filter_bytes.len()));
-        ss_table_bytes.extend(filter_bytes.iter());
-        ss_table_bytes.into_boxed_slice()
     }
 
     fn empty(&mut self) {
@@ -175,4 +142,3 @@ impl SegmentTrait for BTree {
         Box::new(self.iter())
     }
 }
-

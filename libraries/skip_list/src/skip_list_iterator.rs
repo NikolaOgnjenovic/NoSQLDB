@@ -1,9 +1,9 @@
 use crate::skip_list_node::Node;
-use std::sync::{ Arc, Mutex };
 use segment_elements::MemoryEntry;
+use std::sync::{Arc, Mutex};
 
 pub struct SkipListIterator {
-    pub(crate) current: Option<Arc<Mutex<Node>>>
+    pub(crate) current: Option<Arc<Mutex<Node>>>,
 }
 
 impl Iterator for SkipListIterator {

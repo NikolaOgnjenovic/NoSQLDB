@@ -1,14 +1,14 @@
 mod skip_list;
-mod skip_list_node;
 mod skip_list_iterator;
+mod skip_list_node;
 
 pub use skip_list::SkipList;
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use peak_alloc::PeakAlloc;
     use segment_elements::{SegmentTrait, TimeStamp};
-    use super::*;
 
     #[global_allocator]
     static PEAK_ALLOC: PeakAlloc = PeakAlloc;
@@ -21,9 +21,18 @@ mod tests {
         skip_list.insert(&[2], &[20], TimeStamp::Now);
         skip_list.insert(&[3], &[30], TimeStamp::Now);
 
-        assert_eq!(skip_list.get(&[1]).unwrap().get_value(), Box::from([10].to_vec()));
-        assert_eq!(skip_list.get(&[2]).unwrap().get_value(), Box::from([20].to_vec()));
-        assert_eq!(skip_list.get(&[3]).unwrap().get_value(), Box::from([30].to_vec()));
+        assert_eq!(
+            skip_list.get(&[1]).unwrap().get_value(),
+            Box::from([10].to_vec())
+        );
+        assert_eq!(
+            skip_list.get(&[2]).unwrap().get_value(),
+            Box::from([20].to_vec())
+        );
+        assert_eq!(
+            skip_list.get(&[3]).unwrap().get_value(),
+            Box::from([30].to_vec())
+        );
     }
 
     #[test]
@@ -54,7 +63,10 @@ mod tests {
         skip_list.insert(&[1], &[10], TimeStamp::Now);
         skip_list.insert(&[1], &[100], TimeStamp::Now); // Duplicate key
 
-        assert_eq!(skip_list.get(&[1]).unwrap().get_value(), Box::from([100].to_vec()));
+        assert_eq!(
+            skip_list.get(&[1]).unwrap().get_value(),
+            Box::from([100].to_vec())
+        );
     }
 
     #[test]
@@ -93,7 +105,10 @@ mod tests {
         assert!(skip_list.insert(&[2], &[2], TimeStamp::Now));
         assert!(!skip_list.insert(&[1], &[3], TimeStamp::Now));
 
-        assert_eq!(Box::from([3].to_vec()), skip_list.get(&[1]).unwrap().get_value());
+        assert_eq!(
+            Box::from([3].to_vec()),
+            skip_list.get(&[1]).unwrap().get_value()
+        );
     }
 
     #[test]
@@ -106,13 +121,16 @@ mod tests {
             let value = (i * 2).to_ne_bytes();
             skip_list.insert(&key, &value, TimeStamp::Now);
         }
-        
+
         for i in 25..45i32 {
             skip_list.delete(&i.to_ne_bytes(), TimeStamp::Now);
         }
 
         assert_eq!(45, skip_list.get_length());
-        assert_eq!(skip_list.get(&20i32.to_ne_bytes()).unwrap().get_value(), Box::from(40i32.to_ne_bytes()));
+        assert_eq!(
+            skip_list.get(&20i32.to_ne_bytes()).unwrap().get_value(),
+            Box::from(40i32.to_ne_bytes())
+        );
     }
 
     #[test]
@@ -125,7 +143,7 @@ mod tests {
             }
             let iterator = skip_list.iter();
 
-            let mut i:u32 = 0;
+            let mut i: u32 = 0;
             for entry in iterator {
                 let key = entry.0;
                 let entry = entry.1;
@@ -145,10 +163,16 @@ mod tests {
             s.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now);
         }
 
-        println!("Current mem usage with full skiplist: {}MB", PEAK_ALLOC.current_usage_as_mb());
+        println!(
+            "Current mem usage with full skiplist: {}MB",
+            PEAK_ALLOC.current_usage_as_mb()
+        );
 
         s.empty();
 
-        println!("Current mem usage with empty skiplist: {}MB", PEAK_ALLOC.current_usage_as_mb());
+        println!(
+            "Current mem usage with empty skiplist: {}MB",
+            PEAK_ALLOC.current_usage_as_mb()
+        );
     }
 }

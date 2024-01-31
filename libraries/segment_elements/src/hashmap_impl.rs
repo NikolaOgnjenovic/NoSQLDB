@@ -1,8 +1,7 @@
-use std::collections::HashMap;
 use crate::hashmap_iterator::SortedHashMapIterator;
 use crate::{MemoryEntry, SegmentTrait, TimeStamp};
-pub struct MemEntryHashMap ( HashMap<Box<[u8]>, MemoryEntry>);
-
+use std::collections::HashMap;
+pub struct MemEntryHashMap(HashMap<Box<[u8]>, MemoryEntry>);
 
 impl SegmentTrait for MemEntryHashMap {
     fn insert(&mut self, key: &[u8], value: &[u8], time_stamp: TimeStamp) -> bool {
@@ -22,11 +21,7 @@ impl SegmentTrait for MemEntryHashMap {
     }
 
     fn get(&self, key: &[u8]) -> Option<MemoryEntry> {
-        self.0.get(key).map(|entry| entry.clone())
-    }
-
-    fn serialize(&self, use_variable_encoding: bool) -> Box<[u8]> {
-        Box::new([]) // todo
+        self.0.get(key).cloned()
     }
 
     fn empty(&mut self) {
@@ -39,5 +34,7 @@ impl SegmentTrait for MemEntryHashMap {
 }
 
 impl MemEntryHashMap {
-    pub fn new() -> Self { MemEntryHashMap (HashMap::new()) }
+    pub fn new() -> Self {
+        MemEntryHashMap(HashMap::new())
+    }
 }
