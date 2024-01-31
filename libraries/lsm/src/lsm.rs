@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 use std::error::Error;
-use std::fs::{read_dir, remove_dir_all};
+use std::fs::{create_dir_all, read_dir, remove_dir_all};
 use std::io;
 use std::io::{BufRead, Cursor, Read};
 use std::path::PathBuf;
@@ -79,6 +79,7 @@ impl LSM {
 
         let mut sstable_directory_names = vec![vec![]; dbconfig.lsm_max_level];
 
+        create_dir_all(&dbconfig.sstable_dir)?;
         let dirs = read_dir(&dbconfig.sstable_dir)?
             .map(|dir_entry| dir_entry.unwrap().path())
             .filter(|entry| entry.is_dir()).collect::<Vec<PathBuf>>();

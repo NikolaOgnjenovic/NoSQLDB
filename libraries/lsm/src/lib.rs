@@ -27,7 +27,7 @@ mod lsm_tests {
         db_config.lsm_max_per_level = 3;
         db_config.sstable_single_file = true;
         db_config.compaction_algorithm_type = CompactionAlgorithmType::SizeTiered;
-        let mut lsm = LSM::new(&db_config).unwrap();
+        let mut lsm = LSM::new(&db_config).expect("No such file or directory");
         for i in 0..30000usize {
             lsm.insert(&i.to_ne_bytes(), &i.to_ne_bytes(), TimeStamp::Now)?;
         }
