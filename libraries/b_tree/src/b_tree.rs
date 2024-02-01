@@ -9,6 +9,7 @@ pub struct BTree {
     root: Option<Node>,
     order: usize,
     length: usize,
+    byte_size: usize
 }
 
 impl BTree {
@@ -21,6 +22,7 @@ impl BTree {
                 root: None,
                 order,
                 length: 0,
+                byte_size: 0
             })
         }
     }
@@ -72,7 +74,9 @@ impl BTree {
 impl SegmentTrait for BTree {
     /// Inserts or updates a key with the corresponding value into the BTree.
     fn insert(&mut self, key: &[u8], value: &[u8], time_stamp: TimeStamp) -> bool {
-        if self.get(key).is_some() {
+        if let Some(entry) = self.get(key) {
+            self.byte_size -= entry.get_val_size();
+            self.byte_size += value.len();
             self.root.as_mut().unwrap().update(key, value, time_stamp);
             return false;
         }
@@ -82,7 +86,7 @@ impl SegmentTrait for BTree {
         match self.root.take() {
             None => {
                 let mut new_root = Node::new(self.order, true);
-                new_root.entries[0] = Some(Entry::from(key, value, false, time_stamp));
+                new_root.entries[0] = Some(Entry::from(key, value, tombstone, time_stamp));
                 new_root.n = 1;
 
                 self.root = Some(new_root);
@@ -114,12 +118,14 @@ impl SegmentTrait for BTree {
             }
         }
 
+        self.byte_size += key.len() + value.len() + 16 + 1;
         self.length += 1;
         true
     }
 
     fn delete(&mut self, key: &[u8], time_stamp: TimeStamp) -> bool {
-        if self.get(key).is_some() {
+        if let Some(entry) = self.get(key) {
+            self.byte_size -= entry.get_val_size();
             self.root
                 .as_mut()
                 .unwrap()
@@ -140,5 +146,9 @@ impl SegmentTrait for BTree {
 
     fn iterator(&self) -> Box<dyn Iterator<Item = (Box<[u8]>, MemoryEntry)> + '_> {
         Box::new(self.iter())
+    }
+
+    fn byte_size(&self) -> usize {
+        self.byte_size
     }
 }

@@ -10,6 +10,7 @@ pub struct SkipList {
     level: usize,
     max_level: usize,
     length: usize,
+    byte_size: usize
 }
 
 impl SkipList {
@@ -19,6 +20,7 @@ impl SkipList {
             level: 0,
             max_level,
             length: 0,
+            byte_size: 0
         }
     }
 
@@ -91,6 +93,7 @@ impl segment_elements::SegmentTrait for SkipList {
         let mut node = Arc::clone(&self.tail);
         let mut updates: Vec<Link> = vec![None; self.max_level];
 
+        // update
         for i in (0..self.level).rev() {
             while let Some(next) = &Arc::clone(&node).lock().unwrap().next[i] {
                 let mut helper = next.lock().unwrap();
@@ -99,6 +102,8 @@ impl segment_elements::SegmentTrait for SkipList {
                 match key.cmp(node_key) {
                     Ordering::Less => break,
                     Ordering::Equal => {
+                        self.byte_size -= helper.value.as_ref().unwrap().get_val_size();
+                        self.byte_size += value.len();
                         helper.value = Some(MemoryEntry::from(value, false, time_stamp.get_time()));
                         return false;
                     }
@@ -136,14 +141,15 @@ impl segment_elements::SegmentTrait for SkipList {
             }
         }
 
+        self.byte_size += key.len() + value.len() + 1 + 16;
         self.length += 1;
         true
     }
 
     fn delete(&mut self, key: &[u8], time_stamp: TimeStamp) -> bool {
-        if self.get(key).is_none() {
-            return self.insert(key, &[], time_stamp);
-        } else {
+        if let Some(entry) = self.get(key) {
+            self.byte_size -= entry.get_val_size();
+            // logical delete
             let mut node = Arc::clone(&self.tail);
 
             for i in (0..self.level).rev() {
@@ -163,7 +169,10 @@ impl segment_elements::SegmentTrait for SkipList {
                     }
                 }
             }
+        } else {
+            return self.insert(key, &[], time_stamp);
         }
+
         false
     }
 
@@ -192,6 +201,10 @@ impl segment_elements::SegmentTrait for SkipList {
 
     fn iterator(&self) -> Box<dyn Iterator<Item = (Box<[u8]>, MemoryEntry)>> {
         Box::new(self.iter())
+    }
+
+    fn byte_size(&self) -> usize {
+        self.byte_size
     }
 }
 

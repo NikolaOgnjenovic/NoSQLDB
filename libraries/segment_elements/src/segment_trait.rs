@@ -14,4 +14,6 @@ pub trait SegmentTrait {
     fn empty(&mut self);
     /// Returns an iterator over the elements of the structure.
     fn iterator(&self) -> Box<dyn Iterator<Item = (Box<[u8]>, MemoryEntry)> + '_>;
+    /// Returns the size in bytes of the object.
+    fn byte_size(&self) -> usize;
 }

@@ -152,6 +152,10 @@ impl MemoryEntry {
     pub fn set_timestamp(&mut self, time_stamp: TimeStamp) {
         self.timestamp = time_stamp.get_time();
     }
+
+    pub fn get_val_size(&self) -> usize {
+        self.value.len()
+    }
 }
 
 pub fn deserialize_header(

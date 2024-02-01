@@ -57,4 +57,11 @@ impl MemoryTable {
     pub(crate) fn iterator(&self) -> Box<dyn Iterator<Item = (Box<[u8]>, MemoryEntry)> + '_> {
         self.inner_mem.iterator()
     }
+
+    /// Returns the WAL size of the current table.
+    /// This means that for each element in the table, 20 bytes (8 for key len, 8 for value len and 4 for CRC)
+    /// is added to the size.
+    pub(crate) fn wal_size(&self) -> usize {
+        20 * self.len + self.inner_mem.byte_size()
+    }
 }
