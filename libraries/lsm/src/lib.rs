@@ -4,7 +4,7 @@ mod lsm;
 mod mem_pool;
 mod sstable;
 mod memtable;
-
+mod paginator;
 pub use lsm::LSM;
 
 #[cfg(test)]
@@ -18,6 +18,7 @@ mod lsm_tests {
     use db_config::{CompactionAlgorithmType, DBConfig, MemoryTableType};
     use crate::lsm::LSM;
     use crate::memtable::MemoryTable;
+    use crate::paginator::Paginator;
 
     #[test]
     fn test_flushing() -> io::Result<()> {
@@ -53,6 +54,33 @@ mod lsm_tests {
             }
         }
         Ok(())
+    }
+
+    #[test]
+    fn test_paginator() {
+        let mut db_config = DBConfig::default();
+        db_config.memory_table_pool_num = 2;
+        db_config.memory_table_capacity = 1000;
+        db_config.lsm_max_per_level = 3;
+        db_config.sstable_single_file = true;
+        db_config.compaction_algorithm_type = CompactionAlgorithmType::SizeTiered;
+        let mut lsm = LSM::new(&db_config).expect("No such file or directory");
+
+        let base_string = "AB";
+        let base_bytes = base_string.as_bytes();
+        for i in 0..100usize {
+            let new_bytes = ((i as u64) + 1).to_ne_bytes();
+            let combined_bytes: Vec<u8> = base_bytes.iter().cloned().chain(new_bytes.iter().cloned()).collect();
+
+            lsm.insert(&combined_bytes, &combined_bytes, TimeStamp::Now).expect("Failed to insert into lsm");
+        }
+
+        let mut paginator = Paginator::new(&lsm);
+        let result = paginator.prefix_scan(base_bytes, 1, 1, db_config.use_variable_encoding).expect("Failed to get pagination result");
+        for (key, entry) in result {
+            println!("Gotten key: {:#?}", key);
+            assert!(key.starts_with(base_bytes));
+        }
     }
 }
 
