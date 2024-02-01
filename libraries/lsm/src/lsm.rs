@@ -456,8 +456,8 @@ impl LSM {
         entries
     }
 
-    fn find_max_timestamp(entries: &Vec<(usize, &(Box<[u8]>, MemoryEntry))>) -> usize {
-        let mut max_index = 0;
+    fn find_max_timestamp(entries: &Vec<(usize, &(Box<[u8]>, MemoryEntry))>, default: usize) -> usize {
+        let mut max_index = default;
         let mut max_timestamp = 0;
         for (index, element) in entries {
             let timestamp = element.1.get_timestamp();
@@ -549,17 +549,17 @@ impl LSM {
                 });
 
             //od najmanjih kljuceva nadji koji ima najveci timestamp
-            let max_index = LSM::find_max_timestamp(&min_entries);
+            let max_index = LSM::find_max_timestamp(&min_entries, entries.len()+1);
+
+            //ovo znaci da niti jedan entry nije zadovoljio kriterijume(svi su obrisani)
+            if max_index == entries.len() + 1 {
+                continue;
+            }
             let pushed_entry = entries
                 .iter()
                 .filter(|(index, _)| max_index == *index)
                 .collect::<Vec<_>>()[0];
 
-            // updateovati has_elements nakon svake iteracije
-            let _ = has_elements
-                .iter()
-                .enumerate()
-                .for_each(|(index,condition)| if min_key_indexes.contains(&index) {positions[index] += 1;});
 
             match scan_type {
                 ScanType::RangeScan => {
@@ -744,7 +744,7 @@ impl Iterator for LSMIterator {
         // procitati iz svih sstabela i spojiti to sa ovim jednim entrijem iz spojenih memtabela
         let mut option_entries: Vec<Option<_>> = self.sstables
             .iter_mut()
-            .zip(copy_offsets.iter())
+            .zip(self.offsets.iter())
             .map(|(sstable, offset)| sstable.get_entry_from_data_file(*offset, None, None, self.use_variable_encoding))
             .collect();
 
@@ -761,7 +761,6 @@ impl Iterator for LSMIterator {
             .enumerate()
             .collect();
 
-        //od svih koji su najmanji daj najnoviji timestamp
         let min_indexes = SSTable::find_min_keys(&enumerated_entries, false);
 
         let min_entries: Vec<_> =  min_indexes
@@ -788,13 +787,28 @@ impl Iterator for LSMIterator {
                 }
             });
 
+        //od svih koji su najmanji daj najnoviji timestamp
         let max_index = SSTable::find_max_timestamp(&min_entries);
+        let return_entry = enumerated_entries[max_index].1.as_ref().unwrap().0.clone();
+
+        if pushed {
+            self.memory_offset = copy_offsets.pop().unwrap() as usize;
+            self.offsets = copy_offsets;
+        }
+        else {
+            self.offsets = copy_offsets;
+        }
+
+        // znaci da su svi trenutni entriji logicki obrisani i rekurzivno pozivamo funk sa updateovanim parametrima
+        if min_entries.is_empty() {
+            return self.next();
+        }
 
         //provera da li smo izasli iz opsega, sa donje strane smo se ogranicili ali sa gornje nismo
-        let return_entry = enumerated_entries[max_index].1.as_ref().unwrap().0.clone();
+        //takodje provera da li je entry koji smo dobili logicki obrisan jer ovde korisitm funk iz sstabele koja mora vratiti 0
         match self.scan_type {
             ScanType::RangeScan => {
-                if return_entry.0 > self.upper_bound {
+                if (return_entry.0 > self.upper_bound) {
                     return None;
                 }
             }
@@ -803,14 +817,6 @@ impl Iterator for LSMIterator {
                     return None;
                 }
             }
-        }
-
-        if pushed {
-            self.memory_offset = copy_offsets.pop().unwrap() as usize;
-            self.offsets = copy_offsets;
-        }
-        else {
-            self.offsets = copy_offsets;
         }
 
         Some(return_entry)

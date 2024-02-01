@@ -54,22 +54,23 @@ mod lsm_tests {
     #[test]
     fn test_scans() -> io::Result<()> {
         let mut db_config = DBConfig::default();
-        db_config.memory_table_pool_num = 2;
-        db_config.memory_table_capacity = 10;
-        db_config.lsm_max_per_level = 4;
+        db_config.memory_table_pool_num = 10;
+        db_config.memory_table_capacity = 500;
+        db_config.lsm_max_per_level = 5;
         db_config.sstable_single_file = false;
         db_config.compaction_algorithm_type = CompactionAlgorithmType::SizeTiered;
         let mut lsm = LSM::new(&db_config).unwrap();
-        let base_string = "AB";
-        let base_bytes = base_string.as_bytes();
-        for i in 0..31usize {
-            let new_bytes = ((i as u64) + 1).to_ne_bytes();
-            let combined_bytes: Vec<u8> = base_bytes.iter().cloned().chain(new_bytes.iter().cloned()).collect();
-            lsm.insert(&combined_bytes, &i.to_ne_bytes(), TimeStamp::Now)?;
+        for i in 0..2000usize {
+            if i % 2 == 0{
+                lsm.insert(&i.to_ne_bytes(), &i.to_ne_bytes(), TimeStamp::Now)?;
+            } else {
+                lsm.delete(&i.to_ne_bytes(), TimeStamp::Now)?;
+            }
+            //lsm.insert(&i.to_ne_bytes(), &i.to_ne_bytes(), TimeStamp::Now)?;
         }
 
         // ///Range
-        let mut lsm_iter = lsm.iter(Some(&0usize.to_ne_bytes()), Some(&66usize.to_ne_bytes()), None, ScanType::RangeScan)?;
+        let mut lsm_iter = lsm.iter(Some(&80usize.to_ne_bytes()), Some(&160usize.to_ne_bytes()), None, ScanType::RangeScan)?;
         while let Some(entry) = lsm_iter.next() {
             println!("{:?}", entry.0);
             println!("{:?}", entry.1);
@@ -80,12 +81,12 @@ mod lsm_tests {
         println!();
 
         ///Prefix
-        let mut lsm_iter = lsm.iter(None, None, Some(base_bytes), ScanType::PrefixScan)?;
-        while let Some(entry) = lsm_iter.next() {
-            println!("{:?}", entry.0);
-            println!("{:?}", entry.1);
-        }
-        println!("{:#?}", &19970usize.to_ne_bytes());
+        // let mut lsm_iter = lsm.iter(None, None, Some(&80usize.to_ne_bytes()), ScanType::PrefixScan)?;
+        // while let Some(entry) = lsm_iter.next() {
+        //     println!("{:?}", entry.0);
+        //     println!("{:?}", entry.1);
+        // }
+        println!("{:?}", lsm.get(&[80,9,0,0,0,0,0,0]));
 
         Ok(())
     }
