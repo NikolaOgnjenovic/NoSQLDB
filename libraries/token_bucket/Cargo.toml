@@ -1,0 +1,9 @@
+[package]
+name = "token_bucket"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors = ["Viktor Srbljin"]
+
+[dependencies]
+segment_elements = { path = "../segment_elements" }

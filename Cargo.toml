@@ -17,6 +17,7 @@ count_min_sketch = { path = "libraries/count_min_sketch" }
 hyperloglog = { path = "libraries/hyperloglog" }
 simhash = { path = "libraries/simhash" }
 lsm = {path = "libraries/lsm" }
+token_bucket = {path = "libraries/token_bucket"}
 
 inquire = "0.6.2"
 clearscreen = "2.0.1"
