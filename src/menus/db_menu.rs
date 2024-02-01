@@ -113,6 +113,7 @@ pub fn db_menu(dbconfig: &mut DBConfig) {
             }
             DBMenu::Exit => {
                 println!("Exiting...");
+                db.shut_down();
                 std::process::exit(0);
             }
         }
