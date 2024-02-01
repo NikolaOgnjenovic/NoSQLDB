@@ -33,6 +33,19 @@ impl WALFile {
         })
     }
 
+    pub(crate) fn open(file_path: PathBuf) -> io::Result<Self> {
+        let file = OpenOptions::new()
+            .append(true)
+            .open(&file_path)?;
+
+        Ok(Self {
+            file: Some(file),
+            file_path,
+            current_size: 0,
+            num_entries: 0,
+        })
+    }
+
     pub(crate) fn write_bytes(&mut self, bytes: &[u8]) -> io::Result<bool> {
         if self.file.is_none() {
             return Ok(false);

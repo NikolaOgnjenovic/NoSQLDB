@@ -55,16 +55,8 @@ impl MemoryPool {
     /// Tries to retrieve key's data from all memory tables currently loaded in memory.
     /// Does not go into on-disk structures.
     pub(crate) fn get(&self, key: &[u8]) -> Option<MemoryEntry> {
-        if self.read_write_table.is_empty() {
-            return None;
-        }
-
-        if let Some(data) = self.read_write_table.get(key) {
-            return if !data.get_value().is_empty() {
-                Some(data)
-            } else {
-                None
-            };
+        if let Some(memory_entry) = self.read_write_table.get(key) {
+            return Some(memory_entry);
         }
 
         for table in &self.read_only_tables {
@@ -73,11 +65,7 @@ impl MemoryPool {
             }
 
             if let Some(memory_entry) = table.get(key) {
-                return if !memory_entry.get_value().is_empty() {
-                    Some(memory_entry)
-                } else {
-                    None
-                };
+                return Some(memory_entry);
             }
         }
 

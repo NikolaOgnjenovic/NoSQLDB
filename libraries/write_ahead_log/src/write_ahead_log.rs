@@ -6,6 +6,7 @@ use segment_elements::TimeStamp;
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::{fs, io};
+use std::fs::read_dir;
 
 struct WALConfig {
     wal_dir: PathBuf,
@@ -47,7 +48,34 @@ impl WriteAheadLog {
         })
     }
 
-    pub fn insert(&mut self, key: &[u8], value: &[u8], timestamp: TimeStamp) -> io::Result<bool> {
+    pub fn from_dir(dbconfig: &DBConfig) -> io::Result<WriteAheadLog> {
+        let wal_config = WALConfig::from(dbconfig);
+
+        let mut files = VecDeque::new();
+
+        match read_dir(&dbconfig.write_ahead_log_dir) {
+            Ok(dir) => {
+                for path_buf in dir.map(|dir_entry| dir_entry.unwrap().path())
+                    .filter(|file| match file.extension() {
+                        Some(ext) => ext == "log",
+                        None => false
+                    }) {
+                    files.push_back(WALFile::open(path_buf)?);
+                }
+
+            }
+            Err(_) => ()
+        };
+
+        Ok(Self {
+            crc_hasher: Crc::<u32>::new(&CRC_32_ISCSI),
+            files,
+            last_byte_file: WALByteIndex::open(&wal_config.wal_dir)?,
+            config: WALConfig::from(dbconfig),
+        })
+    }
+
+    pub fn insert(&mut self, key: &[u8], value: &[u8], timestamp: TimeStamp) -> io::Result<()> {
         let mut record_bytes: Vec<u8> = Vec::new();
         record_bytes.extend(timestamp.get_time().to_ne_bytes().as_ref());
         record_bytes.extend((false as u8).to_ne_bytes());
@@ -65,10 +93,10 @@ impl WriteAheadLog {
 
         self.push_all_bytes(complete_bytes)?;
 
-        Ok(true)
+        Ok(())
     }
 
-    pub fn delete(&mut self, key: &[u8], timestamp: TimeStamp) -> io::Result<bool> {
+    pub fn delete(&mut self, key: &[u8], timestamp: TimeStamp) -> io::Result<()> {
         let mut record_bytes: Vec<u8> = Vec::new();
 
         record_bytes.extend(timestamp.get_time().to_ne_bytes().as_ref());
@@ -86,7 +114,7 @@ impl WriteAheadLog {
 
         self.push_all_bytes(complete_bytes)?;
 
-        Ok(true)
+        Ok(())
     }
 
     fn push_all_bytes(&mut self, mut bytes: Vec<u8>) -> io::Result<()> {
@@ -111,11 +139,9 @@ impl WriteAheadLog {
         Ok(())
     }
 
-    pub fn add_to_starting_byte(&mut self, value: usize) -> io::Result<()> {
-        self.last_byte_file.add(value)
-    }
+    pub fn remove_logs_until(&mut self, byte: usize) -> io::Result<()> {
+        self.last_byte_file.add(byte)?;
 
-    pub fn remove_flushed_wals(&mut self) -> io::Result<()> {
         let mut file_num = 1;
         let mut subtract_bytes = 0;
         let byte_index = self.last_byte_file.get();
@@ -133,7 +159,7 @@ impl WriteAheadLog {
     }
 
     pub fn close(mut self) {
-        for mut file in &mut self.files {
+        for file in &mut self.files {
             file.close_file();
         }
 

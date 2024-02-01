@@ -85,7 +85,7 @@ impl LSM {
             .filter(|entry| entry.is_dir()).collect::<Vec<PathBuf>>();
 
         for dir in dirs {
-            let level = dir.to_str().unwrap().split("_").collect::<Vec<&str>>()[1].parse::<usize>().unwrap();
+            let level = dir.file_name().unwrap().to_str().unwrap().split("_").collect::<Vec<&str>>()[1].parse::<usize>().unwrap();
             let path = PathBuf::from(dir.to_str().unwrap().split("/").last().unwrap());
             sstable_directory_names[level-1].push(path);
         }
@@ -199,21 +199,36 @@ impl LSM {
     pub fn get(&mut self, key: &[u8]) -> io::Result<Option<Box<[u8]>>> {
         if let Some(memory_entry) = self.mem_pool.get(key) {
             self.lru_cache.insert(&key, Some(memory_entry.clone()));
-            return Ok(Some(memory_entry.get_value()));
+
+            return if !memory_entry.get_tombstone() {
+                Ok(Some(memory_entry.get_value()))
+            } else {
+                Ok(None)
+            }
         }
 
         if let Some(memory_entry) = self.lru_cache.get(key) {
             self.lru_cache.insert(&key, Some(memory_entry.clone()));
-            return Ok(Some(memory_entry.get_value()));
+
+            return if !memory_entry.get_tombstone() {
+                Ok(Some(memory_entry.get_value()))
+            } else {
+                Ok(None)
+            }
         }
 
         for level in &self.sstable_directory_names {
             for sstable_dir in level.iter().rev() {
                 let (path, in_single_file) = self.get_sstable_path(sstable_dir);
                 let mut sstable = SSTable::open(path, in_single_file)?;
-                if let Some(data) = sstable.get(key, self.config.index_density, &mut self.compression_dictionary, self.config.use_variable_encoding) {
-                    self.lru_cache.insert(key, Some(data.clone()));
-                    return Ok(Some(data.get_value()));
+                if let Some(memory_entry) = sstable.get(key, self.config.index_density, &mut self.compression_dictionary, self.config.use_variable_encoding) {
+                    self.lru_cache.insert(&key, Some(memory_entry.clone()));
+
+                    return if !memory_entry.get_tombstone() {
+                        Ok(Some(memory_entry.get_value()))
+                    } else {
+                        Ok(None)
+                    }
                 }
             }
         }
@@ -281,18 +296,12 @@ impl LSM {
         let directory_name = LSM::get_directory_name(0, in_single_file);
         let sstable_base_path = self.config.parent_dir.join(directory_name.as_path());
         let use_variable_encoding = self.config.use_variable_encoding;
+        let memtable_wal_bytes_len = mem_table.wal_size();
 
         let mut sstable = SSTable::open(sstable_base_path.to_owned(), in_single_file)?;
-        let flush_bytes = sstable.flush(mem_table, summary_density, index_density, Some(&mut self.lru_cache), &mut self.compression_dictionary, use_variable_encoding)?;
-        let (min, max) = SSTable::get_key_range(sstable_base_path, in_single_file)?;
-        println!(" flushed min {:?}", min);
-        println!("flushed max {:?}", max);
-        let mem_table_byte_size = flush_bytes.get_data_len();
+        sstable.flush(mem_table, summary_density, index_density, Some(&mut self.lru_cache), &mut self.compression_dictionary, use_variable_encoding)?;
 
-        // adds the memory table wal equivalent byte size to the wal starting point counter
-        self.wal.add_to_starting_byte(mem_table_byte_size).unwrap();
-        // removes all the data up to the starting point
-        self.wal.remove_flushed_wals().unwrap();
+        self.wal.remove_logs_until(memtable_wal_bytes_len).unwrap();
 
         self.sstable_directory_names[0].push(PathBuf::from(directory_name));
         if self.config.compaction_enabled && self.sstable_directory_names[0].len() > self.config.max_per_level {
@@ -711,8 +720,9 @@ impl LSM {
         let (mem_pool, tables_to_be_flushed) =
             MemoryPool::load_from_dir(dbconfig)?;
 
-        let mut new_lsm = LSM::new(dbconfig)?;
+        let mut new_lsm = LSM::new(&dbconfig)?;
         new_lsm.mem_pool = mem_pool;
+        new_lsm.wal = WriteAheadLog::from_dir(&dbconfig)?;
 
         for table in tables_to_be_flushed {
             new_lsm.flush(table)?;

@@ -156,13 +156,13 @@ impl Iterator for RecordIterator {
         let mut bytes: Vec<u8> = Vec::new();
 
         bytes.extend(timestamp.to_ne_bytes().as_ref());
-        bytes.extend((false as u8).to_ne_bytes());
+        bytes.extend((tombstone as u8).to_ne_bytes());
         bytes.extend(key_size.to_ne_bytes());
         bytes.extend(value_size.to_ne_bytes());
         bytes.extend(key.as_ref());
 
-        if value.is_some() {
-            bytes.extend(value.as_deref().unwrap());
+        if let Some(value) = &value {
+            bytes.extend(value.as_ref());
         }
 
         if self.crc_hasher.checksum(&bytes) != crc {
