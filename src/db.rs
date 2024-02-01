@@ -53,7 +53,7 @@ impl DB {
     /// Inserts a new key value pair into the system.
     pub fn insert(&mut self, key: &[u8], value: &[u8], check_reserved_prefixes: bool) -> Result<(), Box<dyn Error>> {
         if key != "t0k3n_buck3t/state".as_bytes() {
-            if self.token_bucket_take() {
+            if self.token_bucket_take()? {
                 if check_reserved_prefixes {
                     for forbidden_key_prefix in self.reserved_key_prefixes {
                         if key.starts_with(forbidden_key_prefix) {
@@ -74,9 +74,9 @@ impl DB {
 
     /// Removes the value that's associated to the given key.
     pub fn delete(&mut self, key: &[u8]) -> std::io::Result<()> {
-        if self.token_bucket_take() {
+        if self.token_bucket_take().ok()? {
             self.lsm.delete(key, TimeStamp::Now)?;
-            Ok(())
+            return Ok(());
         }
         Err(std::io::Error::new(
             std::io::ErrorKind::Other,
@@ -86,7 +86,7 @@ impl DB {
 
     /// Retrieves the data that is associated to a given key.
     pub fn get(&mut self, key: &[u8]) -> std::io::Result<Option<Box<[u8]>>> {
-        if self.token_bucket_take() {
+        if self.token_bucket_take().ok()? {
             if let Some(memory_entry) = self.lsm.get(key)? {
                 return Ok(Some(memory_entry.get_value()));
             }
@@ -160,7 +160,7 @@ impl DB {
     /// Result indicating whether the value is likely present (`Ok(true)`) or not present (`Ok(false)`),
     /// or an error wrapped in a `Box<dyn Error>`.
     pub fn bloom_filter_contains(&mut self, key: &[u8], value: &[u8]) -> Result<bool, Box<dyn Error>> {
-        if self.token_bucket_take() {
+        if self.token_bucket_take()? {
             let combined_key = self.get_combined_key(key, 0);
             let bf_bytes = self.get_probabilistic_ds_bytes(combined_key.as_slice())?;
 
@@ -171,7 +171,7 @@ impl DB {
                 }
             };
 
-            Ok(bloom_filter.contains(value))
+            return Ok(bloom_filter.contains(value));
         }
         Err("Input rate limit exceeded. Please try again later.".into())
     }
@@ -221,13 +221,13 @@ impl DB {
     ///
     /// Result containing the count associated with the value or an error wrapped in a `Box<dyn Error>`.
     pub fn count_min_sketch_get_count(&mut self, key: &[u8], value: &[u8]) -> Result<u64, Box<dyn Error>> {
-        if self.token_bucket_take() {
+        if self.token_bucket_take()? {
             let combined_key = self.get_combined_key(key, 1);
             let cms_bytes = self.get_probabilistic_ds_bytes(combined_key.as_slice())?;
 
             let count_min_sketch = CMSketch::deserialize(&cms_bytes);
 
-            Ok(count_min_sketch.get_count(&value))
+            return Ok(count_min_sketch.get_count(&value));
         }
         Err("Input rate limit exceeded. Please try again later.".into())
     }
@@ -277,13 +277,13 @@ impl DB {
     ///
     /// Result containing the estimated count or an error wrapped in a `Box<dyn Error>`.
     pub fn hyperloglog_get_count(&mut self, key: &[u8]) -> Result<u64, Box<dyn Error>> {
-        if self.token_bucket_take() {
+        if self.token_bucket_take()? {
             let combined_key = self.get_combined_key(key, 2);
             let hll_bytes = self.get_probabilistic_ds_bytes(combined_key.as_slice())?;
 
             let hyperloglog = HLL::deserialize(&hll_bytes);
 
-            Ok(hyperloglog.get_count())
+            return Ok(hyperloglog.get_count());
         }
         Err("Input rate limit exceeded. Please try again later.".into())
     }

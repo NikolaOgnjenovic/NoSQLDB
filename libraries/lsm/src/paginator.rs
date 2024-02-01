@@ -124,7 +124,6 @@ impl<'a> Paginator<'a> {
     /// # Returns
     ///
     /// An optional tuple containing the key and memory entry of the next entry, or `None` if no more entries are available.
-
     pub fn prefix_iterate_next(&'a mut self, prefix: &[u8]) -> std::io::Result<Option<(Box<[u8]>, MemoryEntry)>> {
         self.iterate_next_impl(|this| this.prefix_scan(prefix, this.cached_entry_index, 1))
     }
@@ -163,6 +162,7 @@ impl<'a> Paginator<'a> {
         where
             F: FnOnce(&mut Self) -> std::io::Result<Vec<(Box<[u8]>, MemoryEntry)>>,
     {
+        // Check if by calling prev next returns a cached entry
         if self.cached_entry_index > 0 && self.cached_entry_index < self.cached_entries.len() - 1 {
             let next_cached_entry = self.cached_entries[self.cached_entry_index].clone();
             self.cached_entry_index += 1;
