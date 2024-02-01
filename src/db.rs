@@ -10,6 +10,7 @@ use token_bucket::token_bucket::TokenBucket;
 
 use crate::ReservedKeyError;
 use crate::ProbabilisticTypeError;
+use crate::token_bucket_error::TokenBucketError;
 
 pub struct DB {
     config: DBConfig,
@@ -64,7 +65,7 @@ impl DB {
                     }
                 }
             } else {
-                return Err("Input rate limit exceeded. Please try again later.".into());
+                return Err(From::from(TokenBucketError));
             }
         }
 
@@ -73,34 +74,55 @@ impl DB {
     }
 
     /// Removes the value that's associated to the given key.
-    pub fn delete(&mut self, key: &[u8]) -> std::io::Result<()> {
+    pub fn delete(&mut self, key: &[u8], check_reserved_prefixes: bool) -> Result<(), Box<dyn Error>> {
         if self.token_bucket_take() {
+            if check_reserved_prefixes {
+                for forbidden_key_prefix in self.reserved_key_prefixes {
+                    if key.starts_with(forbidden_key_prefix) {
+                        return Err(Box::new(ReservedKeyError {
+                            message: format!("Cannot insert key with system reserved prefix {}.", String::from_utf8_lossy(forbidden_key_prefix))
+                        }));
+                    }
+                }
+            }
             self.lsm.delete(key, TimeStamp::Now)?;
             Ok(())
         }
-        Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "Input rate limit exceeded. Please try again later.",
-        ))
+        Err(From::from(TokenBucketError))
     }
 
     /// Retrieves the data that is associated to a given key.
-    pub fn get(&mut self, key: &[u8]) -> std::io::Result<Option<Box<[u8]>>> {
-        if self.token_bucket_take() {
+    pub fn get(&mut self, key: &[u8], check_reserved_prefixes: bool) -> std::io::Result<Option<Box<[u8]>>> {
+        if key == "t0k3n_buck3t/state".as_bytes() {
+            if let Some(memory_entry) = self.lsm.get(key)? {
+                return Ok(Some(memory_entry.get_value()));
+            }
+        } else {
+            if !self.token_bucket_take() {
+                return Err(TokenBucketError.into());
+            }
+
+            if check_reserved_prefixes {
+                for forbidden_key_prefix in &self.reserved_key_prefixes {
+                    if key.starts_with(forbidden_key_prefix) {
+                        return Err(ReservedKeyError {
+                            message: format!("Cannot insert key with system reserved prefix {}.", String::from_utf8_lossy(forbidden_key_prefix))
+                        }.into());
+                    }
+                }
+            }
+
             if let Some(memory_entry) = self.lsm.get(key)? {
                 return Ok(Some(memory_entry.get_value()));
             }
         }
-        Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "Input rate limit exceeded. Please try again later.",
-        )).expect("Implement error handling for token bucket.");
-
-            // todo sstable get, komplikovano
-
-            todo!()
-
+        // todo sstable get, komplikovano
+        todo!()
     }
+
+
+
+
 
     /// Should be called before the program exit to gracefully finish all memory tables writes,
     /// SStable merges and compactions.
@@ -173,7 +195,7 @@ impl DB {
 
             Ok(bloom_filter.contains(value))
         }
-        Err("Input rate limit exceeded. Please try again later.".into())
+        Err(From::from(TokenBucketError))
     }
 
     /// Gets the Count-Min Sketch associated with the given key.
@@ -229,7 +251,7 @@ impl DB {
 
             Ok(count_min_sketch.get_count(&value))
         }
-        Err("Input rate limit exceeded. Please try again later.".into())
+        Err(From::from(TokenBucketError))
     }
 
 
@@ -285,7 +307,7 @@ impl DB {
 
             Ok(hyperloglog.get_count())
         }
-        Err("Input rate limit exceeded. Please try again later.".into())
+        Err(From::from(TokenBucketError))
     }
 
     /// Calculates the Hamming distance between two strings using the SimHash algorithm.
@@ -315,7 +337,7 @@ impl DB {
     fn reserved_get(&mut self, key: &[u8], index: usize) -> std::io::Result<Option<Box<[u8]>>> {
         let combined_key = self.get_combined_key(key, index);
 
-        if let Some(value) = self.get(&combined_key)? {
+        if let Some(value) = self.get(&combined_key, false)? {
             return Ok(Some(value));
         }
 
@@ -350,7 +372,7 @@ impl DB {
     /// Result containing the serialized bytes of the probabilistic data structure or an error
     /// wrapped in a `Box<dyn Error>`.
     fn get_probabilistic_ds_bytes(&mut self, combined_key: &[u8]) -> Result<Box<[u8]>, Box<dyn Error>> {
-        match self.get(combined_key)? {
+        match self.get(combined_key, false)? {
             Some(bytes) => Ok(bytes),
             None => {
                 Err(Box::new(ProbabilisticTypeError {
@@ -370,7 +392,8 @@ impl DB {
     /// A result indicating whether tokens were successfully taken (`Ok(true)`)
     /// or if an error occurred (`Err`).
     pub fn token_bucket_take(&mut self) -> Result<bool, Box<dyn Error>> {
-        let mut token_bucket = TokenBucket::deserialize("t0k3n_buck3t/state".as_bytes());
+        let mut token_bucket = TokenBucket::deserialize(&self.get("t0k3n_buck3t/state".as_bytes(), false)?.unwrap());
+
         let token_taken = token_bucket.take(1);
 
         self.insert("t0k3n_buck3t/state".as_bytes(), token_bucket.serialize().as_ref(), false)?;
