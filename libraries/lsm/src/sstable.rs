@@ -1230,6 +1230,7 @@ impl SSTable {
             loop {
                 let data = sstable.get_entry_from_data_file(current_offsets[index], None, None, use_variable_encoding);
                 if let Some(((key, memory_entry), offset)) = data {
+                    let key_slice = &*key;
                     match scan_type {
                         ScanType::RangeScan => {
                             if key.as_ref() >= searched_key {
