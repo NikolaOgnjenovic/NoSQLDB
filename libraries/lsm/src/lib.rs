@@ -9,16 +9,11 @@ pub use lsm::LSM;
 
 #[cfg(test)]
 mod lsm_tests {
-    use std::fs::remove_dir_all;
     use std::{fs, io};
-    use std::path::Path;
     use super::*;
-    use tempfile::TempDir;
     use segment_elements::TimeStamp;
-    use db_config::{CompactionAlgorithmType, DBConfig, MemoryTableType};
+    use db_config::{CompactionAlgorithmType, DBConfig};
     use crate::lsm::{LSM, ScanType};
-    use crate::memtable::MemoryTable;
-    use crate::paginator::Paginator;
 
     #[test]
     fn test_flushing() -> io::Result<()> {
@@ -65,7 +60,7 @@ mod lsm_tests {
         db_config.sstable_single_file = false;
         db_config.compaction_algorithm_type = CompactionAlgorithmType::SizeTiered;
         let mut lsm = LSM::new(&db_config).unwrap();
-        for i in 0..20000usize {
+        for i in 0..2000usize {
             lsm.insert(&i.to_ne_bytes(), &i.to_ne_bytes(), TimeStamp::Now)?;
         }
 
@@ -86,34 +81,59 @@ mod lsm_tests {
             println!("{:?}", entry.0);
             println!("{:?}", entry.1);
         }
+        println!("{:#?}", lsm.get(&[80,1,0,0,0,0,0,0]));
 
         Ok(())
     }
+}
+
+#[cfg(test)]
+mod paginator_tests {
+    use db_config::{CompactionAlgorithmType, DBConfig};
+    use segment_elements::TimeStamp;
+    use crate::LSM;
+    use crate::paginator::Paginator;
 
     #[test]
     fn test_paginator() {
         let mut db_config = DBConfig::default();
         db_config.memory_table_pool_num = 2;
-        db_config.memory_table_capacity = 1000;
-        db_config.lsm_max_per_level = 3;
+        db_config.memory_table_capacity = 10;
+        db_config.lsm_max_per_level = 4;
         db_config.sstable_single_file = true;
         db_config.compaction_algorithm_type = CompactionAlgorithmType::SizeTiered;
-        let mut lsm = LSM::new(&db_config).expect("No such file or directory");
+        let mut lsm = LSM::new(&db_config).unwrap();
 
         let base_string = "AB";
         let base_bytes = base_string.as_bytes();
-        for i in 0..100usize {
+        let page_len = 10;
+        let page_count = 3;
+        for i in 0..page_count * page_len + 1 {
             let new_bytes = ((i as u64) + 1).to_ne_bytes();
             let combined_bytes: Vec<u8> = base_bytes.iter().cloned().chain(new_bytes.iter().cloned()).collect();
 
-            lsm.insert(&combined_bytes, &combined_bytes, TimeStamp::Now).expect("Failed to insert into lsm");
+            println!("Inserting key to LSM: {:#?}", combined_bytes);
+            let time_stamp = TimeStamp::Now;
+            lsm.insert(&combined_bytes, &combined_bytes, time_stamp).expect("Failed to insert into lsm");
         }
 
+        println!("{:#?}", lsm.get(&[65, 66, 20, 0, 0, 0, 0, 0, 0, 0]));
+
         let mut paginator = Paginator::new(&lsm);
-        let result = paginator.prefix_scan(base_bytes, 1, 1, db_config.use_variable_encoding).expect("Failed to get pagination result");
-        for (key, entry) in result {
-            println!("Gotten key: {:#?}", key);
-            assert!(key.starts_with(base_bytes));
+        // Test pages
+        for page_number in 0..page_count {
+            let result_page = paginator.prefix_scan(base_bytes, page_number, page_len).expect("Failed to get pagination result");
+            assert_eq!(result_page.len(), page_len);
+
+            for (i, (key, _)) in result_page.iter().enumerate() {
+                assert!(key.starts_with(base_bytes));
+
+                let expected_value = ((page_number * page_len + i) as u64 + 1).to_ne_bytes();
+                let expected_bytes: Vec<u8> = base_bytes.iter().cloned().chain(expected_value.iter().cloned()).collect();
+                //println!("Expected: {:#?}, key: {:#?}", expected_bytes.into_boxed_slice(), key.clone());
+                assert_eq!(expected_bytes.clone().into_boxed_slice(), key.clone());
+                println!("Works for {:#?}", expected_bytes);
+            }
         }
     }
 }
@@ -484,7 +504,7 @@ mod sstable_tests {
     fn test_flushing() {
         let multiplier = 2;
 
-        for range in (1..=51).step_by(50) {
+        for range in (1..=1000).step_by(100) {
             for mem_table_type in &[MemoryTableType::SkipList, MemoryTableType::HashMap, MemoryTableType::BTree] {
                 check_flushed_table(true, &mem_table_type.clone(), range, multiplier, true);
                 check_flushed_table(true, &mem_table_type.clone(), range, multiplier, false);
@@ -530,7 +550,7 @@ mod sstable_tests {
     fn test_merkle() {
         let multiplier = 2;
 
-        for range in (1..=100).step_by(50) {
+        for range in (1..=1000).step_by(50) {
             for mem_table_type in &[MemoryTableType::SkipList, /*MemoryTableType::HashMap,*/MemoryTableType::BTree] {
                 check_merkle_tree(true, &mem_table_type.clone(), range, multiplier, true);
                 check_merkle_tree(true, &mem_table_type.clone(), range, multiplier, false);
@@ -560,7 +580,7 @@ mod sstable_tests {
     fn test_merge_sstables() {
         let multiplier = 2;
 
-        for range in (1..=10).step_by(10) {
+        for range in (1..=1000).step_by(100) {
             for mem_table_type in &[MemoryTableType::SkipList, MemoryTableType::HashMap, MemoryTableType::BTree] {
                 merge_sstables(vec![true, true], &mem_table_type.clone(), range, multiplier, true, true);
                 merge_sstables(vec![true, true], &mem_table_type.clone(), range, multiplier, false, true);

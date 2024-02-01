@@ -591,7 +591,6 @@ impl LSM {
             .collect();
         let merged_memory_entries = LSM::merge_scanned_entries(entries);
 
-
         let sstable_base_paths = if let (Some(min_key), Some(max_key)) = (min_key, max_key) {
             let mut sstable_paths = Vec::new();
             for level in 0..self.config.max_level {
@@ -619,7 +618,6 @@ impl LSM {
             .iter()
             .map(|path| LSM::is_in_single_file(&path.to_path_buf()))
             .collect();
-
 
         let mut sstables: Vec<_> = sstable_base_paths
             .iter()

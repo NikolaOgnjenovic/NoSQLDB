@@ -1160,7 +1160,11 @@ impl SSTable {
             file_handle.seek(SeekFrom::Start(std::mem::size_of::<usize>() as u64))?;
 
             let mut index_offset_bytes = [0u8; std::mem::size_of::<usize>()];
-            file_handle.read_exact(&mut index_offset_bytes)?;
+            let result = file_handle.read_exact(&mut index_offset_bytes);
+            if result.is_err() {
+                println!("failed tro fill index i nsingle");
+                return Ok(non_existant_thresh.unwrap());
+            }
             let index_offset = usize::from_ne_bytes(index_offset_bytes) as u64;
 
             file_handle.seek(SeekFrom::Start(index_offset))?;
@@ -1168,16 +1172,33 @@ impl SSTable {
 
         loop {
             let mut key_len_bytes = [0u8; std::mem::size_of::<usize>()];
-            file_handle.read_exact(&mut key_len_bytes)?;
+            let result = file_handle.read_exact(&mut key_len_bytes);
+            if result.is_err() {
+                println!("failed to fill key len in loop");
+
+                return Ok(non_existant_thresh.unwrap());
+            }
+
             let key_len = usize::from_ne_bytes(key_len_bytes);
 
             let mut key_bytes = vec![0u8; key_len];
-            file_handle.read_exact(&mut key_bytes)?;
+            let result = file_handle.read_exact(&mut key_bytes);
+            if result.is_err() {
+                println!("failed to fill key in loop");
+
+                return Ok(non_existant_thresh.unwrap());
+            }
             let key = key_bytes.into_boxed_slice();
             let key_slice = &*key;
 
             let mut offset_bytes = [0u8; std::mem::size_of::<usize>()];
-            file_handle.read_exact(&mut offset_bytes)?;
+            let result = file_handle.read_exact(&mut offset_bytes);
+            if result.is_err() {
+                println!("failed to fill offset bytes in loop");
+
+                return Ok(non_existant_thresh.unwrap());
+            }
+
             let current_offset = usize::from_ne_bytes(offset_bytes);
 
             match scan_type {
