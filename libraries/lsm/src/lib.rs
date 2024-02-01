@@ -54,18 +54,22 @@ mod lsm_tests {
     #[test]
     fn test_scans() -> io::Result<()> {
         let mut db_config = DBConfig::default();
-        db_config.memory_table_pool_num = 10;
-        db_config.memory_table_capacity = 500;
+        db_config.memory_table_pool_num = 2;
+        db_config.memory_table_capacity = 10;
         db_config.lsm_max_per_level = 4;
         db_config.sstable_single_file = false;
         db_config.compaction_algorithm_type = CompactionAlgorithmType::SizeTiered;
         let mut lsm = LSM::new(&db_config).unwrap();
-        for i in 0..2000usize {
-            lsm.insert(&i.to_ne_bytes(), &i.to_ne_bytes(), TimeStamp::Now)?;
+        let base_string = "AB";
+        let base_bytes = base_string.as_bytes();
+        for i in 0..31usize {
+            let new_bytes = ((i as u64) + 1).to_ne_bytes();
+            let combined_bytes: Vec<u8> = base_bytes.iter().cloned().chain(new_bytes.iter().cloned()).collect();
+            lsm.insert(&combined_bytes, &i.to_ne_bytes(), TimeStamp::Now)?;
         }
 
         // ///Range
-        let mut lsm_iter = lsm.iter(Some(&80usize.to_ne_bytes()), Some(&160usize.to_ne_bytes()), None, ScanType::RangeScan)?;
+        let mut lsm_iter = lsm.iter(Some(&0usize.to_ne_bytes()), Some(&66usize.to_ne_bytes()), None, ScanType::RangeScan)?;
         while let Some(entry) = lsm_iter.next() {
             println!("{:?}", entry.0);
             println!("{:?}", entry.1);
@@ -76,12 +80,12 @@ mod lsm_tests {
         println!();
 
         ///Prefix
-        let mut lsm_iter = lsm.iter(None, None, Some(&80usize.to_ne_bytes()), ScanType::PrefixScan)?;
+        let mut lsm_iter = lsm.iter(None, None, Some(base_bytes), ScanType::PrefixScan)?;
         while let Some(entry) = lsm_iter.next() {
             println!("{:?}", entry.0);
             println!("{:?}", entry.1);
         }
-        println!("{:#?}", lsm.get(&[80,1,0,0,0,0,0,0]));
+        println!("{:#?}", &19970usize.to_ne_bytes());
 
         Ok(())
     }
@@ -92,6 +96,7 @@ mod paginator_tests {
     use db_config::{CompactionAlgorithmType, DBConfig};
     use segment_elements::TimeStamp;
     use crate::LSM;
+    use crate::lsm::ScanType::{PrefixScan, RangeScan};
     use crate::paginator::Paginator;
 
     #[test]
@@ -117,7 +122,22 @@ mod paginator_tests {
             lsm.insert(&combined_bytes, &combined_bytes, time_stamp).expect("Failed to insert into lsm");
         }
 
-        println!("{:#?}", lsm.get(&[65, 66, 20, 0, 0, 0, 0, 0, 0, 0]));
+        println!("{:?}", lsm.get(&[65,66,20,0,0,0,0,0]).expect(""));
+        println!("{:?}", lsm.get(&[65,66,22,0,0,0,0,0]).expect(""));
+        println!("{:?}", lsm.get(&[65,66,24,0,0,0,0,0]).expect(""));
+        println!("{:?}", lsm.get(&[65,66,26,0,0,0,0,0]).expect(""));
+        println!("{:?}", lsm.get(&[65,66,29, 0,0,0,0,0]).expect(""));
+        println!("{:?}", lsm.get(&[65,66,31,0,0,0,0,0]).expect(""));
+        // let mut iter = lsm.iter(Some(&[0]), Some(&[255]), None, RangeScan).expect("Failed to insert into lsm");
+        // while let Some(entry) = iter.next() {
+        //     println!("{:?}", entry.0);
+        //     println!("{:?}", entry.1);
+        // }
+        // let mut iter = lsm.iter(None, None, Some(&[65, 66]), PrefixScan).expect("Failed to insert into lsm");
+        // while let Some(entry) = iter.next() {
+        //     println!("{:?}", entry.0);
+        //     println!("{:?}", entry.1);
+        // }
 
         let mut paginator = Paginator::new(&lsm);
         // Test pages
@@ -132,9 +152,11 @@ mod paginator_tests {
                 let expected_bytes: Vec<u8> = base_bytes.iter().cloned().chain(expected_value.iter().cloned()).collect();
                 //println!("Expected: {:#?}, key: {:#?}", expected_bytes.into_boxed_slice(), key.clone());
                 assert_eq!(expected_bytes.clone().into_boxed_slice(), key.clone());
-                println!("Works for {:#?}", expected_bytes);
+                //println!("Works for {:#?}", expected_bytes);
             }
         }
+
+
     }
 }
 
