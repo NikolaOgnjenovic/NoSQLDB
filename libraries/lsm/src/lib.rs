@@ -63,13 +63,15 @@ mod lsm_tests {
     #[test]
     fn test_flushing() -> io::Result<()> {
         let mut db_config = DBConfig::default();
-        db_config.memory_table_pool_num = 2;
-        db_config.memory_table_capacity = 1000;
+        db_config.memory_table_pool_num = 100;
+        db_config.memory_table_capacity = 30;
         db_config.lsm_max_per_level = 3;
+        db_config.lsm_max_level = 6;
+        db_config.lsm_leveled_amplification = 5;
         db_config.sstable_single_file = true;
-        db_config.compaction_algorithm_type = CompactionAlgorithmType::SizeTiered;
+        db_config.compaction_algorithm_type = CompactionAlgorithmType::Leveled;
         let mut lsm = LSM::new(&db_config).expect("No such file or directory");
-        for i in 0..30000usize {
+        for i in 0..8000usize {
             lsm.insert(&i.to_ne_bytes(), &i.to_ne_bytes(), TimeStamp::Now)?;
         }
         //fs::create_dir_all(&db_config.sstable_dir)?;
@@ -176,12 +178,12 @@ mod paginator_tests {
             lsm.insert(&combined_bytes, &combined_bytes, time_stamp).expect("Failed to insert into lsm");
         }
 
-        println!("{:?}", lsm.get(&[65,66,20,0,0,0,0,0]).expect(""));
-        println!("{:?}", lsm.get(&[65,66,22,0,0,0,0,0]).expect(""));
-        println!("{:?}", lsm.get(&[65,66,24,0,0,0,0,0]).expect(""));
-        println!("{:?}", lsm.get(&[65,66,26,0,0,0,0,0]).expect(""));
-        println!("{:?}", lsm.get(&[65,66,29, 0,0,0,0,0]).expect(""));
-        println!("{:?}", lsm.get(&[65,66,31,0,0,0,0,0]).expect(""));
+        println!("{:?}", lsm.get(&[65, 66, 20, 0, 0, 0, 0, 0]).expect(""));
+        println!("{:?}", lsm.get(&[65, 66, 22, 0, 0, 0, 0, 0]).expect(""));
+        println!("{:?}", lsm.get(&[65, 66, 24, 0, 0, 0, 0, 0]).expect(""));
+        println!("{:?}", lsm.get(&[65, 66, 26, 0, 0, 0, 0, 0]).expect(""));
+        println!("{:?}", lsm.get(&[65, 66, 29, 0, 0, 0, 0, 0]).expect(""));
+        println!("{:?}", lsm.get(&[65, 66, 31, 0, 0, 0, 0, 0]).expect(""));
         // let mut iter = lsm.iter(Some(&[0]), Some(&[255]), None, RangeScan).expect("Failed to insert into lsm");
         // while let Some(entry) = iter.next() {
         //     println!("{:?}", entry.0);
@@ -208,6 +210,8 @@ mod paginator_tests {
                 assert_eq!(expected_bytes.clone().into_boxed_slice(), key.clone());
                 //println!("Works for {:#?}", expected_bytes);
             }
+        }
+    }
 
     #[test]
     fn test_range_scan_whole_range() {

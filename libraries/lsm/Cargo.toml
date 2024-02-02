@@ -17,6 +17,7 @@ compression = { path = "../compression" }
 lru_cache = { path = "../lru_cache" }
 crc = "3.0.1"
 threadpool = "1.8.1"
+num-traits = "0.2.14"
 
 [dev-dependencies]
 tempfile = "3.9.0"

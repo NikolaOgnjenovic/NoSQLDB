@@ -1,3 +1,6 @@
+extern crate num_traits;
+
+use num_traits::pow;
 use std::cmp::Ordering;
 use std::error::Error;
 use std::fs::{create_dir_all, read_dir, remove_dir_all};
@@ -26,6 +29,7 @@ struct LSMConfig {
     max_level: usize,
     // Maximum number of SSTables per level
     max_per_level: usize,
+    leveled_amplification: usize,
     // The compaction algorithm in use
     compaction_algorithm: CompactionAlgorithmType,
     in_single_file: bool,
@@ -41,6 +45,7 @@ impl LSMConfig {
             parent_dir: PathBuf::from(&dbconfig.sstable_dir),
             max_level: dbconfig.lsm_max_level,
             max_per_level: dbconfig.lsm_max_per_level,
+            leveled_amplification: dbconfig.lsm_leveled_amplification,
             compaction_algorithm: dbconfig.compaction_algorithm_type,
             compaction_enabled: dbconfig.compaction_enabled,
             use_variable_encoding: dbconfig.use_variable_encoding,
@@ -175,7 +180,16 @@ impl LSM {
                 let sstable_base_path = parent_dir.join(path);
                 let in_single_file = LSM::is_in_single_file(path);
                 match SSTable::get_key_range(sstable_base_path, in_single_file) {
-                    Ok((min_key, max_key)) => max_key >= Box::from(main_min_key) && min_key <= Box::from(main_max_key),
+                    Ok((min_key, max_key)) => {
+                        let max_key_slice = &*max_key;
+                        let min_key_slice = &*min_key;
+                        let main_max_key_slice = &*main_max_key;
+                        let main_min_key_slice = &*main_min_key;
+                        let left = max_key >= Box::from(main_min_key);
+                        let right =  min_key <= Box::from(main_max_key);
+                        let condition = left && right;
+                        condition
+                    },
                     Err(_) => false,
                 }
             })
@@ -384,7 +398,7 @@ impl LSM {
         let use_variable_encoding = self.config.use_variable_encoding;
         let merged_in_single_file = self.config.in_single_file;
 
-        while self.sstable_directory_names[level].len() > self.config.max_per_level {
+        while self.sstable_directory_names[level].len() > self.config.max_per_level * pow(self.config.leveled_amplification, level) {
             // Choose first SStable from given level
             let main_sstable_base_path = self.config.parent_dir.join(self.sstable_directory_names[level].remove(0));
             let in_single_file = LSM::is_in_single_file(&main_sstable_base_path);
