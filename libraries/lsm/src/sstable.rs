@@ -16,7 +16,7 @@ use crate::memtable::MemoryTable;
 use crate::sstable::sstable_element_type::SSTableElementType;
 
 /// Struct representing an SSTable (Sorted String Table) for storing key-value pairs on disk.
-pub(crate) struct SSTable {
+pub struct SSTable {
     // Base directory path where the SSTable files will be stored.
     base_path: PathBuf,
     // Flag indicating whether to store data in a single file or multiple files.
@@ -1075,7 +1075,7 @@ impl SSTable {
     }
 
     /// prvo kroz index svih sstabela idemo dok ne dodjemo do keya koji je veci od minimalnog i onda vrnemo offset
-    pub(crate) fn get_sstable_offset(sstable_base_path: PathBuf, in_single_file: bool, searched_key: &[u8], scan_type: ScanType) -> io::Result<u64> {
+    pub(crate) fn get_sstable_offset(sstable_base_path: PathBuf, in_single_file: bool, searched_key: &[u8], scan_type: ScanType, non_existant_thresh: Option<u64>) -> io::Result<u64> {
         let mut offset = 0;
 
         let mut open_options = OpenOptions::new();
@@ -1108,6 +1108,7 @@ impl SSTable {
             let mut key_bytes = vec![0u8; key_len];
             file_handle.read_exact(&mut key_bytes)?;
             let key = key_bytes.into_boxed_slice();
+            let key_slice = &*key;
 
             let mut offset_bytes = [0u8; std::mem::size_of::<usize>()];
             file_handle.read_exact(&mut offset_bytes)?;
@@ -1121,8 +1122,11 @@ impl SSTable {
                     offset = current_offset;
                 }
                 ScanType::PrefixScan => {
-                    if key.starts_with(searched_key) {
+                    if key_slice.starts_with(searched_key) {
                         break;
+                    }
+                    if key_slice > searched_key {
+                        return Ok(non_existant_thresh.unwrap());
                     }
                     offset = current_offset;
                 }

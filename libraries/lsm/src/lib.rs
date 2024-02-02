@@ -61,7 +61,7 @@ mod lsm_tests {
     use tempfile::TempDir;
     use segment_elements::TimeStamp;
     use db_config::{CompactionAlgorithmType, DBConfig, MemoryTableType};
-    use crate::lsm::LSM;
+    use crate::lsm::{LSM, ScanType};
     use crate::memtable::MemoryTable;
 
     #[test]
@@ -97,6 +97,40 @@ mod lsm_tests {
                 println!("Unknown: {}", file_name);
             }
         }
+        Ok(())
+    }
+
+    #[test]
+    fn test_scans() -> io::Result<()> {
+        let mut db_config = DBConfig::default();
+        db_config.memory_table_pool_num = 10;
+        db_config.memory_table_capacity = 500;
+        db_config.lsm_max_per_level = 4;
+        db_config.sstable_single_file = false;
+        db_config.compaction_algorithm_type = CompactionAlgorithmType::SizeTiered;
+        let mut lsm = LSM::new(&db_config).unwrap();
+        for i in 0..20000usize {
+            lsm.insert(&i.to_ne_bytes(), &i.to_ne_bytes(), TimeStamp::Now)?;
+        }
+
+        // ///Range
+        let mut lsm_iter = lsm.iter(Some(&80usize.to_ne_bytes()), Some(&160usize.to_ne_bytes()), None, ScanType::RangeScan)?;
+        while let Some(entry) = lsm_iter.next() {
+            println!("{:?}", entry.0);
+            println!("{:?}", entry.1);
+        }
+
+        println!();
+        println!();
+        println!();
+
+        ///Prefix
+        let mut lsm_iter = lsm.iter(None, None, Some(&80usize.to_ne_bytes()), ScanType::PrefixScan)?;
+        while let Some(entry) = lsm_iter.next() {
+            println!("{:?}", entry.0);
+            println!("{:?}", entry.1);
+        }
+
         Ok(())
     }
 }

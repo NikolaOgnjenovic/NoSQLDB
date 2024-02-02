@@ -301,15 +301,15 @@ pub fn customize_menu(dbconfig: &mut DBConfig) {
             }
             CustomizeMenu::TokenBucketNum => {
                 clearscreen::clear().expect("Failed to clear screen.");
-                let new_value = get_input_with_range("Enter new Token bucket number: ", 0, 10);
-                dbconfig.token_bucket_num = new_value;
-                println!("Token bucket num changed to {}", new_value);
+                let new_value = get_input_with_range("Enter new Token bucket capacity: ", 1, 30);
+                dbconfig.token_bucket_capacity = new_value;
+                println!("Token bucket capacity changed to {}", new_value);
             }
             CustomizeMenu::TokenBucketInterval => {
                 clearscreen::clear().expect("Failed to clear screen.");
-                let new_value = get_input_with_range("Enter new Token bucket interval: ", 0, 10);
-                dbconfig.token_bucket_interval = new_value;
-                println!("Token bucket interval changed to {}", new_value);
+                let new_value = get_input_with_range("Enter new Token bucket refill rate (tokens per second): ", 0, 100);
+                dbconfig.token_bucket_refill_rate = new_value;
+                println!("Token bucket refill rate changed to {}", new_value);
             }
             CustomizeMenu::UseCompression => {
                 clearscreen::clear().expect("Failed to clear screen.");

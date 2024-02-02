@@ -72,7 +72,7 @@ pub fn db_menu(dbconfig: &mut DBConfig) {
                 }
                 let key = &key.unwrap();
 
-                match db.get(&key).ok() {
+                match db.get(key, true).ok() {
                     Some(value) => println!("Value found: {:?}", value),
                     None => println!("Value not found for the given key."),
                 }
@@ -86,8 +86,8 @@ pub fn db_menu(dbconfig: &mut DBConfig) {
                 }
                 let key = &key.unwrap();
 
-                db.delete(key).expect("Deletion error");
-                match db.delete(&key) {
+                db.delete(key, true).expect("Deletion error");
+                match db.delete(&key, true) {
                     Ok(()) => println!("Deletion successful."),
                     Err(err) => eprintln!("Error during deletion: {}", err),
                 }
@@ -113,6 +113,7 @@ pub fn db_menu(dbconfig: &mut DBConfig) {
             }
             DBMenu::Exit => {
                 println!("Exiting...");
+                db.shut_down();
                 std::process::exit(0);
             }
         }

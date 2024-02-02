@@ -13,7 +13,8 @@ use lru_cache::LRUCache;
 use crate::mem_pool::MemoryPool;
 use crate::memtable::MemoryTable;
 
-pub(crate) enum ScanType {
+#[derive(Clone, Copy)]
+pub enum ScanType {
     RangeScan,
     PrefixScan,
 }
@@ -424,10 +425,6 @@ impl LSM {
                 .map(|(_, &ref elem)| elem.clone())
                 .collect();
 
-            let (min, max) = SSTable::get_key_range(merged_base_path, merged_in_single_file)?;
-            println!(" merged min {:?}", min);
-            println!(" merged max{:?}", max);
-
             // Replace this vector with existing in sstable_directory_names and append merged directory to it
             kept_sstable_directories.push(merged_directory);
             Self::remove_all_compacted(sstable_base_paths)?;
@@ -478,7 +475,7 @@ impl LSM {
 
     fn find_max_timestamp(entries: &Vec<(usize, &(Box<[u8]>, MemoryEntry))>) -> usize {
         let mut max_index = 0;
-        let mut max_timestamp = entries[max_index].1.1.get_timestamp();
+        let mut max_timestamp = 0;
         for (index, element) in entries {
             let timestamp = element.1.get_timestamp();
             if timestamp > max_timestamp {
@@ -517,57 +514,130 @@ impl LSM {
         let mut scanned_entries = Vec::new();
         let mut positions: Vec<usize> = vec![0; all_entries.len()];
 
-        let entries: Vec<_> = all_entries
-            .iter()
-            .zip(positions.iter())
-            .enumerate()
-            .map(|(index, (vector, position) )| (index, &vector[*position]))
-            .collect();
+        loop {
+            // vektor booleana koji za svaki vektor kaze da li i dalje ima entrija u njemu
+            let has_elements: Vec<_> = all_entries
+                .iter()
+                .zip(positions.iter())
+                .map(|(vector, position)| vector.len() > *position)
+                .collect();
 
-        let min_key_indexes = LSM::find_min_keys(&entries);
+            // ako ni u jednom vektoru nema entrija break
+            if !has_elements.iter().any(|&x| x) {
+                break;
+            }
 
-        let min_entries: Vec<_> = min_key_indexes
-            .iter()
-            .map(|index| entries[*index].clone())
-            .collect();
+            //izvlacim entrije samo iz vektora koji imaju jos elemenata i zadrzavam stare indexe radi updateovanja korektnih offseta
+            let entries: Vec<_> = all_entries
+                .iter()
+                .zip(positions.iter())
+                .enumerate()
+                .filter_map(|(index, (vector, position))| {
+                    if has_elements[index] {
+                        Some((index, &vector[*position]))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
 
-        let _ = min_entries
-            .iter()
-            .for_each(|(index, _)| {
-                positions[*index] += 1;
-            });
+            //trazimo indexe najmanjih
+            let min_key_indexes = LSM::find_min_keys(&entries);
 
-        let max_index = LSM::find_max_timestamp(&min_entries);
-        scanned_entries.push(entries[max_index].1.clone());
+            //zadrzavam samo entrije na min indexima
+            let min_entries: Vec<_> = entries
+                .iter()
+                .filter(|(index, _)| min_key_indexes.contains(index))
+                .cloned()
+                .collect();
+
+            //povecaj odgovarajuce offsete
+            let _ = min_entries
+                .iter()
+                .for_each(|(index, _)| {
+                    positions[*index] += 1;
+                });
+
+            //od najmanjih kljuceva nadji koji ima najveci timestamp
+            let max_index = LSM::find_max_timestamp(&min_entries);
+            let pushed_entry = entries
+                .iter()
+                .filter(|(index, _)| max_index == *index)
+                .collect::<Vec<_>>()[0];
+            scanned_entries.push(pushed_entry.1.clone());
+
+            // updateovati da li has_elements nakon svake iteracije
+            let _ = has_elements
+                .iter()
+                .enumerate()
+                .for_each(|(index,condition)| if *condition {positions[index] += 1;});
+        }
 
         scanned_entries
     }
 
-    fn get_range_scan_parameters(&self, min_key: &[u8], max_key: &[u8]) -> io::Result<(Vec<(Box<[u8]>, MemoryEntry)>, usize, Vec<SSTable>, Vec<u64>)> {
-        //dobavi prvo merged memory entries
+    pub fn load_from_dir(dbconfig: &DBConfig) -> Result<Self, Box<dyn Error>>{
+        let lru_cache = LRUCache::new(dbconfig.cache_max_size);
+        let mem_pool = MemoryPool::load_from_dir(dbconfig)?; // todo luka nez sta god
+        let wal = WriteAheadLog::new(dbconfig)?;
+        Ok(LSM {
+            config: LSMConfig::from(dbconfig),
+            wal,
+            mem_pool,
+            lru_cache,
+            compression_dictionary: match dbconfig.use_compression {
+                true => Some(CompressionDictionary::load(dbconfig.compression_dictionary_path.as_str()).unwrap()),
+                false => None
+            },
+            sstable_directory_names: Vec::with_capacity(dbconfig.lsm_max_level)
+        })
+    }
+
+    pub(crate) fn iter(&self, min_key: Option<&[u8]>, max_key: Option<&[u8]>, prefix: Option<&[u8]>, scan_type: ScanType) -> io::Result<LSMIterator> {
+
+        let prefix = if let Some(prefix) = prefix {
+            Some(extract_prefix(prefix))
+        } else {
+            None
+        };
+
         let memory_tables = self.mem_pool.get_all_tables();
         let entries: Vec<_> = memory_tables
             .iter()
-            .map(|table| LSM::get_keys_from_mem_table(table, Some(min_key), Some(max_key), None, ScanType::RangeScan))
+            .map(|table| LSM::get_keys_from_mem_table(table, min_key, max_key, prefix, scan_type))
             .collect();
         let merged_memory_entries = LSM::merge_scanned_entries(entries);
 
-        //dobavi sve sstabele koji imaju key u zadatom opsegu
-        let mut sstable_paths = Vec::new();
-        for level in 0..self.config.max_level {
-            sstable_paths.extend(LSM::find_similar_key_ranges(&self.sstable_directory_names, &self.config.parent_dir, min_key, max_key, level)?);
-        }
-        let sstable_base_paths: Vec<_> = sstable_paths
-            .into_iter()
-            .map(|(_, path)| path.as_path())
-            .collect();
+
+        let sstable_base_paths = if let (Some(min_key), Some(max_key)) = (min_key, max_key) {
+            let mut sstable_paths = Vec::new();
+            for level in 0..self.config.max_level {
+                sstable_paths.extend(LSM::find_similar_key_ranges(&self.sstable_directory_names, &self.config.parent_dir, min_key, max_key, level)?);
+            }
+            let sstable_base_paths: Vec<_> = sstable_paths
+                .into_iter()
+                .map(|(_, path)| self.config.parent_dir.join(path))
+                .collect();
+            sstable_base_paths
+        } else {
+            let sstable_paths: Vec<_> = self
+                .sstable_directory_names
+                .iter()
+                .flat_map(|vec_path| vec_path.iter())
+                .collect();
+            let sstable_base_paths: Vec<_> = sstable_paths
+                .into_iter()
+                .map(|path| self.config.parent_dir.join(path))
+                .collect();
+            sstable_base_paths
+        };
 
         let in_single_files: Vec<bool> = sstable_base_paths
             .iter()
             .map(|path| LSM::is_in_single_file(&path.to_path_buf()))
             .collect();
 
-        // otvori sve sstabele
+
         let mut sstables: Vec<_> = sstable_base_paths
             .iter()
             .zip(in_single_files.iter())
@@ -579,88 +649,102 @@ impl LSM {
             })
             .collect();
 
-        //dobavi sve offsete iz indexa i updateuj ih iz data dela
-        let data_offsets: Vec<_> = sstable_base_paths
-            .iter()
-            .zip(in_single_files.iter())
-            .map(|(path, in_single_file)| {
-                SSTable::get_sstable_offset(path.to_path_buf(), *in_single_file, min_key, ScanType::RangeScan).unwrap_or_else(|err| panic!("{}", err))
-            })
-            .collect();
+        let value_to_remove: u64 = 1_000_000_000;
 
-        let updated_offsets = SSTable::update_sstable_offsets(&mut sstables, in_single_files, data_offsets, min_key, ScanType::RangeScan, self.config.use_variable_encoding)?;
+        let data_offsets = if let Some(min_key) = min_key {
+            let data_offsets: Vec<_> = sstable_base_paths
+                .iter()
+                .zip(in_single_files.iter())
+                .map(|(path, in_single_file)| {
+                    SSTable::get_sstable_offset(path.to_path_buf(), *in_single_file, min_key, scan_type, None).unwrap_or_else(|err| panic!("{}", err))
+                })
+                .collect();
+            data_offsets
+        } else {
+            let data_offsets: Vec<_> = sstable_base_paths
+                .iter()
+                .zip(in_single_files.iter())
+                .map(|(path, in_single_file)| {
+                    SSTable::get_sstable_offset(path.to_path_buf(), *in_single_file, prefix.unwrap(), scan_type, Some(value_to_remove)).unwrap_or_else(|err| panic!("{}", err))
+                })
+                .collect();
+            data_offsets
+        };
+
+        let (mut sstables, data_offsets): (Vec<_>, Vec<_>) = if let Some(prefix) = prefix {
+            let (mut sstables, data_offsets) = sstables
+                .into_iter()
+                .zip(data_offsets)
+                .filter(|(_, offset)| *offset != value_to_remove)
+                .map(|(table, offset)| (table, offset))
+                .unzip();
+
+            (sstables, data_offsets)
+        } else {
+            (sstables, data_offsets)
+        };
+
+        let updates_offsets = if let Some(min_key) = min_key {
+            SSTable::update_sstable_offsets(&mut sstables, in_single_files, data_offsets, min_key, scan_type, self.config.use_variable_encoding)?
+        } else {
+            SSTable::update_sstable_offsets(&mut sstables, in_single_files, data_offsets, prefix.unwrap(), scan_type, self.config.use_variable_encoding)?
+        };
+
         let memory_offset = 0;
 
-        //vrati potrebne podatke za scan
-        Ok((merged_memory_entries, memory_offset, sstables, updated_offsets))
+        let upper_bound = if let Some(max_key) = max_key {
+            max_key.to_vec().into_boxed_slice()
+        } else {
+            prefix.unwrap().to_vec().into_boxed_slice()
+        };
+
+        Ok(LSMIterator::new(merged_memory_entries, memory_offset, sstables, updates_offsets, scan_type, self.config.use_variable_encoding, upper_bound))
     }
+}
 
-    fn get_prefix_scan_parameters(&self, prefix: &[u8]) -> io::Result<(Vec<(Box<[u8]>, MemoryEntry)>, usize, Vec<SSTable>, Vec<u64>)> {
-        //dobavi prvo merged memory entries
-        let memory_tables = self.mem_pool.get_all_tables();
-        let entries: Vec<_> = memory_tables
-            .iter()
-            .map(|table| LSM::get_keys_from_mem_table(table, None, None, Some(prefix), ScanType::PrefixScan))
-            .collect();
-        let merged_memory_entries = LSM::merge_scanned_entries(entries);
+pub struct LSMIterator {
+    memory_table_entries: Vec<(Box<[u8]>, MemoryEntry)>,
+    memory_offset: usize,
+    sstables: Vec<SSTable>,
+    offsets: Vec<u64>,
+    scan_type: ScanType,
+    use_variable_encoding: bool,
+    upper_bound: Box<[u8]>
+}
 
-        let sstable_directories: Vec<_> = self
-            .sstable_directory_names
-            .iter()
-            .flat_map(|vec_path| vec_path.iter())
-            .collect();
-
-        let sstable_paths: Vec<_> = sstable_directories
-            .iter()
-            .map(|path| self.config.parent_dir.join(path))
-            .collect();
-
-        let in_single_files: Vec<bool> = sstable_paths
-            .iter()
-            .map(|path| LSM::is_in_single_file(path))
-            .collect();
-
-        // otvori sve sstabele
-        let mut sstables: Vec<_> = sstable_paths
-            .iter()
-            .zip(in_single_files.iter())
-            .map(|(path, bool)| {
-                match SSTable::open(path.to_path_buf(), *bool) {
-                    Ok(table) => table,
-                    Err(err) => panic!("{}", err),
-                }
-            })
-            .collect();
-
-        //dobavi sve offsete iz indexa i updateuj ih iz data dela
-        let data_offsets: Vec<_> = sstable_paths
-            .iter()
-            .zip(in_single_files.iter())
-            .map(|(path, in_single_file)| {
-                SSTable::get_sstable_offset(path.to_path_buf(), *in_single_file, prefix, ScanType::PrefixScan).unwrap_or_else(|err| panic!("{}", err))
-            })
-            .collect();
-
-        let updated_offsets = SSTable::update_sstable_offsets(&mut sstables, in_single_files, data_offsets, prefix, ScanType::PrefixScan, self.config.use_variable_encoding)?;
-        let memory_offset = 0;
-
-        //vrati potrebne podatke za scan
-        Ok((merged_memory_entries, memory_offset, sstables, updated_offsets))
+impl LSMIterator {
+    fn new(memory_table_entries: Vec<(Box<[u8]>, MemoryEntry)>, memory_offset: usize, sstables: Vec<SSTable>, offsets: Vec<u64>, scan_type: ScanType, use_variable_encoding: bool, upper_bound: Box<[u8]>) -> Self {
+        LSMIterator {
+            memory_table_entries,
+            memory_offset,
+            sstables,
+            offsets,
+            scan_type,
+            use_variable_encoding,
+            upper_bound
+        }
     }
+}
 
-    fn next(merged_memory_entries: Vec<(Box<[u8]>, MemoryEntry)>, memory_offset: usize, mut sstables: Vec<SSTable>, mut offsets: Vec<u64>, searched_key: &[u8], scan_type: ScanType, use_variable_encoding: bool) -> Option<((Box<[u8]>, MemoryEntry), Vec<u64>)> {
-        //za offset memory entrija stoji 1 jer se pomeramo 1 po jedan u vektoru
-        let memory_table_entry = if memory_offset < merged_memory_entries.len() {
-            Option::from((merged_memory_entries[memory_offset].clone(), 1u64))
+impl Iterator for LSMIterator {
+    type Item = (Box<[u8]>, MemoryEntry);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut pushed = false;
+        let mut copy_offsets = self.offsets.clone();
+        let memory_table_entry = if self.memory_offset < self.memory_table_entries.len() {
+            pushed = true;
+            copy_offsets.push(self.memory_offset as u64);
+            Option::from((self.memory_table_entries[self.memory_offset].clone(), 1u64))
         } else {
             None
         };
 
         // procitati iz svih sstabela i spojiti to sa ovim jednim entrijem iz spojenih memtabela
-        let mut option_entries: Vec<Option<_>> = sstables
+        let mut option_entries: Vec<Option<_>> = self.sstables
             .iter_mut()
-            .zip(offsets.iter())
-            .map(|(sstable, offset)| sstable.get_entry_from_data_file(*offset, None, None, use_variable_encoding))
+            .zip(copy_offsets.iter())
+            .map(|(sstable, offset)| sstable.get_entry_from_data_file(*offset, None, None, self.use_variable_encoding))
             .collect();
 
         option_entries.push(memory_table_entry);
@@ -674,7 +758,6 @@ impl LSM {
         let enumerated_entries: Vec<_> = option_entries
             .iter()
             .enumerate()
-            .filter(|(_, elem)| elem.is_some())
             .collect();
 
         //od svih koji su najmanji daj najnoviji timestamp
@@ -685,37 +768,44 @@ impl LSM {
             .map(|index| enumerated_entries[*index].clone())
             .collect();
 
-        let max_index = SSTable::find_max_timestamp(&min_entries);
 
         //trebam da updateujem offsete
-        offsets.push(memory_offset as u64);
-
         let _ = min_entries
             .iter()
             .for_each(|(index, element)| {
-                offsets[*index] += element.as_ref().unwrap().1.clone();
+                copy_offsets[*index] += element.as_ref().unwrap().1.clone();
             });
 
+        let max_index = SSTable::find_max_timestamp(&min_entries);
+
         //provera da li smo izasli iz opsega, sa donje strane smo se ogranicili ali sa gornje nismo
-        let return_entry = min_entries[max_index].1.as_ref().unwrap().0.clone();
-        match scan_type {
+        let return_entry = enumerated_entries[max_index].1.as_ref().unwrap().0.clone();
+        match self.scan_type {
             ScanType::RangeScan => {
-                if return_entry.0.as_ref() > searched_key {
+                if return_entry.0 > self.upper_bound {
                     return None;
                 }
             }
             ScanType::PrefixScan => {
-                if !return_entry.0.as_ref().starts_with(searched_key) {
+                if !return_entry.0.starts_with(&self.upper_bound) {
                     return None;
                 }
             }
         }
 
+        if pushed {
+            self.memory_offset = copy_offsets.pop().unwrap() as usize;
+            self.offsets = copy_offsets;
+        }
+        else {
+            self.offsets = copy_offsets;
+        }
 
-        return Some((return_entry, offsets))
+        Some(return_entry)
     }
+}
 
-    pub fn load_from_dir(dbconfig: &DBConfig) -> Result<Self, Box<dyn Error>> {
+pub fn load_from_dir(dbconfig: &DBConfig) -> Result<Self, Box<dyn Error>> {
         let (mem_pool, tables_to_be_flushed) =
             MemoryPool::load_from_dir(dbconfig)?;
 
@@ -734,4 +824,12 @@ impl LSM {
         self.wal.close();
         // when adding concurrent sstable flushes, join all threads here
     }
-}
+
+  fn extract_prefix(slice: &[u8]) -> &[u8] {
+      for (i, &value) in slice.iter().enumerate().rev() {
+        if value != 0 {
+            return &slice[..=i];
+        }
+    }
+    &[0]
+  }
