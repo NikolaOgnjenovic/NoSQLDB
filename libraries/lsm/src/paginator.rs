@@ -124,7 +124,7 @@ impl<'a> Paginator<'a> {
     /// # Returns
     ///
     /// An optional tuple containing the key and memory entry of the next entry, or `None` if no more entries are available.
-    pub fn prefix_iterate_next(&'a mut self, prefix: &[u8]) -> std::io::Result<Option<(Box<[u8]>, MemoryEntry)>> {
+    pub fn prefix_iterate_next(&mut self, prefix: &[u8]) -> std::io::Result<Option<(Box<[u8]>, MemoryEntry)>> {
         self.iterate_next_impl(|this| this.prefix_scan(prefix, this.cached_entry_index, 1))
     }
 

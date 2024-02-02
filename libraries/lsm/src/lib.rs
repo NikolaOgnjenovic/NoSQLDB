@@ -56,12 +56,17 @@ mod lsm_tests {
         let mut db_config = DBConfig::default();
         db_config.memory_table_pool_num = 10;
         db_config.memory_table_capacity = 500;
-        db_config.lsm_max_per_level = 4;
+        db_config.lsm_max_per_level = 5;
         db_config.sstable_single_file = false;
         db_config.compaction_algorithm_type = CompactionAlgorithmType::SizeTiered;
         let mut lsm = LSM::new(&db_config).unwrap();
         for i in 0..2000usize {
-            lsm.insert(&i.to_ne_bytes(), &i.to_ne_bytes(), TimeStamp::Now)?;
+            if i % 2 == 0{
+                lsm.insert(&i.to_ne_bytes(), &i.to_ne_bytes(), TimeStamp::Now)?;
+            } else {
+                lsm.delete(&i.to_ne_bytes(), TimeStamp::Now)?;
+            }
+            //lsm.insert(&i.to_ne_bytes(), &i.to_ne_bytes(), TimeStamp::Now)?;
         }
 
         // ///Range
@@ -76,12 +81,12 @@ mod lsm_tests {
         println!();
 
         ///Prefix
-        let mut lsm_iter = lsm.iter(None, None, Some(&80usize.to_ne_bytes()), ScanType::PrefixScan)?;
-        while let Some(entry) = lsm_iter.next() {
-            println!("{:?}", entry.0);
-            println!("{:?}", entry.1);
-        }
-        println!("{:#?}", lsm.get(&[80,1,0,0,0,0,0,0]));
+        // let mut lsm_iter = lsm.iter(None, None, Some(&80usize.to_ne_bytes()), ScanType::PrefixScan)?;
+        // while let Some(entry) = lsm_iter.next() {
+        //     println!("{:?}", entry.0);
+        //     println!("{:?}", entry.1);
+        // }
+        println!("{:?}", lsm.get(&[80,9,0,0,0,0,0,0]));
 
         Ok(())
     }
@@ -93,6 +98,7 @@ mod paginator_tests {
     use db_config::{CompactionAlgorithmType, DBConfig};
     use segment_elements::TimeStamp;
     use crate::LSM;
+    use crate::lsm::ScanType::{PrefixScan, RangeScan};
     use crate::paginator::Paginator;
 
     #[test]
@@ -118,12 +124,12 @@ mod paginator_tests {
             lsm.insert(&combined_bytes, &combined_bytes, time_stamp).expect("Failed to insert into lsm");
         }
 
-        println!("{:?}", lsm.get(&[65, 66, 20, 0, 0, 0, 0, 0]).expect(""));
-        println!("{:?}", lsm.get(&[65, 66, 22, 0, 0, 0, 0, 0]).expect(""));
-        println!("{:?}", lsm.get(&[65, 66, 24, 0, 0, 0, 0, 0]).expect(""));
-        println!("{:?}", lsm.get(&[65, 66, 26, 0, 0, 0, 0, 0]).expect(""));
-        println!("{:?}", lsm.get(&[65, 66, 29, 0, 0, 0, 0, 0]).expect(""));
-        println!("{:?}", lsm.get(&[65, 66, 31, 0, 0, 0, 0, 0]).expect(""));
+        println!("{:?}", lsm.get(&[65,66,20,0,0,0,0,0]).expect(""));
+        println!("{:?}", lsm.get(&[65,66,22,0,0,0,0,0]).expect(""));
+        println!("{:?}", lsm.get(&[65,66,24,0,0,0,0,0]).expect(""));
+        println!("{:?}", lsm.get(&[65,66,26,0,0,0,0,0]).expect(""));
+        println!("{:?}", lsm.get(&[65,66,29, 0,0,0,0,0]).expect(""));
+        println!("{:?}", lsm.get(&[65,66,31,0,0,0,0,0]).expect(""));
         // let mut iter = lsm.iter(Some(&[0]), Some(&[255]), None, RangeScan).expect("Failed to insert into lsm");
         // while let Some(entry) = iter.next() {
         //     println!("{:?}", entry.0);
