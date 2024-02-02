@@ -54,7 +54,7 @@ impl DB {
     /// Inserts a new key value pair into the system.
     pub fn insert(&mut self, key: &[u8], value: &[u8], check_reserved_prefixes: bool) -> Result<(), Box<dyn Error>> {
         if key != "t0k3n_buck3t/state".as_bytes() {
-            if self.token_bucket_take() {
+            if self.token_bucket_take()? {
                 if check_reserved_prefixes {
                     for forbidden_key_prefix in self.reserved_key_prefixes {
                         if key.starts_with(forbidden_key_prefix) {
@@ -75,9 +75,9 @@ impl DB {
 
     /// Removes the value that's associated to the given key.
     pub fn delete(&mut self, key: &[u8], check_reserved_prefixes: bool) -> Result<(), Box<dyn Error>> {
-        if self.token_bucket_take() {
+        if self.token_bucket_take()? {
             if check_reserved_prefixes {
-                for forbidden_key_prefix in self.reserved_key_prefixes {
+                for forbidden_key_prefix in &self.reserved_key_prefixes {
                     if key.starts_with(forbidden_key_prefix) {
                         return Err(Box::new(ReservedKeyError {
                             message: format!("Cannot insert key with system reserved prefix {}.", String::from_utf8_lossy(forbidden_key_prefix))
@@ -87,8 +87,9 @@ impl DB {
             }
             self.lsm.delete(key, TimeStamp::Now)?;
             Ok(())
+        } else {
+            Err(From::from(TokenBucketError))
         }
-        Err(From::from(TokenBucketError))
     }
 
     /// Retrieves the data that is associated to a given key.
@@ -98,30 +99,28 @@ impl DB {
                 return Ok(Some(memory_entry.get_value()));
             }
         } else {
-            if !self.token_bucket_take() {
-                return Err(TokenBucketError.into());
-            }
-
-            if check_reserved_prefixes {
-                for forbidden_key_prefix in &self.reserved_key_prefixes {
-                    if key.starts_with(forbidden_key_prefix) {
-                        return Err(ReservedKeyError {
-                            message: format!("Cannot insert key with system reserved prefix {}.", String::from_utf8_lossy(forbidden_key_prefix))
-                        }.into());
+            match self.token_bucket_take() {
+                Ok(true) => {
+                    if check_reserved_prefixes {
+                        for forbidden_key_prefix in &self.reserved_key_prefixes {
+                            if key.starts_with(forbidden_key_prefix) {
+                                return Err(ReservedKeyError {
+                                    message: format!("Cannot insert key with system reserved prefix {}.", String::from_utf8_lossy(forbidden_key_prefix))
+                                }.into());
+                            }
+                        }
+                    }
+                    if let Some(memory_entry) = self.lsm.get(key)? {
+                        return Ok(Some(memory_entry.get_value()));
                     }
                 }
-            }
-
-            if let Some(memory_entry) = self.lsm.get(key)? {
-                return Ok(Some(memory_entry.get_value()));
+                _ => { return Err(From::from(TokenBucketError)) }
             }
         }
+        Ok(None);
         // todo sstable get, komplikovano
-        todo!()
+        todo!();
     }
-
-
-
 
 
     /// Should be called before the program exit to gracefully finish all memory tables writes,
@@ -129,6 +128,7 @@ impl DB {
     pub fn shut_down(&mut self) {
         //self.lsm.join_concurrent_writes();
         // todo join sstable LSM merge-ove i kompakcije
+
     }
 
     /// Gets the value Bloom filter associated with the given key.
@@ -182,20 +182,19 @@ impl DB {
     /// Result indicating whether the value is likely present (`Ok(true)`) or not present (`Ok(false)`),
     /// or an error wrapped in a `Box<dyn Error>`.
     pub fn bloom_filter_contains(&mut self, key: &[u8], value: &[u8]) -> Result<bool, Box<dyn Error>> {
-        if self.token_bucket_take() {
+        return if self.token_bucket_take()? {
             let combined_key = self.get_combined_key(key, 0);
             let bf_bytes = self.get_probabilistic_ds_bytes(combined_key.as_slice())?;
 
             let bloom_filter = match BloomFilter::deserialize(&bf_bytes) {
                 Ok(filter) => filter,
-                Err(err) => {
-                    return Err(Box::new(err));
-                }
+                Err(err) => return Err(Box::new(err)),
             };
 
             Ok(bloom_filter.contains(value))
+        } else {
+            Err(From::from(TokenBucketError))
         }
-        Err(From::from(TokenBucketError))
     }
 
     /// Gets the Count-Min Sketch associated with the given key.
@@ -243,15 +242,16 @@ impl DB {
     ///
     /// Result containing the count associated with the value or an error wrapped in a `Box<dyn Error>`.
     pub fn count_min_sketch_get_count(&mut self, key: &[u8], value: &[u8]) -> Result<u64, Box<dyn Error>> {
-        if self.token_bucket_take() {
+        if self.token_bucket_take()? {
             let combined_key = self.get_combined_key(key, 1);
             let cms_bytes = self.get_probabilistic_ds_bytes(combined_key.as_slice())?;
 
             let count_min_sketch = CMSketch::deserialize(&cms_bytes);
 
             Ok(count_min_sketch.get_count(&value))
+        } else {
+            Err(From::from(TokenBucketError))
         }
-        Err(From::from(TokenBucketError))
     }
 
 
@@ -299,15 +299,16 @@ impl DB {
     ///
     /// Result containing the estimated count or an error wrapped in a `Box<dyn Error>`.
     pub fn hyperloglog_get_count(&mut self, key: &[u8]) -> Result<u64, Box<dyn Error>> {
-        if self.token_bucket_take() {
+        if self.token_bucket_take()? {
             let combined_key = self.get_combined_key(key, 2);
             let hll_bytes = self.get_probabilistic_ds_bytes(combined_key.as_slice())?;
 
             let hyperloglog = HLL::deserialize(&hll_bytes);
 
             Ok(hyperloglog.get_count())
+        } else {
+            Err(From::from(TokenBucketError))
         }
-        Err(From::from(TokenBucketError))
     }
 
     /// Calculates the Hamming distance between two strings using the SimHash algorithm.
@@ -392,8 +393,12 @@ impl DB {
     /// A result indicating whether tokens were successfully taken (`Ok(true)`)
     /// or if an error occurred (`Err`).
     pub fn token_bucket_take(&mut self) -> Result<bool, Box<dyn Error>> {
-        let mut token_bucket = TokenBucket::deserialize(&self.get("t0k3n_buck3t/state".as_bytes(), false)?.unwrap());
+        let token_bucket_state = match self.get("t0k3n_buck3t/state".as_bytes(), false)? {
+            Some(bytes) => TokenBucket::deserialize(&bytes),
+            None => TokenBucket::default(), // temporary
+        };
 
+        let mut token_bucket = token_bucket_state;
         let token_taken = token_bucket.take(1);
 
         self.insert("t0k3n_buck3t/state".as_bytes(), token_bucket.serialize().as_ref(), false)?;

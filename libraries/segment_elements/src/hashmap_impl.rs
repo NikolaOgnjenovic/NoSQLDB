@@ -25,7 +25,7 @@ impl SegmentTrait for MemEntryHashMap {
         self.0.get(key).map(|entry| entry.clone())
     }
 
-    fn serialize(&self, use_variable_encoding: bool) -> Box<[u8]> {
+    fn serialize(&self, _use_variable_encoding: bool) -> Box<[u8]> {
         Box::new([]) // todo
     }
 
