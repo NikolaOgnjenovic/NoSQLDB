@@ -224,7 +224,7 @@ impl SSTable {
         for i in (0..index_builder.len()).step_by(index_density) {
             let (key, _) = &index_builder[i];
 
-            if i % summary_density == 0 {
+            if i % (summary_density * index_density) == 0 {
                 summary.extend_from_slice(&key.len().to_ne_bytes());
                 summary.extend_from_slice(key);
                 let offset_in_index = offset_accumulator;
