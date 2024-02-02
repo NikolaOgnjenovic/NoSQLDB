@@ -195,6 +195,52 @@ mod tests {
     }
 
     #[test]
+    fn test_iterator() {
+        let mut b = BTree::new(3).unwrap();
+
+        for i in -100..100i32 {
+            b.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now);
+        }
+
+        let mut prev_key: Box<[u8]> = Box::from([]);
+        for (key_bytes, _) in b.iter() {
+            //println!("{:?} {:?}", key_bytes, prev_key);
+            if key_bytes < prev_key {
+                panic!("")
+            }
+
+            let el_int = i32::from_ne_bytes(<[u8; 4]>::try_from(&*key_bytes).unwrap());
+            println!("{}", el_int);
+
+            prev_key = key_bytes;
+        }
+    }
+
+    #[test]
+    fn test_iterator_string() {
+        let mut b = BTree::new(3).unwrap();
+
+        let base_key = "test_key_";
+
+        for i in -100..100i32 {
+            let key = format!("{}{}", base_key, i.to_string());
+            b.insert(key.as_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now);
+        }
+
+        let mut prev_key: Box<[u8]> = Box::from([]);
+        for (key_bytes, _) in b.iter() {
+            if key_bytes < prev_key {
+                panic!("")
+            }
+
+            let el_s = String::from_utf8_lossy(&key_bytes);
+            println!("{}", el_s);
+
+            prev_key = key_bytes;
+        }
+    }
+
+    #[test]
     #[ignore]
     fn test_memory() {
         let mut b = BTree::new(3).unwrap();

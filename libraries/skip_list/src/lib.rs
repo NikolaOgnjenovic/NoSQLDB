@@ -155,6 +155,51 @@ mod tests {
     }
 
     #[test]
+    fn test_iterator() {
+        let mut s = SkipList::new(3);
+
+        for i in -100..100i32 {
+            s.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now);
+        }
+
+        let mut prev_key: Box<[u8]> = Box::from([]);
+        for (key_bytes, _) in s.iter() {
+            if key_bytes < prev_key {
+                panic!("")
+            }
+
+            let el_int = i32::from_ne_bytes(<[u8; 4]>::try_from(&*key_bytes).unwrap());
+            println!("{}", el_int);
+
+            prev_key = key_bytes;
+        }
+    }
+
+    #[test]
+    fn test_iterator_string() {
+        let mut s = SkipList::new(3);
+
+        let base_key = "test_key_";
+
+        for i in -100..100i32 {
+            let key = format!("{}{}", base_key, i.to_string());
+            s.insert(key.as_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now);
+        }
+
+        let mut prev_key: Box<[u8]> = Box::from([]);
+        for (key_bytes, _) in s.iter() {
+            if key_bytes < prev_key {
+                panic!("")
+            }
+
+            let el_s = String::from_utf8_lossy(&key_bytes);
+            println!("{}", el_s);
+
+            prev_key = key_bytes;
+        }
+    }
+
+    #[test]
     #[ignore]
     fn test_memory() {
         let mut s = SkipList::new(10);
