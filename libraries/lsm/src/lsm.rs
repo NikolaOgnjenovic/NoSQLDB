@@ -473,8 +473,8 @@ impl LSM {
         entries
     }
 
-    fn find_max_timestamp(entries: &Vec<(usize, &(Box<[u8]>, MemoryEntry))>) -> usize {
-        let mut max_index = 0;
+    fn find_max_timestamp(entries: &Vec<(usize, &(Box<[u8]>, MemoryEntry))>, default: usize) -> usize {
+        let mut max_index = default;
         let mut max_timestamp = 0;
         for (index, element) in entries {
             let timestamp = element.1.get_timestamp();
@@ -509,7 +509,7 @@ impl LSM {
         min_indexes
     }
 
-    fn merge_scanned_entries(all_entries: Vec<Vec<(Box<[u8]>, MemoryEntry)>>) -> Vec<(Box<[u8]>, MemoryEntry)> {
+    fn merge_scanned_entries(all_entries: Vec<Vec<(Box<[u8]>, MemoryEntry)>>,min_key: Option<&[u8]>, max_key: Option<&[u8]>, prefix: Option<&[u8]>, scan_type: ScanType) -> Vec<(Box<[u8]>, MemoryEntry)> {
         //ovde mergujem sve memtabele po istom principu kao sto se merguju sstabele samo sto se gleda i timestamp
         let mut scanned_entries = Vec::new();
         let mut positions: Vec<usize> = vec![0; all_entries.len()];
@@ -527,6 +527,9 @@ impl LSM {
                 break;
             }
 
+            //updateovanje offseta jer kad naidjem na tombstone true ja idem dok ne dodjem do tombstone false
+            let mut update_positions = vec![0; all_entries.len()];
+
             //izvlacim entrije samo iz vektora koji imaju jos elemenata i zadrzavam stare indexe radi updateovanja korektnih offseta
             let entries: Vec<_> = all_entries
                 .iter()
@@ -534,12 +537,30 @@ impl LSM {
                 .enumerate()
                 .filter_map(|(index, (vector, position))| {
                     if has_elements[index] {
-                        Some((index, &vector[*position]))
+                        let mut return_entry = None;
+                        let mut curr_position = *position;
+                        while curr_position < vector.len() {
+                            let entry = &vector[curr_position];
+                            if entry.1.get_tombstone() {
+                                update_positions[index] += 1;
+                                curr_position += 1;
+                                continue;
+                            } else {
+                                return_entry = Some((index, entry));
+                                break
+                            }
+                        }
+                        return_entry
                     } else {
                         None
                     }
                 })
                 .collect();
+
+            //updateuj offsete kako treba
+            for i in 0..positions.len() {
+                positions[i] += update_positions[i];
+            }
 
             //trazimo indexe najmanjih
             let min_key_indexes = LSM::find_min_keys(&entries);
@@ -558,21 +579,45 @@ impl LSM {
                     positions[*index] += 1;
                 });
 
+            //updateuj offsete entrija koji su obrisani jer ih find min nikada nece pronaci a i trebaju da se preskoce
+            // let _ = entries
+            //     .iter()
+            //     .for_each(|(index, entry)| {
+            //         if entry.1.get_tombstone() { positions[*index] += 1; }
+            //     });
+
             //od najmanjih kljuceva nadji koji ima najveci timestamp
-            let max_index = LSM::find_max_timestamp(&min_entries);
+            let max_index = LSM::find_max_timestamp(&min_entries, entries.len()+1);
+
+            //ovo znaci da niti jedan entry nije zadovoljio kriterijume(svi su obrisani)
+            if max_index == entries.len() + 1 {
+                continue;
+            }
             let pushed_entry = entries
                 .iter()
                 .filter(|(index, _)| max_index == *index)
                 .collect::<Vec<_>>()[0];
+
+
+            match scan_type {
+                ScanType::RangeScan => {
+                    if let (Some(min_key), Some(max_key)) = (min_key, max_key) {
+                        if pushed_entry.1.0.as_ref() < min_key || pushed_entry.1.0.as_ref() > max_key {
+                            continue;
+                        }
+                    }
+                }
+                ScanType::PrefixScan => {
+                    if let Some(prefix) = prefix {
+                        if !pushed_entry.1.0.as_ref().starts_with(prefix) {
+                            continue;
+                        }
+                    }
+                }
+            }
+
             scanned_entries.push(pushed_entry.1.clone());
-
-            // updateovati da li has_elements nakon svake iteracije
-            let _ = has_elements
-                .iter()
-                .enumerate()
-                .for_each(|(index,condition)| if *condition {positions[index] += 1;});
         }
-
         scanned_entries
     }
 
@@ -599,13 +644,8 @@ impl LSM {
             None
         };
 
-        let memory_tables = self.mem_pool.get_all_tables();
-        let entries: Vec<_> = memory_tables
-            .iter()
-            .map(|table| LSM::get_keys_from_mem_table(table, min_key, max_key, prefix, scan_type))
-            .collect();
-        let merged_memory_entries = LSM::merge_scanned_entries(entries);
-
+        let entries = self.mem_pool.get_all_tables();
+        let merged_memory_entries = LSM::merge_scanned_entries(entries, min_key, max_key, prefix, scan_type);
 
         let sstable_base_paths = if let (Some(min_key), Some(max_key)) = (min_key, max_key) {
             let mut sstable_paths = Vec::new();
@@ -634,7 +674,6 @@ impl LSM {
             .iter()
             .map(|path| LSM::is_in_single_file(&path.to_path_buf()))
             .collect();
-
 
         let mut sstables: Vec<_> = sstable_base_paths
             .iter()
@@ -739,11 +778,19 @@ impl LSMIterator {
 }
 
 impl Iterator for LSMIterator {
-    type Item = (Box<[u8]>, MemoryEntry);
+    type Item = Option<(Box<[u8]>, MemoryEntry)>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let mut pushed = false;
         let mut copy_offsets = self.offsets.clone();
+        while self.memory_offset < self.memory_table_entries.len() {
+            let entry = self.memory_table_entries[self.memory_offset].clone();
+            if entry.1.get_tombstone() {
+                self.memory_offset += 1;
+            } else {
+                break;
+            }
+        }
         let memory_table_entry = if self.memory_offset < self.memory_table_entries.len() {
             pushed = true;
             copy_offsets.push(self.memory_offset as u64);
@@ -752,12 +799,47 @@ impl Iterator for LSMIterator {
             None
         };
 
+        //ovo je za updateovanje offseta ako ne je neko tombstone true
+        //let mut updated_offsets = vec![0; self.offsets.len()];
+
         // procitati iz svih sstabela i spojiti to sa ovim jednim entrijem iz spojenih memtabela
         let mut option_entries: Vec<Option<_>> = self.sstables
             .iter_mut()
-            .zip(copy_offsets.iter())
-            .map(|(sstable, offset)| sstable.get_entry_from_data_file(*offset, None, None, self.use_variable_encoding))
+            .zip(self.offsets.iter())
+            .enumerate()
+            .map(|(index,(sstable, offset))|{
+                //new_offset je novi ukupan offset sa kojeg citamo
+                let mut return_value;
+                let mut new_offset = *offset;
+                //added offset je koliko smo dodali na entry
+                let mut added_offset = 0;
+                loop {
+                    if let Some((option_entry, length)) = sstable.get_entry_from_data_file(new_offset, None, None, self.use_variable_encoding) {
+                        added_offset += length;
+                        new_offset += length;
+                        let key_slice = &*option_entry.0;
+                        if option_entry.1.get_tombstone() {
+                            //updated_offsets[index] += offset;
+                            continue;
+                        } else {
+                            return_value = Option::from((option_entry, added_offset));
+                            break;
+                        }
+                    } else {
+                        return_value = None;
+                        break;
+                    }
+                }
+                return_value
+            })
             .collect();
+
+        // if copy_offsets.len() > self.offsets.len() {
+        //     updated_offsets.push(0);
+        // }
+        // for i in 0..updated_offsets.len() {
+        //     copy_offsets[i] += updated_offsets[i];
+        // }
 
         option_entries.push(memory_table_entry);
 
@@ -772,7 +854,6 @@ impl Iterator for LSMIterator {
             .enumerate()
             .collect();
 
-        //od svih koji su najmanji daj najnoviji timestamp
         let min_indexes = SSTable::find_min_keys(&enumerated_entries, false);
 
         let min_entries: Vec<_> =  min_indexes
@@ -788,13 +869,40 @@ impl Iterator for LSMIterator {
                 copy_offsets[*index] += element.as_ref().unwrap().1.clone();
             });
 
+        //updateuj offsete onih koji su obrisani
+        // let _ = enumerated_entries
+        //     .iter()
+        //     .for_each(|(index, entry)| {
+        //         if let Some(entry) = entry {
+        //             if entry.0.1.get_tombstone() {
+        //                 copy_offsets[*index] += entry.1;
+        //             }
+        //         }
+        //     });
+
+        //od svih koji su najmanji daj najnoviji timestamp
         let max_index = SSTable::find_max_timestamp(&min_entries);
+        let return_entry = enumerated_entries[max_index].1.as_ref().unwrap().0.clone();
+        let key_slice = &*return_entry.0;
+
+        if pushed {
+            self.memory_offset = copy_offsets.pop().unwrap() as usize;
+            self.offsets = copy_offsets;
+        }
+        else {
+            self.offsets = copy_offsets;
+        }
+
+        // znaci da su svi trenutni entriji logicki obrisani i rekurzivno pozivamo funk sa updateovanim parametrima
+        if min_entries.is_empty() {
+            return Some(None);
+        }
 
         //provera da li smo izasli iz opsega, sa donje strane smo se ogranicili ali sa gornje nismo
-        let return_entry = enumerated_entries[max_index].1.as_ref().unwrap().0.clone();
+        //takodje provera da li je entry koji smo dobili logicki obrisan jer ovde korisitm funk iz sstabele koja mora vratiti 0
         match self.scan_type {
             ScanType::RangeScan => {
-                if return_entry.0 > self.upper_bound {
+                if (return_entry.0 > self.upper_bound) {
                     return None;
                 }
             }
@@ -805,14 +913,6 @@ impl Iterator for LSMIterator {
             }
         }
 
-        if pushed {
-            self.memory_offset = copy_offsets.pop().unwrap() as usize;
-            self.offsets = copy_offsets;
-        }
-        else {
-            self.offsets = copy_offsets;
-        }
-
-        Some(return_entry)
+        Some(Some(return_entry))
     }
 }

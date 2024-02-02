@@ -90,11 +90,11 @@ impl MemoryPool {
         None
     }
 
-    pub(crate) fn get_all_tables(&self) -> Vec<&MemoryTable> {
+    pub(crate) fn get_all_tables(&self) -> Vec<Vec<(Box<[u8]>, MemoryEntry)>> {
         let mut memory_tables = Vec::new();
-        memory_tables.push(&self.read_write_table);
+        memory_tables.push(self.read_write_table.iterator().collect());
         for memory_table in &self.read_only_tables {
-            memory_tables.push(memory_table);
+            memory_tables.push(memory_table.iterator().collect());
         }
 
         memory_tables

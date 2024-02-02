@@ -740,7 +740,7 @@ impl SSTable {
         }
 
         // Deserialize the last read memory entry bytes
-        let data_entry_value = self.get_cursor_data(self.in_single_file, "SSTable-Data.db", SSTableElementType::DataEntryValue, Some(offset + traversed_offset + offset_to_key_len as u64), use_variable_encoding).ok()?.into_inner();
+        let data_entry_value = if tombstone { Vec::new() } else { self.get_cursor_data(self.in_single_file, "SSTable-Data.db", SSTableElementType::DataEntryValue, Some(offset + traversed_offset + offset_to_key_len as u64), use_variable_encoding).ok()?.into_inner() };
 
         let mut data_entry_bytes = Vec::new();
 
@@ -766,7 +766,10 @@ impl SSTable {
         }
 
         data_entry_bytes.extend(unwrapped_key);
-        data_entry_bytes.extend(data_entry_value);
+
+        if !tombstone {
+            data_entry_bytes.extend(data_entry_value);
+        }
 
         match MemoryEntry::deserialize(&data_entry_bytes, use_variable_encoding) {
             Ok(entry) => Some((entry, data_entry_bytes.len() as u64)),
@@ -1094,7 +1097,11 @@ impl SSTable {
             file_handle.seek(SeekFrom::Start(std::mem::size_of::<usize>() as u64))?;
 
             let mut index_offset_bytes = [0u8; std::mem::size_of::<usize>()];
-            file_handle.read_exact(&mut index_offset_bytes)?;
+            let result = file_handle.read_exact(&mut index_offset_bytes);
+            if result.is_err() {
+                println!("failed tro fill index i nsingle");
+                return Ok(non_existant_thresh.unwrap());
+            }
             let index_offset = usize::from_ne_bytes(index_offset_bytes) as u64;
 
             file_handle.seek(SeekFrom::Start(index_offset))?;
@@ -1102,16 +1109,33 @@ impl SSTable {
 
         loop {
             let mut key_len_bytes = [0u8; std::mem::size_of::<usize>()];
-            file_handle.read_exact(&mut key_len_bytes)?;
+            let result = file_handle.read_exact(&mut key_len_bytes);
+            if result.is_err() {
+                println!("failed to fill key len in loop");
+
+                return Ok(non_existant_thresh.unwrap());
+            }
+
             let key_len = usize::from_ne_bytes(key_len_bytes);
 
             let mut key_bytes = vec![0u8; key_len];
-            file_handle.read_exact(&mut key_bytes)?;
+            let result = file_handle.read_exact(&mut key_bytes);
+            if result.is_err() {
+                println!("failed to fill key in loop");
+
+                return Ok(non_existant_thresh.unwrap());
+            }
             let key = key_bytes.into_boxed_slice();
             let key_slice = &*key;
 
             let mut offset_bytes = [0u8; std::mem::size_of::<usize>()];
-            file_handle.read_exact(&mut offset_bytes)?;
+            let result = file_handle.read_exact(&mut offset_bytes);
+            if result.is_err() {
+                println!("failed to fill offset bytes in loop");
+
+                return Ok(non_existant_thresh.unwrap());
+            }
+
             let current_offset = usize::from_ne_bytes(offset_bytes);
 
             match scan_type {
@@ -1143,6 +1167,7 @@ impl SSTable {
             loop {
                 let data = sstable.get_entry_from_data_file(current_offsets[index], None, None, use_variable_encoding);
                 if let Some(((key, memory_entry), offset)) = data {
+                    let key_slice = &*key;
                     match scan_type {
                         ScanType::RangeScan => {
                             if key.as_ref() >= searched_key {
