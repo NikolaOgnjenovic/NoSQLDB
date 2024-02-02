@@ -55,10 +55,32 @@ mod mem_pool_tests {
 #[cfg(test)]
 mod lsm_tests {
     use std::{fs, io};
+    use std::fs::{read_dir, remove_dir_all, remove_file};
     use super::*;
     use segment_elements::TimeStamp;
     use db_config::{CompactionAlgorithmType, DBConfig};
     use crate::lsm::{LSM, ScanType};
+
+    fn prepare_dirs(dbconfig: &DBConfig) {
+        match read_dir(&dbconfig.write_ahead_log_dir) {
+            Ok(dir) => {
+                dir.map(|dir_entry| dir_entry.unwrap().path())
+                    .filter(|file| file.file_name().unwrap() != ".keep")
+                    .filter(|file| file.extension().unwrap() == "log" || file.extension().unwrap() == "num")
+                    .for_each(|file| remove_file(file).unwrap())
+            }
+            Err(_) => ()
+        }
+
+        match read_dir(&dbconfig.sstable_dir) {
+            Ok(dir) => {
+                dir.map(|dir_entry| dir_entry.unwrap().path())
+                    .filter(|dir| dir.file_name().unwrap() != ".keep")
+                    .for_each(|dir| remove_dir_all(dir).unwrap_or(()))
+            },
+            Err(_) => ()
+        }
+    }
 
     #[test]
     fn test_flushing() -> io::Result<()> {
@@ -101,15 +123,18 @@ mod lsm_tests {
     #[test]
     fn test_scans() -> io::Result<()> {
         let mut db_config = DBConfig::default();
-        db_config.memory_table_pool_num = 2;
-        db_config.memory_table_capacity = 10;
+        db_config.memory_table_pool_num = 10;
+        db_config.memory_table_capacity = 500;
         db_config.lsm_max_per_level = 5;
         db_config.sstable_single_file = false;
         db_config.compaction_algorithm_type = CompactionAlgorithmType::SizeTiered;
+
+        prepare_dirs(&db_config);
+
         let mut lsm = LSM::new(&db_config).unwrap();
-        for i in 0..20usize {
-            if i % 2 == 0{
-                lsm.insert(&i.to_ne_bytes(), &i.to_ne_bytes(), TimeStamp::Now)?;
+        for i in 0..20_000usize {
+            if i % 2 == 0 {
+                lsm.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now)?;
             } else {
                 lsm.delete(&i.to_ne_bytes(), TimeStamp::Now)?;
             }
@@ -118,7 +143,7 @@ mod lsm_tests {
 
         let mut num = 0;
         ///Range
-        let mut lsm_iter = lsm.iter(Some(&0usize.to_ne_bytes()), Some(&20usize.to_ne_bytes()), None, ScanType::RangeScan)?;
+        let mut lsm_iter = lsm.iter(Some(&80usize.to_ne_bytes()), Some(&160usize.to_ne_bytes()), None, ScanType::RangeScan)?;
         while let Some(inner) = lsm_iter.next() {
             if let Some((entry)) = inner {
                 println!("{:?}", entry.0);
@@ -152,7 +177,6 @@ mod paginator_tests {
     use db_config::{CompactionAlgorithmType, DBConfig};
     use segment_elements::TimeStamp;
     use crate::LSM;
-    use crate::lsm::ScanType::{PrefixScan, RangeScan};
     use crate::paginator::Paginator;
 
     #[test]
@@ -261,6 +285,7 @@ mod paginator_tests {
         db_config.lsm_max_per_level = 4;
         db_config.sstable_single_file = true;
         db_config.compaction_algorithm_type = CompactionAlgorithmType::SizeTiered;
+        db_config.use_variable_encoding = false;
         create_dir_all(db_config.sstable_dir.to_string()).expect("Failed to create sstable dirs");
         let mut lsm = LSM::new(&db_config).unwrap();
 
@@ -810,7 +835,7 @@ mod sstable_tests {
         let multiplier = 2;
 
         for range in (1..=2000).step_by(1000) {
-            for mem_table_type in &[MemoryTableType::SkipList, /*MemoryTableType::HashMap,*/MemoryTableType::BTree] {
+            for mem_table_type in &[MemoryTableType::SkipList, MemoryTableType::HashMap, MemoryTableType::BTree] {
                 check_merkle_tree(true, &mem_table_type.clone(), range, true);
                 check_merkle_tree(true, &mem_table_type.clone(), range, false);
                 check_merkle_tree(false, &mem_table_type.clone(), range, true);

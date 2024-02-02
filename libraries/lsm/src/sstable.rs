@@ -10,7 +10,7 @@ use bloom_filter::BloomFilter;
 use lru_cache::LRUCache;
 use segment_elements::{deserialize_header, deserialize_usize_value, MemoryEntry};
 use merkle_tree::merkle_tree::MerkleTree;
-use compression::{CompressionDictionary, variable_decode, variable_encode};
+use compression::{CompressionDictionary, variable_encode};
 use crate::lsm::ScanType;
 use crate::memtable::MemoryTable;
 use crate::sstable::sstable_element_type::SSTableElementType;
@@ -711,7 +711,9 @@ impl SSTable {
                     return None;
                 }
                 let (entry_length, mut buffer_offset) = deserialize_usize_value(&buffer, false);
-                (crc, timestamp, tombstone, key_len, offset_to_key_len, length, _) = deserialize_header(&buffer[buffer_offset..], false);
+                (offset_to_key_len, length) = deserialize_usize_value(&buffer[buffer_offset..], false);
+                buffer_offset += length;
+                (crc, timestamp, tombstone, key_len, _, length, _) = deserialize_header(&buffer[buffer_offset..], false);
                 buffer_offset += length;
 
                 if &buffer[buffer_offset..] == key {
@@ -733,7 +735,9 @@ impl SSTable {
                 return None;
             }
             let (_, mut buffer_offset) = deserialize_usize_value(&buffer, false);
-            (crc, timestamp, tombstone, key_len, offset_to_key_len, length, _) = deserialize_header(&buffer[buffer_offset..], false);
+            (offset_to_key_len, length) = deserialize_usize_value(&buffer[buffer_offset..], false);
+            buffer_offset += length;
+            (crc, timestamp, tombstone, key_len, _, length, _) = deserialize_header(&buffer[buffer_offset..], false);
             buffer_offset += length;
 
             unwrapped_key.extend_from_slice(&buffer[buffer_offset..]);
@@ -865,11 +869,14 @@ impl SSTable {
                 let mut key = vec![0u8; key_len];
                 file.read_exact(&mut key).ok();
                 buffer.extend_from_slice(&entry_length.to_ne_bytes());
+                buffer.extend_from_slice(&offset_to_key_len.to_ne_bytes());
                 buffer.extend_from_slice(&crc.to_ne_bytes());
                 buffer.extend_from_slice(&timestamp.to_ne_bytes());
                 buffer.extend_from_slice(&(tombstone as u8).to_ne_bytes());
                 buffer.extend_from_slice(&key_len.to_ne_bytes());
-                buffer.extend_from_slice(&offset_to_key_len.to_ne_bytes());
+                if !tombstone {
+                    buffer.extend_from_slice(&0usize.to_ne_bytes());
+                }
                 buffer.extend_from_slice(&key);
             }
             SSTableElementType::DataEntryValue => {
@@ -1160,14 +1167,12 @@ impl SSTable {
         Ok(offset as u64)
     }
 
-    // todo: clean up
     /// idem ovom funkcijom dok ne naidjem na prvi key koji je veci od mog i tada ne updateujem offset vec vrnem taj offset nazad
-    pub(crate) fn update_sstable_offsets(sstables: &mut Vec<SSTable>, in_single_files: Vec<bool>, mut current_offsets: Vec<u64>, searched_key: &[u8], scan_type: ScanType, use_variable_encoding: bool) -> io::Result<Vec<u64>> {
+    pub(crate) fn update_sstable_offsets(sstables: &mut Vec<SSTable>, mut current_offsets: Vec<u64>, searched_key: &[u8], scan_type: ScanType, use_variable_encoding: bool) -> io::Result<Vec<u64>> {
         for (index, sstable) in sstables.iter_mut().enumerate() {
             loop {
                 let data = sstable.get_entry_from_data_file(current_offsets[index], None, None, use_variable_encoding);
-                if let Some(((key, memory_entry), offset)) = data {
-                    let key_slice = &*key;
+                if let Some(((key, _), offset)) = data {
                     match scan_type {
                         ScanType::RangeScan => {
                             if key.as_ref() >= searched_key {

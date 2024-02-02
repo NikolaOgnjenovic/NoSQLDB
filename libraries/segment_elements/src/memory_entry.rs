@@ -89,35 +89,34 @@ impl MemoryEntry {
             value
         };
 
-        let mut bytes: Vec<u8> = Vec::new();
+        let mut crc_bytes: Vec<u8> = Vec::new();
 
         let timestamp_bytes = if use_variable_encoding {
             variable_encode(timestamp)
         } else {
             Box::new(timestamp.to_ne_bytes())
         };
-        bytes.extend(timestamp_bytes.as_ref());
-        bytes.extend((tombstone as u8).to_ne_bytes());
+        crc_bytes.extend(timestamp_bytes.as_ref());
+        crc_bytes.extend((tombstone as u8).to_ne_bytes());
         let key_len_bytes = if use_variable_encoding {
             variable_encode(key.len() as u128)
         } else {
             Box::new(key.len().to_ne_bytes())
         };
-        bytes.extend(key_len_bytes.as_ref());
+        crc_bytes.extend(key_len_bytes.as_ref());
         if !tombstone {
             let value_len_bytes = if use_variable_encoding {
                 variable_encode(value_len as u128)
             } else {
                 Box::new(value_len.to_ne_bytes())
             };
-            bytes.extend(value_len_bytes.as_ref());
+            crc_bytes.extend(value_len_bytes.as_ref());
         }
-        bytes.extend(key.as_ref());
+        crc_bytes.extend(key.as_ref());
         if !tombstone {
-            bytes.extend(value.as_ref());
+            crc_bytes.extend(value.as_ref());
         }
-
-        if crc_hasher.checksum(&bytes) != crc {
+        if crc_hasher.checksum(&crc_bytes) != crc {
             Err(From::from(CRCError(crc)))
         } else {
             let entry = MemoryEntry {

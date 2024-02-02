@@ -736,9 +736,9 @@ impl LSM {
         };
 
         let updates_offsets = if let Some(min_key) = min_key {
-            SSTable::update_sstable_offsets(&mut sstables, in_single_files, data_offsets, min_key, scan_type, self.config.use_variable_encoding)?
+            SSTable::update_sstable_offsets(&mut sstables, data_offsets, min_key, scan_type, self.config.use_variable_encoding)?
         } else {
-            SSTable::update_sstable_offsets(&mut sstables, in_single_files, data_offsets, prefix.unwrap(), scan_type, self.config.use_variable_encoding)?
+            SSTable::update_sstable_offsets(&mut sstables, data_offsets, prefix.unwrap(), scan_type, self.config.use_variable_encoding)?
         };
 
         let memory_offset = 0;
@@ -831,7 +831,7 @@ impl Iterator for LSMIterator {
                     if let Some((option_entry, length)) = sstable.get_entry_from_data_file(new_offset, None, None, self.use_variable_encoding) {
                         added_offset += length;
                         new_offset += length;
-                        let key_slice = &*option_entry.0;
+                        let _ = &*option_entry.0;
                         if option_entry.1.get_tombstone() {
                             //updated_offsets[index] += offset;
                             continue;
@@ -897,7 +897,7 @@ impl Iterator for LSMIterator {
         //od svih koji su najmanji daj najnoviji timestamp
         let max_index = SSTable::find_max_timestamp(&min_entries);
         let return_entry = enumerated_entries[max_index].1.as_ref().unwrap().0.clone();
-        let key_slice = &*return_entry.0;
+        let _ = &*return_entry.0;
 
         if pushed {
             self.memory_offset = copy_offsets.pop().unwrap() as usize;
