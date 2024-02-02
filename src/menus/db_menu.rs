@@ -58,7 +58,7 @@ pub fn db_menu(dbconfig: &mut DBConfig) {
 
                 let key = &key.unwrap();
                 let value = &value.unwrap();
-                match db.insert(key, value, true) {
+                match db.insert(key, value) {
                     Ok(()) => println!("Insertion successful"),
                     Err(err) => eprintln!("Error during insertion: {}", err),
                 }
@@ -78,7 +78,7 @@ pub fn db_menu(dbconfig: &mut DBConfig) {
                 }
             }
             DBMenu::Delete => {
-                 clearscreen::clear().expect("Failed to clear screen.");
+                clearscreen::clear().expect("Failed to clear screen.");
                 let key = get_input_u8("Enter key: ");
                 if key.is_none() {
                     println!("Failed to serialize key into bytes.");
@@ -86,8 +86,7 @@ pub fn db_menu(dbconfig: &mut DBConfig) {
                 }
                 let key = &key.unwrap();
 
-                db.delete(key, true).expect("Deletion error");
-                match db.delete(&key, true) {
+                match db.delete(&key) {
                     Ok(()) => println!("Deletion successful."),
                     Err(err) => eprintln!("Error during deletion: {}", err),
                 }

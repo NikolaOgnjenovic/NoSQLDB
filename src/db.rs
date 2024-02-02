@@ -51,8 +51,12 @@ impl DB {
         });
     }
 
+    pub fn insert(&mut self, key: &[u8], value: &[u8]) -> Result<(), Box<dyn Error>> {
+        self.system_insert(key, value, true)
+    }
+
     /// Inserts a new key value pair into the system.
-    pub fn insert(&mut self, key: &[u8], value: &[u8], check_reserved_prefixes: bool) -> Result<(), Box<dyn Error>> {
+    fn system_insert(&mut self, key: &[u8], value: &[u8], check_reserved_prefixes: bool) -> Result<(), Box<dyn Error>> {
         if key != "t0k3n_buck3t/state".as_bytes() {
             if self.token_bucket_take()? {
                 if check_reserved_prefixes {
@@ -73,8 +77,12 @@ impl DB {
         Ok(())
     }
 
+    pub fn delete(&mut self, key: &[u8]) -> Result<(), Box<dyn Error>> {
+        self.system_delete(key, true)
+    }
+
     /// Removes the value that's associated to the given key.
-    pub fn delete(&mut self, key: &[u8], check_reserved_prefixes: bool) -> Result<(), Box<dyn Error>> {
+    fn system_delete(&mut self, key: &[u8], check_reserved_prefixes: bool) -> Result<(), Box<dyn Error>> {
         if self.token_bucket_take()? {
             if check_reserved_prefixes {
                 for forbidden_key_prefix in &self.reserved_key_prefixes {
@@ -135,7 +143,7 @@ impl DB {
     /// # Returns
     ///
     /// An `Option` containing the value associated with the key, or `None` if the key is not present.
-    pub fn bloom_filter_get(&mut self, key: &[u8]) -> std::io::Result<Option<Box<[u8]>>> {
+    pub fn bloom_filter_get(&mut self, key: &[u8]) -> Result<Option<Box<[u8]>>, Box<dyn Error>> {
         self.reserved_get(key, 0)
     }
 
@@ -162,7 +170,7 @@ impl DB {
 
         bloom_filter.add(value);
 
-        self.insert(&combined_key, bloom_filter.serialize().as_ref(), false)
+        self.system_insert(&combined_key, bloom_filter.serialize().as_ref(), false)
     }
 
     /// Checks if the given value is likely present in the Bloom Filter associated with the key.
@@ -201,7 +209,7 @@ impl DB {
     /// # Returns
     ///
     /// An `Option` containing the value associated with the key, or `None` if the key is not present.
-    pub fn count_min_sketch_get(&mut self, key: &[u8]) -> std::io::Result<Option<Box<[u8]>>> {
+    pub fn count_min_sketch_get(&mut self, key: &[u8]) -> Result<Option<Box<[u8]>>, Box<dyn Error>> {
         self.reserved_get(key, 1)
     }
 
@@ -223,7 +231,7 @@ impl DB {
 
         count_min_sketch.increase_count(value);
 
-        self.insert(&combined_key, count_min_sketch.serialize().as_ref(), false)
+        self.system_insert(&combined_key, count_min_sketch.serialize().as_ref(), false)
     }
 
     /// Gets the count associated with the given value in the Count-Min Sketch.
@@ -259,7 +267,7 @@ impl DB {
     /// # Returns
     ///
     /// An `Option` containing the value associated with the key, or `None` if the key is not present.
-    pub fn hyperloglog_get(&mut self, key: &[u8]) -> std::io::Result<Option<Box<[u8]>>> {
+    pub fn hyperloglog_get(&mut self, key: &[u8]) -> Result<Option<Box<[u8]>>, Box<dyn Error>> {
         self.reserved_get(key, 2)
     }
 
@@ -281,7 +289,7 @@ impl DB {
 
         hyperloglog.add_to_count(&value);
 
-        self.insert(&combined_key, hyperloglog.serialize().as_ref(), false)
+        self.system_insert(&combined_key, hyperloglog.serialize().as_ref(), false)
     }
 
     /// Gets the count estimated by the HyperLogLog.
@@ -330,7 +338,7 @@ impl DB {
     /// # Returns
     ///
     /// An `Option` containing the value associated with the key, or `None` if the key is not present.
-    fn reserved_get(&mut self, key: &[u8], index: usize) -> std::io::Result<Option<Box<[u8]>>> {
+    fn reserved_get(&mut self, key: &[u8], index: usize) -> Result<Option<Box<[u8]>>, Box<dyn Error>> {
         let combined_key = self.get_combined_key(key, index);
 
         if let Some(value) = self.system_get(&combined_key, false)? {
@@ -388,15 +396,14 @@ impl DB {
     /// A result indicating whether tokens were successfully taken (`Ok(true)`)
     /// or if an error occurred (`Err`).
     pub fn token_bucket_take(&mut self) -> Result<bool, Box<dyn Error>> {
-        let token_bucket_state = match self.system_get("t0k3n_buck3t/state".as_bytes(), false)? {
+        let mut token_bucket = match self.system_get("t0k3n_buck3t/state".as_bytes(), false)? {
             Some(bytes) => TokenBucket::deserialize(&bytes),
             None => TokenBucket::default(), // temporary
         };
 
-        let mut token_bucket = token_bucket_state;
         let token_taken = token_bucket.take(1);
 
-        self.insert("t0k3n_buck3t/state".as_bytes(), token_bucket.serialize().as_ref(), false)?;
+        self.system_insert("t0k3n_buck3t/state".as_bytes(), token_bucket.serialize().as_ref(), false)?;
 
         Ok(token_taken)
     }

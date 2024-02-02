@@ -29,7 +29,7 @@ fn test_read_write_path_one() {
 
     let mut db = DB::build(db_config).unwrap();
 
-    db.insert("test_key".as_bytes(), "test_value".as_bytes(), false).unwrap();
+    db.insert("test_key".as_bytes(), "test_value".as_bytes()).unwrap();
 
     let get_op= match db.get("test_key".as_bytes()).unwrap() {
         Some(val) => val,
@@ -51,6 +51,7 @@ fn test_read_write_path_multiple() {
     db_config.use_variable_encoding = false;
     db_config.lsm_max_level = 5;
     db_config.token_bucket_capacity = 9999999999;
+    db_config.token_bucket_refill_rate = 9999999999;
     // db_config.memory_table_pool_num = 1;
     // db_config.memory_table_capacity = 10;
 
@@ -78,7 +79,7 @@ fn test_read_write_path_multiple() {
             )
         };
 
-        db.insert(&key, &value, false)?;
+        db.insert(&key, &value).unwrap();
     }
 
     for i in 0..20_000u128 {
