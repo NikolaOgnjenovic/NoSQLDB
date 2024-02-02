@@ -52,8 +52,6 @@ fn test_read_write_path_multiple() {
     db_config.lsm_max_level = 5;
     db_config.token_bucket_capacity = 9999999999;
     db_config.token_bucket_refill_rate = 9999999999;
-    // db_config.memory_table_pool_num = 1;
-    // db_config.memory_table_capacity = 10;
 
     prepare_dirs(&db_config);
 
