@@ -54,13 +54,13 @@ mod lsm_tests {
     #[test]
     fn test_scans() -> io::Result<()> {
         let mut db_config = DBConfig::default();
-        db_config.memory_table_pool_num = 10;
-        db_config.memory_table_capacity = 500;
+        db_config.memory_table_pool_num = 2;
+        db_config.memory_table_capacity = 10;
         db_config.lsm_max_per_level = 5;
         db_config.sstable_single_file = false;
         db_config.compaction_algorithm_type = CompactionAlgorithmType::SizeTiered;
         let mut lsm = LSM::new(&db_config).unwrap();
-        for i in 0..2000usize {
+        for i in 0..20usize {
             if i % 2 == 0{
                 lsm.insert(&i.to_ne_bytes(), &i.to_ne_bytes(), TimeStamp::Now)?;
             } else {
@@ -71,7 +71,7 @@ mod lsm_tests {
 
         let mut num = 0;
         ///Range
-        let mut lsm_iter = lsm.iter(Some(&0usize.to_ne_bytes()), Some(&10usize.to_ne_bytes()), None, ScanType::RangeScan)?;
+        let mut lsm_iter = lsm.iter(Some(&0usize.to_ne_bytes()), Some(&20usize.to_ne_bytes()), None, ScanType::RangeScan)?;
         while let Some(inner) = lsm_iter.next() {
             if let Some((entry)) = inner {
                 println!("{:?}", entry.0);
@@ -80,7 +80,7 @@ mod lsm_tests {
             }
         }
 
-        //assert_eq!(80, num);
+        //assert_eq!(41, num);
 
         println!();
         println!();

@@ -86,22 +86,16 @@ impl MemoryEntry {
             bytes.extend(value.as_ref());
         }
 
-        // if crc_hasher.checksum(&bytes) != crc {
-        //     Err(Box::try_from(CRCError(crc)).unwrap())
-        // } else {
-        //     let entry = MemoryEntry {
-        //         value,
-        //         tombstone,
-        //         timestamp,
-        //     };
-        //     Ok((key, entry))
-        // }
-        let entry = MemoryEntry {
-            value,
-            tombstone,
-            timestamp,
-        };
-        Ok((key, entry))
+        if crc_hasher.checksum(&bytes) != crc {
+            Err(Box::try_from(CRCError(crc)).unwrap())
+        } else {
+            let entry = MemoryEntry {
+                value,
+                tombstone,
+                timestamp,
+            };
+            Ok((key, entry))
+        }
     }
 
     pub fn get_value(&self) -> Box<[u8]> {
