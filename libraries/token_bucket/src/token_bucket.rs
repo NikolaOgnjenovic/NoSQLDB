@@ -7,18 +7,6 @@ pub struct TokenBucket {
     pub(crate) refill_rate: usize, // Tokens per second
 }
 
-impl Default for TokenBucket {
-    fn default() -> Self {
-        let now = TimeStamp::Now;
-        TokenBucket {
-            capacity: 100, // Set default capacity
-            tokens: 100,   // Set default tokens
-            last_refill_time: TimeStamp::Custom(now.get_time()), // Set default last refill time
-            refill_rate: 10, // Set default refill rate
-        }
-    }
-}
-
 impl TokenBucket {
     pub fn new(capacity: usize, refill_rate: usize) -> Self {
         let now = TimeStamp::Now;

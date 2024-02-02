@@ -398,7 +398,7 @@ impl DB {
     pub fn token_bucket_take(&mut self) -> Result<bool, Box<dyn Error>> {
         let mut token_bucket = match self.system_get("t0k3n_buck3t/state".as_bytes(), false)? {
             Some(bytes) => TokenBucket::deserialize(&bytes),
-            None => TokenBucket::default(), // temporary
+            None => TokenBucket::new(self.config.token_bucket_capacity, self.config.token_bucket_refill_rate)
         };
 
         let token_taken = token_bucket.take(1);
