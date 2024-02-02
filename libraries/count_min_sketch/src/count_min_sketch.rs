@@ -2,7 +2,7 @@ use std::cmp::max;
 use twox_hash::xxh3::hash64_with_seed;
 
 pub struct CMSketch {
-    table: Box<[Box<[u64]>]>
+    table: Box<[Box<[u64]>]>,
 }
 
 impl CMSketch {
@@ -11,18 +11,18 @@ impl CMSketch {
     pub fn new(probability: f64, tolerance: f64) -> Self {
         let hash_func_len = max(
             1,
-            ((1.0 - tolerance).ln() / (0.5_f64).ln()).floor() as usize
+            ((1.0 - tolerance).ln() / (0.5_f64).ln()).floor() as usize,
         );
 
         let row_len = max(
             2,
             ((std::f64::consts::E / probability).round() as usize)
                 .checked_next_power_of_two()
-                .unwrap_or(usize::MAX)
+                .unwrap_or(usize::MAX),
         );
 
         CMSketch {
-            table: vec![vec![0; row_len].into_boxed_slice(); hash_func_len].into_boxed_slice()
+            table: vec![vec![0; row_len].into_boxed_slice(); hash_func_len].into_boxed_slice(),
         }
     }
 
@@ -36,7 +36,8 @@ impl CMSketch {
     }
 
     pub fn get_count(&self, key: &[u8]) -> u64 {
-        self.table.iter()
+        self.table
+            .iter()
             .enumerate()
             .map(|(seed, row)| {
                 let hash = hash64_with_seed(key, seed as u64) as usize % row.len();
@@ -49,15 +50,17 @@ impl CMSketch {
 
     /// Serializes the structure into a stream of bytes.
     pub fn serialize(&self) -> Box<[u8]> {
-        let mut structure_bytes = Vec::with_capacity(
-        self.table.len() * self.table[0].len() * 8 + 8 + 8
-        );
+        let mut structure_bytes =
+            Vec::with_capacity(self.table.len() * self.table[0].len() * 8 + 8 + 8);
 
         structure_bytes.extend(self.table.len().to_ne_bytes());
         structure_bytes.extend(self.table[0].len().to_ne_bytes());
-        structure_bytes.extend(self.table.iter()
-            .flat_map(|row| row.iter())
-            .flat_map(|item| item.to_ne_bytes()));
+        structure_bytes.extend(
+            self.table
+                .iter()
+                .flat_map(|row| row.iter())
+                .flat_map(|item| item.to_ne_bytes()),
+        );
 
         structure_bytes.into_boxed_slice()
     }
@@ -78,6 +81,8 @@ impl CMSketch {
             table.push(final_slice.to_vec().into_boxed_slice())
         }
 
-        CMSketch { table: table.into_boxed_slice() }
+        CMSketch {
+            table: table.into_boxed_slice(),
+        }
     }
 }

@@ -1,5 +1,4 @@
 /target
-**/tests/
 **/.idea/
 **/Cargo.lock/
 **/.vs/
@@ -8,3 +7,6 @@ Cargo.lock
 **/*.log
 **/*.num
 **/*.db
+/wal
+/sstables
+**/*.bin

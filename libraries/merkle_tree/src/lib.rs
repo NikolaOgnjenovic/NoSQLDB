@@ -3,8 +3,8 @@ pub mod merkle_tree;
 #[cfg(test)]
 mod tests {
     use crate::merkle_tree::MerkleTree;
-    use sha256::digest;
     use crate::merkle_tree::Node;
+    use sha256::digest;
 
     /// Tests the hashing mechanism of the Merkle Tree.
     #[test]
@@ -29,10 +29,7 @@ mod tests {
                 node.left_child.as_ref().map_or("", |child| &child.hash),
                 node.right_child.as_ref().map_or("", |child| &child.hash)
             ));
-            assert_eq!(
-                node.hash,
-                child_hash
-            );
+            assert_eq!(node.hash, child_hash);
 
             verify_hashes(&node.left_child);
             verify_hashes(&node.right_child);
@@ -47,7 +44,10 @@ mod tests {
         let merkle_tree = MerkleTree::new(data);
         let second_tree = MerkleTree::new(data);
 
-        assert_eq!(0, merkle_tree.get_different_chunks_indices(&second_tree).len());
+        assert_eq!(
+            0,
+            merkle_tree.get_different_chunks_indices(&second_tree).len()
+        );
     }
 
     /// Tests the inequality check between two different Merkle Trees.
@@ -56,10 +56,13 @@ mod tests {
         let data = &[1, 2, 3, 4];
         let merkle_tree = MerkleTree::new(data);
 
-        let second_data = &[1,2,3,5];
+        let second_data = &[1, 2, 3, 5];
         let second_tree = MerkleTree::new(second_data);
 
-        assert_ne!(0, merkle_tree.get_different_chunks_indices(&second_tree).len());
+        assert_ne!(
+            0,
+            merkle_tree.get_different_chunks_indices(&second_tree).len()
+        );
     }
 
     /// Tests the creation of a Merkle Tree from empty data.

@@ -3,12 +3,15 @@ use segment_elements::{MemoryEntry, TimeStamp};
 #[derive(Clone, Debug, PartialEq)]
 pub struct Entry {
     pub(crate) key: Box<[u8]>,
-    pub(crate) mem_entry: MemoryEntry
+    pub(crate) mem_entry: MemoryEntry,
 }
 
 impl Entry {
     pub(crate) fn from(key: &[u8], value: &[u8], tombstone: bool, time_stamp: TimeStamp) -> Self {
-        Entry { key: Box::from(key), mem_entry: MemoryEntry::from(value, tombstone, time_stamp.get_time()) }
+        Entry {
+            key: Box::from(key),
+            mem_entry: MemoryEntry::from(value, tombstone, time_stamp.get_time()),
+        }
     }
 }
 

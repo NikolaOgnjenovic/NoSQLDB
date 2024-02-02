@@ -1,6 +1,6 @@
-use twox_hash::xxh3::hash64;
-use std::cmp::min;
 use std::cmp::max;
+use std::cmp::min;
+use twox_hash::xxh3::hash64;
 
 pub struct HLL {
     buckets: Box<[u8]>,
@@ -33,18 +33,19 @@ impl HLL {
 
     /// Returns the estimated count of different elements.
     pub fn get_count(&self) -> u64 {
-        let harmonic_mean = self.buckets.iter().map(|bucket| {
-            1f64 / 2u64.pow(*bucket as u32) as f64
-        }).sum::<f64>();
+        let harmonic_mean = self
+            .buckets
+            .iter()
+            .map(|bucket| 1f64 / 2u64.pow(*bucket as u32) as f64)
+            .sum::<f64>();
 
-        (self.constant * self.buckets.len() as f64 * (self.buckets.len() as f64 / harmonic_mean)).round() as u64
+        (self.constant * self.buckets.len() as f64 * (self.buckets.len() as f64 / harmonic_mean))
+            .round() as u64
     }
 
     /// Serializes the structure into a stream of bytes.
     pub fn serialize(&self) -> Box<[u8]> {
-        let mut serialized_data = Vec::with_capacity(
-            8 + 4 + 8 + self.buckets.len()
-        );
+        let mut serialized_data = Vec::with_capacity(8 + 4 + 8 + self.buckets.len());
 
         serialized_data.extend(self.constant.to_ne_bytes());
         serialized_data.extend(self.precision.to_ne_bytes());
@@ -60,9 +61,8 @@ impl HLL {
         let precision = u32::from_ne_bytes(bytes[8..12].try_into().unwrap());
         let buckets_len = usize::from_ne_bytes(bytes[12..20].try_into().unwrap());
 
-        let buckets = unsafe {
-            std::slice::from_raw_parts(bytes[20..].as_ptr(), buckets_len)
-        }.to_vec();
+        let buckets =
+            unsafe { std::slice::from_raw_parts(bytes[20..].as_ptr(), buckets_len) }.to_vec();
 
         HLL {
             buckets: buckets.into_boxed_slice(),

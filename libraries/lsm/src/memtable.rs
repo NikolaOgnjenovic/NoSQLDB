@@ -1,28 +1,28 @@
-use std::error::Error;
 use b_tree::BTree;
 use db_config::{DBConfig, MemoryTableType};
+use segment_elements::{MemEntryHashMap, MemoryEntry, TimeStamp};
 use skip_list::SkipList;
-use segment_elements::{MemoryEntry, TimeStamp, MemEntryHashMap};
-use write_ahead_log::WriteAheadLog;
+use std::error::Error;
 
 pub(crate) struct MemoryTable {
     capacity: usize,
     len: usize,
-    inner_mem: Box<dyn segment_elements::SegmentTrait + Send>
+    inner_mem: Box<dyn segment_elements::SegmentTrait + Send>,
 }
 
 impl MemoryTable {
     pub(crate) fn new(dbconfig: &DBConfig) -> Result<Self, Box<dyn Error>> {
-        let inner_mem: Box<dyn segment_elements::SegmentTrait + Send> = match dbconfig.memory_table_type {
-            MemoryTableType::SkipList => Box::new(SkipList::new(dbconfig.skip_list_max_level)),
-            MemoryTableType::HashMap => Box::new(MemEntryHashMap::new()),
-            MemoryTableType::BTree => Box::new(BTree::new(dbconfig.b_tree_order)?)
-        };
+        let inner_mem: Box<dyn segment_elements::SegmentTrait + Send> =
+            match dbconfig.memory_table_type {
+                MemoryTableType::SkipList => Box::new(SkipList::new(dbconfig.skip_list_max_level)),
+                MemoryTableType::HashMap => Box::new(MemEntryHashMap::new()),
+                MemoryTableType::BTree => Box::new(BTree::new(dbconfig.b_tree_order)?),
+            };
 
         Ok(MemoryTable {
             inner_mem,
             capacity: dbconfig.memory_table_capacity,
-            len: 0
+            len: 0,
         })
     }
 
@@ -58,11 +58,10 @@ impl MemoryTable {
         self.inner_mem.iterator()
     }
 
-    pub(crate) fn calc_wal_size(&self) -> usize {
-        self.inner_mem
-            .iterator()
-            .map(|(k, v)| k.len() + v.get_value().len() + 1 + 4 + 16 + 8 + 8)
-            .sum()
-        // 1 byte for tombstone, 4 bytes for CRC, 16 bytes for timestamp, 8 bytes for key_len, 8 bytes for value len
+    /// Returns the WAL size of the current table.
+    /// This means that for each element in the table, 20 bytes (8 for key len, 8 for value len and 4 for CRC)
+    /// is added to the size.
+    pub(crate) fn wal_size(&self) -> usize {
+        20 * self.len + self.inner_mem.byte_size()
     }
 }

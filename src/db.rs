@@ -10,6 +10,7 @@ use token_bucket::token_bucket::TokenBucket;
 
 use crate::ReservedKeyError;
 use crate::ProbabilisticTypeError;
+use crate::token_bucket_error::TokenBucketError;
 
 pub struct DB {
     config: DBConfig,
@@ -50,8 +51,12 @@ impl DB {
         });
     }
 
+    pub fn insert(&mut self, key: &[u8], value: &[u8]) -> Result<(), Box<dyn Error>> {
+        self.system_insert(key, value, true)
+    }
+
     /// Inserts a new key value pair into the system.
-    pub fn insert(&mut self, key: &[u8], value: &[u8], check_reserved_prefixes: bool) -> Result<(), Box<dyn Error>> {
+    fn system_insert(&mut self, key: &[u8], value: &[u8], check_reserved_prefixes: bool) -> Result<(), Box<dyn Error>> {
         if key != "t0k3n_buck3t/state".as_bytes() {
             if self.token_bucket_take()? {
                 if check_reserved_prefixes {
@@ -64,7 +69,7 @@ impl DB {
                     }
                 }
             } else {
-                return Err("Input rate limit exceeded. Please try again later.".into());
+                return Err(From::from(TokenBucketError));
             }
         }
 
@@ -72,41 +77,61 @@ impl DB {
         Ok(())
     }
 
+    pub fn delete(&mut self, key: &[u8]) -> Result<(), Box<dyn Error>> {
+        self.system_delete(key, true)
+    }
+
     /// Removes the value that's associated to the given key.
-    pub fn delete(&mut self, key: &[u8]) -> std::io::Result<()> {
-        if self.token_bucket_take().ok()? {
+    fn system_delete(&mut self, key: &[u8], check_reserved_prefixes: bool) -> Result<(), Box<dyn Error>> {
+        if self.token_bucket_take()? {
+            if check_reserved_prefixes {
+                for forbidden_key_prefix in &self.reserved_key_prefixes {
+                    if key.starts_with(forbidden_key_prefix) {
+                        return Err(Box::new(ReservedKeyError {
+                            message: format!("Cannot insert key with system reserved prefix {}.", String::from_utf8_lossy(forbidden_key_prefix))
+                        }));
+                    }
+                }
+            }
             self.lsm.delete(key, TimeStamp::Now)?;
-            return Ok(());
+            Ok(())
+        } else {
+            Err(From::from(TokenBucketError))
         }
-        Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "Input rate limit exceeded. Please try again later.",
-        ))
     }
 
     /// Retrieves the data that is associated to a given key.
-    pub fn get(&mut self, key: &[u8]) -> std::io::Result<Option<Box<[u8]>>> {
-        if self.token_bucket_take().ok()? {
-            if let Some(memory_entry) = self.lsm.get(key)? {
-                return Ok(Some(memory_entry.get_value()));
+    pub fn get(&mut self, key: &[u8]) -> Result<Option<Box<[u8]>>, Box<dyn Error>> {
+        self.system_get(key, true)
+    }
+
+    fn system_get(&mut self, key: &[u8], check_reserved_prefixes: bool) -> Result<Option<Box<[u8]>>, Box<dyn Error>> {
+        if key == "t0k3n_buck3t/state".as_bytes() {
+            self.lsm.get(key).map_err(|err| From::from(err))
+        } else {
+            match self.token_bucket_take() {
+                Ok(true) => {
+                    if check_reserved_prefixes {
+                        for forbidden_key_prefix in &self.reserved_key_prefixes {
+                            if key.starts_with(forbidden_key_prefix) {
+                                return Err(ReservedKeyError {
+                                    message: format!("Cannot insert key with system reserved prefix {}.", String::from_utf8_lossy(forbidden_key_prefix))
+                                }.into());
+                            }
+                        }
+                    }
+                    self.lsm.get(key).map_err(|err| From::from(err))
+                }
+                _ => { Err(From::from(TokenBucketError)) }
             }
         }
-        Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "Input rate limit exceeded. Please try again later.",
-        )).expect("Implement error handling for token bucket.");
-
-            // todo sstable get, komplikovano
-
-            todo!()
-
     }
+
 
     /// Should be called before the program exit to gracefully finish all memory tables writes,
     /// SStable merges and compactions.
-    pub fn shut_down(&mut self) {
-        //self.lsm.join_concurrent_writes();
-        // todo join sstable LSM merge-ove i kompakcije
+    pub fn shut_down(self) {
+        self.lsm.finalize();
     }
 
     /// Gets the value Bloom filter associated with the given key.
@@ -118,7 +143,7 @@ impl DB {
     /// # Returns
     ///
     /// An `Option` containing the value associated with the key, or `None` if the key is not present.
-    pub fn bloom_filter_get(&mut self, key: &[u8]) -> std::io::Result<Option<Box<[u8]>>> {
+    pub fn bloom_filter_get(&mut self, key: &[u8]) -> Result<Option<Box<[u8]>>, Box<dyn Error>> {
         self.reserved_get(key, 0)
     }
 
@@ -145,7 +170,7 @@ impl DB {
 
         bloom_filter.add(value);
 
-        self.insert(&combined_key, bloom_filter.serialize().as_ref(), false)
+        self.system_insert(&combined_key, bloom_filter.serialize().as_ref(), false)
     }
 
     /// Checks if the given value is likely present in the Bloom Filter associated with the key.
@@ -160,20 +185,19 @@ impl DB {
     /// Result indicating whether the value is likely present (`Ok(true)`) or not present (`Ok(false)`),
     /// or an error wrapped in a `Box<dyn Error>`.
     pub fn bloom_filter_contains(&mut self, key: &[u8], value: &[u8]) -> Result<bool, Box<dyn Error>> {
-        if self.token_bucket_take()? {
+        return if self.token_bucket_take()? {
             let combined_key = self.get_combined_key(key, 0);
             let bf_bytes = self.get_probabilistic_ds_bytes(combined_key.as_slice())?;
 
             let bloom_filter = match BloomFilter::deserialize(&bf_bytes) {
                 Ok(filter) => filter,
-                Err(err) => {
-                    return Err(Box::new(err));
-                }
+                Err(err) => return Err(Box::new(err)),
             };
 
-            return Ok(bloom_filter.contains(value));
+            Ok(bloom_filter.contains(value))
+        } else {
+            Err(From::from(TokenBucketError))
         }
-        Err("Input rate limit exceeded. Please try again later.".into())
     }
 
     /// Gets the Count-Min Sketch associated with the given key.
@@ -185,7 +209,7 @@ impl DB {
     /// # Returns
     ///
     /// An `Option` containing the value associated with the key, or `None` if the key is not present.
-    pub fn count_min_sketch_get(&mut self, key: &[u8]) -> std::io::Result<Option<Box<[u8]>>> {
+    pub fn count_min_sketch_get(&mut self, key: &[u8]) -> Result<Option<Box<[u8]>>, Box<dyn Error>> {
         self.reserved_get(key, 1)
     }
 
@@ -207,7 +231,7 @@ impl DB {
 
         count_min_sketch.increase_count(value);
 
-        self.insert(&combined_key, count_min_sketch.serialize().as_ref(), false)
+        self.system_insert(&combined_key, count_min_sketch.serialize().as_ref(), false)
     }
 
     /// Gets the count associated with the given value in the Count-Min Sketch.
@@ -227,9 +251,10 @@ impl DB {
 
             let count_min_sketch = CMSketch::deserialize(&cms_bytes);
 
-            return Ok(count_min_sketch.get_count(&value));
+            Ok(count_min_sketch.get_count(&value))
+        } else {
+            Err(From::from(TokenBucketError))
         }
-        Err("Input rate limit exceeded. Please try again later.".into())
     }
 
 
@@ -242,7 +267,7 @@ impl DB {
     /// # Returns
     ///
     /// An `Option` containing the value associated with the key, or `None` if the key is not present.
-    pub fn hyperloglog_get(&mut self, key: &[u8]) -> std::io::Result<Option<Box<[u8]>>> {
+    pub fn hyperloglog_get(&mut self, key: &[u8]) -> Result<Option<Box<[u8]>>, Box<dyn Error>> {
         self.reserved_get(key, 2)
     }
 
@@ -264,7 +289,7 @@ impl DB {
 
         hyperloglog.add_to_count(&value);
 
-        self.insert(&combined_key, hyperloglog.serialize().as_ref(), false)
+        self.system_insert(&combined_key, hyperloglog.serialize().as_ref(), false)
     }
 
     /// Gets the count estimated by the HyperLogLog.
@@ -283,9 +308,10 @@ impl DB {
 
             let hyperloglog = HLL::deserialize(&hll_bytes);
 
-            return Ok(hyperloglog.get_count());
+            Ok(hyperloglog.get_count())
+        } else {
+            Err(From::from(TokenBucketError))
         }
-        Err("Input rate limit exceeded. Please try again later.".into())
     }
 
     /// Calculates the Hamming distance between two strings using the SimHash algorithm.
@@ -312,10 +338,10 @@ impl DB {
     /// # Returns
     ///
     /// An `Option` containing the value associated with the key, or `None` if the key is not present.
-    fn reserved_get(&mut self, key: &[u8], index: usize) -> std::io::Result<Option<Box<[u8]>>> {
+    fn reserved_get(&mut self, key: &[u8], index: usize) -> Result<Option<Box<[u8]>>, Box<dyn Error>> {
         let combined_key = self.get_combined_key(key, index);
 
-        if let Some(value) = self.get(&combined_key)? {
+        if let Some(value) = self.system_get(&combined_key, false)? {
             return Ok(Some(value));
         }
 
@@ -350,7 +376,7 @@ impl DB {
     /// Result containing the serialized bytes of the probabilistic data structure or an error
     /// wrapped in a `Box<dyn Error>`.
     fn get_probabilistic_ds_bytes(&mut self, combined_key: &[u8]) -> Result<Box<[u8]>, Box<dyn Error>> {
-        match self.get(combined_key)? {
+        match self.system_get(combined_key, false)? {
             Some(bytes) => Ok(bytes),
             None => {
                 Err(Box::new(ProbabilisticTypeError {
@@ -370,10 +396,14 @@ impl DB {
     /// A result indicating whether tokens were successfully taken (`Ok(true)`)
     /// or if an error occurred (`Err`).
     pub fn token_bucket_take(&mut self) -> Result<bool, Box<dyn Error>> {
-        let mut token_bucket = TokenBucket::deserialize("t0k3n_buck3t/state".as_bytes());
+        let mut token_bucket = match self.system_get("t0k3n_buck3t/state".as_bytes(), false)? {
+            Some(bytes) => TokenBucket::deserialize(&bytes),
+            None => TokenBucket::new(self.config.token_bucket_capacity, self.config.token_bucket_refill_rate)
+        };
+
         let token_taken = token_bucket.take(1);
 
-        self.insert("t0k3n_buck3t/state".as_bytes(), token_bucket.serialize().as_ref(), false)?;
+        self.system_insert("t0k3n_buck3t/state".as_bytes(), token_bucket.serialize().as_ref(), false)?;
 
         Ok(token_taken)
     }

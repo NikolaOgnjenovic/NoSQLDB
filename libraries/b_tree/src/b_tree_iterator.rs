@@ -1,5 +1,5 @@
-use segment_elements::MemoryEntry;
 use crate::b_tree_node::Node;
+use segment_elements::MemoryEntry;
 
 pub struct BTreeIterator<'a> {
     pub(crate) stack: Vec<&'a Node>,
@@ -8,7 +8,7 @@ pub struct BTreeIterator<'a> {
 
 impl<'a> BTreeIterator<'a> {
     pub fn find_leftmost_child(&mut self) {
-        if self.stack.len() > 0 {
+        if !self.stack.is_empty() {
             let mut current_node = *self.stack.last().unwrap();
             let mut index = *self.entry_stack.last().unwrap();
             while let Some(left_child) = current_node.children[index].as_ref() {
@@ -30,19 +30,17 @@ impl<'a> Iterator for BTreeIterator<'a> {
         }
         while let Some(current_node) = self.stack.last() {
             let entry_stack_len = self.entry_stack.len();
-            let curr_entry_index = self.entry_stack[entry_stack_len-1];
+            let curr_entry_index = self.entry_stack[entry_stack_len - 1];
             if curr_entry_index < current_node.n {
                 let yielded_entry = current_node.entries[curr_entry_index].clone().unwrap();
                 let key = yielded_entry.key;
                 let mem_entry = yielded_entry.mem_entry;
-                self.entry_stack[entry_stack_len-1] += 1;
+                self.entry_stack[entry_stack_len - 1] += 1;
                 self.find_leftmost_child();
                 return Option::from((key, mem_entry));
-            }
-            else {
+            } else {
                 self.entry_stack.pop();
                 self.stack.pop();
-
             }
         }
         None

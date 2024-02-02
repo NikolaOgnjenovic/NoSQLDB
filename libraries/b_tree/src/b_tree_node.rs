@@ -1,15 +1,18 @@
-use std::cmp::Ordering;
 use segment_elements::{MemoryEntry, TimeStamp};
+use std::cmp::Ordering;
 
 #[derive(Clone, Debug)]
 pub(crate) struct Entry {
     pub(crate) key: Box<[u8]>,
-    pub(crate) mem_entry: MemoryEntry
+    pub(crate) mem_entry: MemoryEntry,
 }
 
 impl Entry {
     pub(crate) fn from(key: &[u8], value: &[u8], tombstone: bool, time_stamp: TimeStamp) -> Self {
-        Entry { key: Box::from(key), mem_entry: MemoryEntry::from(value, tombstone, time_stamp.get_time()) }
+        Entry {
+            key: Box::from(key),
+            mem_entry: MemoryEntry::from(value, tombstone, time_stamp.get_time()),
+        }
     }
 }
 
@@ -25,7 +28,7 @@ pub(crate) struct Node {
     pub(crate) children: Box<[Option<Node>]>,
     pub(crate) entries: Box<[Option<Entry>]>,
     pub(crate) degree: usize,
-    pub(crate) n: usize
+    pub(crate) n: usize,
 }
 
 impl Node {
@@ -35,18 +38,22 @@ impl Node {
             children: vec![None; 2 * degree].into_boxed_slice(),
             entries: vec![None; 2 * degree - 1].into_boxed_slice(),
             degree,
-            n: 0
+            n: 0,
         }
     }
 
     pub(crate) fn get(&self, key: &[u8]) -> Option<MemoryEntry> {
         let mut node_index = 0;
 
-        while node_index < self.n && key.cmp(&self.entries[node_index].as_ref().unwrap().key) == Ordering::Greater {
+        while node_index < self.n
+            && key.cmp(&self.entries[node_index].as_ref().unwrap().key) == Ordering::Greater
+        {
             node_index += 1;
         }
 
-        if node_index < self.n && key.cmp(&*self.entries[node_index].as_ref().unwrap().key) == Ordering::Equal {
+        if node_index < self.n
+            && key.cmp(&*self.entries[node_index].as_ref().unwrap().key) == Ordering::Equal
+        {
             Some(self.entries[node_index].as_ref().unwrap().mem_entry.clone())
         } else if self.is_leaf {
             None
@@ -55,32 +62,59 @@ impl Node {
         }
     }
 
-    pub(crate) fn insert_non_full(&mut self, key: &[u8], value: &[u8], tombstone: bool, time_stamp: TimeStamp) {
+    pub(crate) fn insert_non_full(
+        &mut self,
+        key: &[u8],
+        value: &[u8],
+        tombstone: bool,
+        time_stamp: TimeStamp,
+    ) {
         let mut curr_node_index = self.n as i64 - 1;
 
         if self.is_leaf {
-
-            while curr_node_index >= 0 && key.cmp(&self.entries[curr_node_index as usize].as_ref().unwrap().key) == Ordering::Less {
-                self.entries[(curr_node_index + 1) as usize] = self.entries[curr_node_index as usize].take();
+            while curr_node_index >= 0
+                && key.cmp(&self.entries[curr_node_index as usize].as_ref().unwrap().key)
+                    == Ordering::Less
+            {
+                self.entries[(curr_node_index + 1) as usize] =
+                    self.entries[curr_node_index as usize].take();
                 curr_node_index -= 1;
             }
 
-            self.entries[(curr_node_index + 1) as usize] = Some(Entry::from(key, value, tombstone, time_stamp));
+            self.entries[(curr_node_index + 1) as usize] =
+                Some(Entry::from(key, value, tombstone, time_stamp));
             self.n += 1;
         } else {
-            while curr_node_index >= 0 && key.cmp(&self.entries[curr_node_index as usize].as_ref().unwrap().key) == Ordering::Less {
+            while curr_node_index >= 0
+                && key.cmp(&self.entries[curr_node_index as usize].as_ref().unwrap().key)
+                    == Ordering::Less
+            {
                 curr_node_index -= 1;
             }
 
-            if self.children[(curr_node_index + 1) as usize].as_ref().unwrap().n == (2 * self.degree - 1) {
+            if self.children[(curr_node_index + 1) as usize]
+                .as_ref()
+                .unwrap()
+                .n
+                == (2 * self.degree - 1)
+            {
                 self.split_children((curr_node_index + 1) as usize);
 
-                if key.cmp(&self.entries[(curr_node_index + 1) as usize].as_ref().unwrap().key) == Ordering::Greater {
+                if key.cmp(
+                    &self.entries[(curr_node_index + 1) as usize]
+                        .as_ref()
+                        .unwrap()
+                        .key,
+                ) == Ordering::Greater
+                {
                     curr_node_index += 1;
                 }
             }
 
-            self.children[(curr_node_index + 1) as usize].as_mut().unwrap().insert_non_full(key, value, tombstone, time_stamp);
+            self.children[(curr_node_index + 1) as usize]
+                .as_mut()
+                .unwrap()
+                .insert_non_full(key, value, tombstone, time_stamp);
         }
     }
 
@@ -122,7 +156,9 @@ impl Node {
     pub(crate) fn logical_deletion(&mut self, key: &[u8], time_stamp: TimeStamp) -> bool {
         let mut index = 0;
 
-        while index < self.n && key.cmp(&self.entries[index].as_ref().unwrap().key) == Ordering::Greater {
+        while index < self.n
+            && key.cmp(&self.entries[index].as_ref().unwrap().key) == Ordering::Greater
+        {
             index += 1;
         }
 
@@ -132,21 +168,29 @@ impl Node {
         } else if self.is_leaf {
             true
         } else {
-            self.children[index].as_mut().unwrap().logical_deletion(key, time_stamp)
+            self.children[index]
+                .as_mut()
+                .unwrap()
+                .logical_deletion(key, time_stamp)
         }
     }
 
     pub(crate) fn update(&mut self, key: &[u8], value: &[u8], time_stamp: TimeStamp) {
         let mut index = 0;
-        while index < self.n && key.cmp(&self.entries[index].as_ref().unwrap().key) == Ordering::Greater {
+        while index < self.n
+            && key.cmp(&self.entries[index].as_ref().unwrap().key) == Ordering::Greater
+        {
             index += 1;
         }
-        if index < self.n && key ==  &*self.entries[index].as_ref().unwrap().key {
+        if index < self.n && key == &*self.entries[index].as_ref().unwrap().key {
             self.entries[index] = Some(Entry::from(key, value, false, time_stamp));
         } else if self.is_leaf {
             return;
         } else {
-            self.children[index].as_mut().unwrap().update(key, value,time_stamp)
+            self.children[index]
+                .as_mut()
+                .unwrap()
+                .update(key, value, time_stamp)
         }
     }
 }
@@ -176,7 +220,9 @@ impl Node {
                 self.remove_from_non_leaf(index);
             }
         } else {
-            if self.is_leaf { return; }
+            if self.is_leaf {
+                return;
+            }
 
             // if true, key is located in the subtree rooted with the last child of curr node
             let flag = index == self.n;
@@ -188,7 +234,7 @@ impl Node {
 
             //if the last child has been merged, we need to look for a key in index-1 position
             if flag && index > self.n {
-                self.children[index-1].as_mut().unwrap().remove(key);
+                self.children[index - 1].as_mut().unwrap().remove(key);
             } else {
                 self.children[index].as_mut().unwrap().remove(key);
             }
@@ -197,7 +243,7 @@ impl Node {
 
     pub(crate) fn remove_from_leaf(&mut self, index_to_del: usize) {
         // move all the keys 1 position backwards to fill the gap of deleted key
-        for i in (index_to_del+1)..self.n {
+        for i in (index_to_del + 1)..self.n {
             self.entries[i - 1] = self.entries[i].take();
         }
         self.n -= 1;
@@ -211,12 +257,18 @@ impl Node {
             // swap key with its predecessor, and delete predecessor from children[index] node
             let pred_key = self.get_pred(index_to_del);
             self.entries[index_to_del] = pred_key.clone();
-            self.children[index_to_del].as_mut().unwrap().remove(&pred_key.unwrap().key);
+            self.children[index_to_del]
+                .as_mut()
+                .unwrap()
+                .remove(&pred_key.unwrap().key);
         } else if self.children[index_to_del + 1].as_ref().unwrap().n >= self.degree {
             // same process with successor node of our key in children array
             let succ_key = self.get_succ(index_to_del);
             self.entries[index_to_del] = succ_key.clone();
-            self.children[index_to_del + 1].as_mut().unwrap().remove(&succ_key.unwrap().key);
+            self.children[index_to_del + 1]
+                .as_mut()
+                .unwrap()
+                .remove(&succ_key.unwrap().key);
         } else {
             // if both successor and predecessor have less than degree keys, merge them and delete key
             self.merge(index_to_del);
@@ -253,10 +305,13 @@ impl Node {
     /// Function that fills up a child node of self located in the given position in a child array
     /// only if it has less than order - 1 keys.
     pub(crate) fn fill(&mut self, index_to_fill: usize) {
-        if index_to_fill != 0 && self.children[index_to_fill-1].as_ref().unwrap().n >= self.degree {
+        if index_to_fill != 0 && self.children[index_to_fill - 1].as_ref().unwrap().n >= self.degree
+        {
             // take key from left sibling if exists and has enough keys
             self.borrow_from_prev(index_to_fill);
-        } else if index_to_fill != self.n && self.children[index_to_fill + 1].as_ref().unwrap().n >= self.degree {
+        } else if index_to_fill != self.n
+            && self.children[index_to_fill + 1].as_ref().unwrap().n >= self.degree
+        {
             // take key from right sibling if exists and has enough keys
             self.borrow_from_next(index_to_fill);
         } else {
@@ -274,7 +329,7 @@ impl Node {
     /// node located at the children[index].
     pub(crate) fn borrow_from_prev(&mut self, index: usize) {
         // this is the entry that is going to go to child
-        let childs_entry = self.entries[index-1].take();
+        let childs_entry = self.entries[index - 1].take();
 
         let sibling = self.children[index - 1].as_mut().unwrap();
 
@@ -328,12 +383,12 @@ impl Node {
 
         // move all the entries in sibling 1 step behind
         for i in 1..sibling.n {
-            sibling.entries[i-1] = sibling.entries[i].take();
+            sibling.entries[i - 1] = sibling.entries[i].take();
         }
 
         // move all the children of sibling 1 step behind
         for i in 1..=sibling.n {
-            sibling.children[i-1] = sibling.children[i].take();
+            sibling.children[i - 1] = sibling.children[i].take();
         }
 
         sibling.n -= 1;
@@ -343,7 +398,7 @@ impl Node {
         // insert the entry at first available position
         child.entries[child.n] = childs_entry;
         if !child.is_leaf {
-            child.children[child.n+1] = siblings_first_child;
+            child.children[child.n + 1] = siblings_first_child;
         }
 
         child.n += 1;
@@ -354,14 +409,20 @@ impl Node {
         let sibling = self.children[index + 1].as_mut().unwrap();
         let children_len = sibling.children.len();
         let entries_len = sibling.entries.len();
-        let mut sibling_children = std::mem::replace(&mut sibling.children, vec![None; children_len].into_boxed_slice());
-        let mut sibling_entries = std::mem::replace(&mut sibling.entries, vec![None; entries_len].into_boxed_slice());
+        let mut sibling_children = std::mem::replace(
+            &mut sibling.children,
+            vec![None; children_len].into_boxed_slice(),
+        );
+        let mut sibling_entries = std::mem::replace(
+            &mut sibling.entries,
+            vec![None; entries_len].into_boxed_slice(),
+        );
         let sibling_n = sibling.n;
 
         let child = self.children[index].as_mut().unwrap();
 
         // take the entry from current node and insert it in between current entries and siblings entries
-        child.entries[self.degree-1] = self.entries[index].take();
+        child.entries[self.degree - 1] = self.entries[index].take();
 
         // copy the entries from sibling
         for i in 0..sibling_n {
@@ -379,13 +440,13 @@ impl Node {
         child.n += sibling_n + 1;
 
         // move all the keys 1 step to the left to fill the gap
-        for i in (index+1)..self.n {
-            self.entries[i-1] = self.entries[i].take();
+        for i in (index + 1)..self.n {
+            self.entries[i - 1] = self.entries[i].take();
         }
 
         // move child pointers to the right because node has 1 less child
-        for i in (index+2)..=self.n {
-            self.children[i-1] = self.children[i].take();
+        for i in (index + 2)..=self.n {
+            self.children[i - 1] = self.children[i].take();
         }
 
         //update n of self
@@ -395,7 +456,12 @@ impl Node {
     pub(crate) fn print_node(&self, mut level: usize) {
         println!("Level\t{}\t{}: ", level, self.n);
 
-        for entry in self.entries.iter().take(self.n).filter(|entry| entry.is_some()).map(|entry| entry.as_ref().unwrap()) {
+        for entry in self
+            .entries
+            .iter()
+            .take(self.n)
+            .filter_map(|entry| entry.as_ref())
+        {
             println!("{} ", entry);
         }
 
@@ -404,7 +470,7 @@ impl Node {
         level += 1;
 
         if self.children.len() > 0 {
-            for child in self.children.iter().filter(|entry| entry.is_some()).map(|child| child.as_ref().unwrap()) {
+            for child in self.children.iter().filter_map(|entry| entry.as_ref()) {
                 child.print_node(level);
             }
         }

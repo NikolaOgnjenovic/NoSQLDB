@@ -42,7 +42,8 @@ mod tests {
 
         bloom_filter.add(&[1, 2, 3, 4]);
 
-        let second_bloom_filter = BloomFilter::deserialize(&bloom_filter.serialize()).expect("Failed to deserialize");
+        let second_bloom_filter =
+            BloomFilter::deserialize(&bloom_filter.serialize()).expect("Failed to deserialize");
         assert!(bloom_filter.contains(&[1, 2, 3, 4]));
         assert!(second_bloom_filter.contains(&[1, 2, 3, 4]));
     }
@@ -53,7 +54,8 @@ mod tests {
 
         bloom_filter.add(&[1, 2, 3, 4]);
 
-        let second_bloom_filter = BloomFilter::deserialize(&bloom_filter.serialize()).expect("Failed to deserialize");
+        let second_bloom_filter =
+            BloomFilter::deserialize(&bloom_filter.serialize()).expect("Failed to deserialize");
         assert!(!second_bloom_filter.contains(&[5, 6, 7, 8]));
     }
 }

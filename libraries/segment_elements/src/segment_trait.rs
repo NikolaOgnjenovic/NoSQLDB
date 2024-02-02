@@ -10,10 +10,10 @@ pub trait SegmentTrait {
     fn delete(&mut self, key: &[u8], time_stamp: TimeStamp) -> bool;
     /// Returns the value of some key if it exists.
     fn get(&self, key: &[u8]) -> Option<MemoryEntry>;
-    /// Returns bytes of the structure.
-    fn serialize(&self, use_variable_encoding: bool) -> Box<[u8]>;
     /// Empties all inner elements of structure.
     fn empty(&mut self);
     /// Returns an iterator over the elements of the structure.
     fn iterator(&self) -> Box<dyn Iterator<Item = (Box<[u8]>, MemoryEntry)> + '_>;
+    /// Returns the size in bytes of the object.
+    fn byte_size(&self) -> usize;
 }
