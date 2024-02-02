@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 use std::error::Error;
 use std::fs::{create_dir_all, read_dir, remove_dir_all};
 use std::io;
-use std::io::{BufRead, Cursor, Read};
+use std::io::BufRead;
 use std::path::PathBuf;
 use segment_elements::{MemoryEntry, TimeStamp};
 use compression::CompressionDictionary;
@@ -251,10 +251,9 @@ impl LSM {
     /// An io::Result representing the success of operation
     pub fn insert(&mut self, key: &[u8], value: &[u8], time_stamp: TimeStamp) -> io::Result<()> {
         self.wal.insert(key, value, time_stamp)?;
-        if let Some(memory_table) = self.mem_pool.insert(key, value, time_stamp)? {
+        if let Some(memory_table) = self.mem_pool.insert(key, value, time_stamp) {
             self.flush(memory_table)?;
         }
-
 
         Ok(())
     }
@@ -273,7 +272,7 @@ impl LSM {
     /// An io::Result representing the success of operation
     pub fn delete(&mut self, key: &[u8], time_stamp: TimeStamp) -> io::Result<()> {
         self.wal.delete(key, time_stamp)?;
-        if let Some(memory_table) = self.mem_pool.delete(key, time_stamp)? {
+        if let Some(memory_table) = self.mem_pool.delete(key, time_stamp) {
             self.flush(memory_table)?;
         }
         Ok(())

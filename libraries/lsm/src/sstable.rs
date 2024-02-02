@@ -219,18 +219,19 @@ impl SSTable {
         summary.extend_from_slice(&max_key.len().to_ne_bytes());
         summary.extend_from_slice(max_key);
 
+        let mut offset_accumulator: usize = 0;
         // Add every step-th key and its offset to the summary
-        for i in (0..index_builder.len()).step_by(summary_density * index_density) {
+        for i in (0..index_builder.len()).step_by(index_density) {
             let (key, _) = &index_builder[i];
-            summary.extend_from_slice(&key.len().to_ne_bytes());
-            summary.extend_from_slice(key);
 
-            let offset_in_index = if i == 0 {
-                0
-            } else {
-                (key.len() + 2 * std::mem::size_of::<usize>()) * i / (summary_density * index_density)
-            };
-            summary.extend_from_slice(&offset_in_index.to_ne_bytes());
+            if i % summary_density == 0 {
+                summary.extend_from_slice(&key.len().to_ne_bytes());
+                summary.extend_from_slice(key);
+                let offset_in_index = offset_accumulator;
+                summary.extend_from_slice(&offset_in_index.to_ne_bytes());
+            }
+
+            offset_accumulator += key.len() + 2 * std::mem::size_of::<usize>();
         }
         summary
     }

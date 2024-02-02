@@ -76,7 +76,7 @@ impl DB {
 
     /// Should be called before the program exit to gracefully finish all memory tables writes,
     /// SStable merges and compactions.
-    pub fn shut_down(&mut self) {
+    pub fn shut_down(self) {
         self.lsm.finalize();
     }
 

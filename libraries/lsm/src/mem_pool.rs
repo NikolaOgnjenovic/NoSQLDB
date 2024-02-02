@@ -6,7 +6,6 @@ use db_config::DBConfig;
 use segment_elements::{MemoryEntry, TimeStamp};
 use std::collections::VecDeque;
 use std::error::Error;
-use std::io;
 use std::path::Path;
 
 pub(crate) struct MemoryPool {
@@ -30,12 +29,12 @@ impl MemoryPool {
         key: &[u8],
         value: &[u8],
         time_stamp: TimeStamp,
-    ) -> io::Result<Option<MemoryTable>> {
+    ) -> Option<MemoryTable> {
         if self.read_write_table.insert(key, value, time_stamp) {
             return self.swap();
         }
 
-        Ok(None)
+        None
     }
 
     /// Logically deletes an element in-place, and updates the number of elements if
@@ -44,12 +43,12 @@ impl MemoryPool {
         &mut self,
         key: &[u8],
         time_stamp: TimeStamp,
-    ) -> io::Result<Option<MemoryTable>> {
+    ) -> Option<MemoryTable> {
         if self.read_write_table.delete(key, time_stamp) {
             return self.swap();
         }
 
-        Ok(None)
+        None
     }
 
     /// Tries to retrieve key's data from all memory tables currently loaded in memory.
@@ -74,7 +73,7 @@ impl MemoryPool {
 
     /// Swaps the current read write memory table with a new one. Checks if the number of read only
     /// memory tables exceeds the capacity, and flushes the last one if necessary.
-    fn swap(&mut self) -> io::Result<Option<MemoryTable>> {
+    fn swap(&mut self) -> Option<MemoryTable> {
         // unwrap allowed because any error would have been cleared in the pool creation
         // unchecked unwrap allows faster performance as it doesn't do any runtime checks
         let old_read_write = std::mem::replace(&mut self.read_write_table, unsafe {
@@ -85,10 +84,10 @@ impl MemoryPool {
         if self.read_only_tables.len() == self.config.memory_table_pool_num {
             // unwrap allowed because if condition will never be true when unwrap can panic
             let to_be_flushed = unsafe { self.read_only_tables.pop_back().unwrap_unchecked() };
-            return Ok(Some(to_be_flushed));
+            return Some(to_be_flushed);
         }
 
-        Ok(None)
+        None
     }
 
     pub(crate) fn get_all_tables(&self) -> Vec<&MemoryTable> {
@@ -120,7 +119,7 @@ impl MemoryPool {
                     .read_write_table
                     .delete(&entry.key, TimeStamp::Custom(entry.timestamp))
                 {
-                    if let Some(table) = pool.swap()? {
+                    if let Some(table) = pool.swap() {
                         to_be_flushed.push(table);
                     }
                 }
@@ -130,7 +129,7 @@ impl MemoryPool {
                     &entry.value.unwrap(),
                     TimeStamp::Custom(entry.timestamp),
                 ) {
-                    if let Some(table) = pool.swap()? {
+                    if let Some(table) = pool.swap() {
                         to_be_flushed.push(table);
                     }
                 }

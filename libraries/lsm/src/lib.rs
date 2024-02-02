@@ -8,6 +8,51 @@ mod memtable;
 pub use lsm::LSM;
 
 #[cfg(test)]
+mod mem_pool_tests {
+    use db_config::DBConfig;
+    use segment_elements::TimeStamp;
+    use crate::mem_pool::MemoryPool;
+
+    #[test]
+    fn test_string_input() {
+        let mut db_config = DBConfig::new();
+        db_config.memory_table_capacity = 100;
+        db_config.memory_table_pool_num = 3000;
+
+        let mut mem_pool = MemoryPool::new(&db_config).unwrap();
+
+        let base_key = "test_key";
+        let base_value = "test_value";
+
+        let timestamp_custom = TimeStamp::Custom(123);
+
+        for i in 0..100_000 {
+            let key = format!("{}{}", base_key, i.to_string());
+            let value = format!("{}{}", base_value, i.to_string());
+
+            mem_pool.insert(key.as_bytes(), value.as_bytes(), timestamp_custom);
+        }
+
+        for i in 0..100_000 {
+            let key = format!("{}{}", base_key, i.to_string());
+            let value = format!("{}{}", base_value, i.to_string());
+
+            let get_op = match mem_pool.get(key.as_bytes()) {
+                Some(val) => val.get_value(),
+                None => panic!("Get doesn't work")
+            };
+
+            println!("{i}");
+
+            assert_eq!(
+                value.as_bytes(),
+                &*get_op
+            );
+        }
+    }
+}
+
+#[cfg(test)]
 mod lsm_tests {
     use std::fs::remove_dir_all;
     use std::{fs, io};
