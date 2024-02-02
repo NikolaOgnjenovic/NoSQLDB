@@ -43,6 +43,50 @@ mod tests {
     }
 
     #[test]
+    fn test_insert_and_get_elements_string() {
+        let mut lru = LRUCache::new(1000);
+
+        let base_key = "test_key";
+        let base_value = "test_value";
+
+        for i in 0..500 {
+            let key = format!("{}{}", base_key, i.to_string());
+            let value = format!("{}{}", base_value, i.to_string());
+
+            lru.insert(
+                key.as_bytes(),
+                Some(MemoryEntry::from(
+                    value.as_bytes(),
+                    false,
+                    TimeStamp::Now.get_time(),
+                )),
+            );
+
+            let newest = lru.get(key.as_bytes());
+            if let Some(element) = newest {
+                if let Some(node) = lru.list.peak_head() {
+                    let actual = node.borrow().el.mem_entry.clone();
+                    assert_eq!(actual, element);
+                }
+            }
+        }
+        assert_eq!(500, lru.get_size());
+
+        for i in 250..550{
+            let key = format!("{}{}", base_key, i.to_string());
+            let value = format!("{}{}", base_value, i.to_string());
+
+            let newest = lru.get(key.as_bytes());
+            if let Some(element) = newest {
+                if let Some(node) = lru.list.peak_head() {
+                    let actual = node.borrow().el.mem_entry.clone();
+                    assert_eq!(actual, element);
+                }
+            }
+        }
+    }
+
+    #[test]
     fn test_removing_oldest() {
         for capacity in 450..650 {
             let mut lru = LRUCache::new(capacity);

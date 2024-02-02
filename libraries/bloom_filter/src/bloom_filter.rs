@@ -98,7 +98,7 @@ impl BloomFilter {
         let mut data_len_bytes = [0u8; 8];
         data_len_bytes.copy_from_slice(&input[2..10]);
 
-        let data_len = u64::from_le_bytes(data_len_bytes);
+        let data_len = u64::from_ne_bytes(data_len_bytes);
 
         let mut data_bytes_count = data_len / 8;
         if data_len % 8 != 0 {
