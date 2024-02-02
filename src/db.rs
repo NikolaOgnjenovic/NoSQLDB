@@ -95,9 +95,7 @@ impl DB {
     /// Retrieves the data that is associated to a given key.
     pub fn get(&mut self, key: &[u8], check_reserved_prefixes: bool) -> std::io::Result<Option<Box<[u8]>>> {
         if key == "t0k3n_buck3t/state".as_bytes() {
-            if let Some(memory_entry) = self.lsm.get(key)? {
-                return Ok(Some(memory_entry.get_value()));
-            }
+          return self.lsm.get(key);
         } else {
             match self.token_bucket_take() {
                 Ok(true) => {
@@ -110,25 +108,19 @@ impl DB {
                             }
                         }
                     }
-                    if let Some(memory_entry) = self.lsm.get(key)? {
-                        return Ok(Some(memory_entry.get_value()));
-                    }
+                    return self.lsm.get(key);
                 }
                 _ => { return Err(From::from(TokenBucketError)) }
             }
         }
         Ok(None);
-        // todo sstable get, komplikovano
-        todo!();
     }
 
 
     /// Should be called before the program exit to gracefully finish all memory tables writes,
     /// SStable merges and compactions.
-    pub fn shut_down(&mut self) {
-        //self.lsm.join_concurrent_writes();
-        // todo join sstable LSM merge-ove i kompakcije
-
+    pub fn shut_down(self) {
+        self.lsm.finalize();
     }
 
     /// Gets the value Bloom filter associated with the given key.

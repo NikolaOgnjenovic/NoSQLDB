@@ -1,5 +1,5 @@
 use segment_elements::MemoryEntry;
-use std::sync::{ Arc, Mutex };
+use std::sync::{Arc, Mutex};
 
 pub(crate) type Link = Option<Arc<Mutex<Node>>>;
 
@@ -12,12 +12,17 @@ pub struct Node {
 }
 
 impl Node {
-    pub fn new(key: Option<Box<[u8]>>, value: Option<MemoryEntry>, level: usize, max_level: usize) -> Self {
+    pub fn new(
+        key: Option<Box<[u8]>>,
+        value: Option<MemoryEntry>,
+        level: usize,
+        max_level: usize,
+    ) -> Self {
         Node {
             key,
             value,
             next: vec![None; max_level],
-            level
+            level,
         }
     }
 

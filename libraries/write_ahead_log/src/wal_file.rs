@@ -1,4 +1,4 @@
-use std::fs::{File, OpenOptions, remove_file};
+use std::fs::{remove_file, File, OpenOptions};
 use std::io;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -8,7 +8,7 @@ pub(crate) struct WALFile {
     file: Option<File>,
     file_path: PathBuf,
     pub(crate) current_size: usize,
-    pub(crate) num_entries: usize
+    pub(crate) num_entries: usize,
 }
 
 impl WALFile {
@@ -25,7 +25,25 @@ impl WALFile {
             .create(true)
             .open(&file_path)?;
 
-        Ok(Self { file: Some(file), file_path, current_size: 0, num_entries: 0 })
+        Ok(Self {
+            file: Some(file),
+            file_path,
+            current_size: 0,
+            num_entries: 0,
+        })
+    }
+
+    pub(crate) fn open(file_path: PathBuf) -> io::Result<Self> {
+        let file = OpenOptions::new()
+            .append(true)
+            .open(&file_path)?;
+
+        Ok(Self {
+            file: Some(file),
+            file_path,
+            current_size: 0,
+            num_entries: 0,
+        })
     }
 
     pub(crate) fn write_bytes(&mut self, bytes: &[u8]) -> io::Result<bool> {

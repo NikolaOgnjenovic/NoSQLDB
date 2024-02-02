@@ -15,73 +15,6 @@ use crate::lsm::ScanType;
 use crate::memtable::MemoryTable;
 use crate::sstable::sstable_element_type::SSTableElementType;
 
-///Struct made to keep track of how many bytes got flushed for wal segment deletion
-pub(crate) struct FlushByteSizes {
-    index_bytes_len: usize,
-    index_summary_bytes_len: usize,
-    merkle_bytes_len: usize,
-    bloom_filter_bytes_len: usize,
-    data_len: usize,
-}
-
-impl FlushByteSizes {
-    fn new(
-        index_bytes_len: usize,
-        index_summary_bytes_len: usize,
-        merkle_bytes_len: usize,
-        bloom_filter_bytes_len: usize,
-        data_len: usize,
-    ) -> Self {
-        FlushByteSizes {
-            index_bytes_len,
-            index_summary_bytes_len,
-            merkle_bytes_len,
-            bloom_filter_bytes_len,
-            data_len,
-        }
-    }
-
-    pub(crate) fn get_index_bytes_len(&self) -> usize {
-        self.index_bytes_len
-    }
-
-    pub(crate) fn get_index_summary_bytes_len(&self) -> usize {
-        self.index_summary_bytes_len
-    }
-
-    pub(crate) fn get_merkle_bytes_len(&self) -> usize {
-        self.merkle_bytes_len
-    }
-
-    pub(crate) fn get_bloom_filter_bytes_len(&self) -> usize {
-        self.bloom_filter_bytes_len
-    }
-
-    pub(crate) fn get_data_len(&self) -> usize {
-        self.data_len
-    }
-
-    fn set_index_bytes_len(&mut self, index_bytes_len: usize) {
-        self.index_bytes_len = index_bytes_len;
-    }
-
-    fn set_index_summary_bytes_len(&mut self, index_summary_bytes_len: usize) {
-        self.index_summary_bytes_len = index_summary_bytes_len;
-    }
-
-    fn set_merkle_bytes_len(&mut self, merkle_bytes_len: usize) {
-        self.merkle_bytes_len = merkle_bytes_len;
-    }
-
-    fn set_bloom_filter_bytes_len(&mut self, bloom_filter_bytes_len: usize) {
-        self.bloom_filter_bytes_len = bloom_filter_bytes_len;
-    }
-
-    fn set_data_len(&mut self, data_len: usize) {
-        self.data_len = data_len;
-    }
-}
-
 /// Struct representing an SSTable (Sorted String Table) for storing key-value pairs on disk.
 pub struct SSTable {
     // Base directory path where the SSTable files will be stored.
@@ -148,7 +81,7 @@ impl SSTable {
     /// # Errors
     ///
     /// Returns an `io::Error` if there is an issue flushing the data or serializing components.
-    pub(crate) fn flush(&mut self, mem_table: MemoryTable, summary_density: usize, index_density: usize, lru_cache: Option<&mut LRUCache>, compression_dictionary: &mut Option<CompressionDictionary>, use_variable_encoding: bool) -> io::Result<FlushByteSizes> {
+    pub(crate) fn flush(&mut self, mem_table: MemoryTable, summary_density: usize, index_density: usize, lru_cache: Option<&mut LRUCache>, compression_dictionary: &mut Option<CompressionDictionary>, use_variable_encoding: bool) -> io::Result<()> {
         self.flush_to_disk(mem_table.iterator().collect(), summary_density, index_density, lru_cache, compression_dictionary, use_variable_encoding)
     }
 
@@ -167,7 +100,7 @@ impl SSTable {
     /// # Errors
     ///
     /// Returns an `io::Error` if there is an issue flushing the data or serializing components.
-    fn flush_to_disk(&mut self, sstable_data: Vec<(Box<[u8]>, MemoryEntry)>, summary_density: usize, index_density: usize, lru_cache: Option<&mut LRUCache>, compression_dictionary: &mut Option<CompressionDictionary>, use_variable_encoding: bool) -> io::Result<FlushByteSizes> {
+    fn flush_to_disk(&mut self, sstable_data: Vec<(Box<[u8]>, MemoryEntry)>, summary_density: usize, index_density: usize, lru_cache: Option<&mut LRUCache>, compression_dictionary: &mut Option<CompressionDictionary>, use_variable_encoding: bool) -> io::Result<()> {
         // Build serialized data, index_builder, and bloom_filter
         let (serialized_data, index_builder, bloom_filter) = self.build_data_and_index_and_filter(sstable_data, lru_cache, compression_dictionary, use_variable_encoding);
 
@@ -176,9 +109,6 @@ impl SSTable {
         let serialized_index_summary = self.get_serialized_summary(&index_builder, index_density, summary_density);
         let serialized_bloom_filter = bloom_filter.serialize();
         let serialized_merkle_tree = MerkleTree::new(&serialized_data).serialize();
-
-        let flush_size = FlushByteSizes::new(serialized_index.len(), serialized_index_summary.len(),
-                                             serialized_merkle_tree.len(), serialized_bloom_filter.len(), serialized_data.len());
 
         if self.in_single_file {
             self.write_to_single_file(&serialized_data, &serialized_index, &serialized_index_summary, &serialized_bloom_filter, &serialized_merkle_tree)?;
@@ -190,7 +120,7 @@ impl SSTable {
             self.write_to_file(&serialized_merkle_tree, "SSTable-MerkleTree.db")?;
         }
 
-        Ok(flush_size)
+        Ok(())
     }
 
     /// Builds the SSTable data, index builder, and Bloom Filter.
@@ -289,18 +219,19 @@ impl SSTable {
         summary.extend_from_slice(&max_key.len().to_ne_bytes());
         summary.extend_from_slice(max_key);
 
+        let mut offset_accumulator: usize = 0;
         // Add every step-th key and its offset to the summary
-        for i in (0..index_builder.len()).step_by(summary_density * index_density) {
+        for i in (0..index_builder.len()).step_by(index_density) {
             let (key, _) = &index_builder[i];
-            summary.extend_from_slice(&key.len().to_ne_bytes());
-            summary.extend_from_slice(key);
 
-            let offset_in_index = if i == 0 {
-                0
-            } else {
-                (key.len() + 2 * std::mem::size_of::<usize>()) * i / (summary_density * index_density)
-            };
-            summary.extend_from_slice(&offset_in_index.to_ne_bytes());
+            if i % summary_density == 0 {
+                summary.extend_from_slice(&key.len().to_ne_bytes());
+                summary.extend_from_slice(key);
+                let offset_in_index = offset_accumulator;
+                summary.extend_from_slice(&offset_in_index.to_ne_bytes());
+            }
+
+            offset_accumulator += key.len() + 2 * std::mem::size_of::<usize>();
         }
         summary
     }
@@ -776,6 +707,9 @@ impl SSTable {
             let mut traversed_entries: usize = 0;
             while traversed_entries <= index_density {
                 let buffer = self.get_cursor_data(self.in_single_file, "SSTable-Data.db", SSTableElementType::DataEntryWithoutValue, Some(offset + traversed_offset), use_variable_encoding).ok()?.into_inner();
+                if buffer.len() == 0 {
+                    return None;
+                }
                 let (entry_length, mut buffer_offset) = deserialize_usize_value(&buffer, false);
                 (crc, timestamp, tombstone, key_len, offset_to_key_len, length, _) = deserialize_header(&buffer[buffer_offset..], false);
                 buffer_offset += length;

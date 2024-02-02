@@ -1,18 +1,18 @@
-mod segment_trait;
-mod memory_entry;
-mod timestamp;
+pub mod crc_error;
 mod hashmap_impl;
 mod hashmap_iterator;
-pub mod crc_error;
+mod memory_entry;
+mod segment_trait;
+mod timestamp;
 
-pub use segment_trait::SegmentTrait;
+pub use hashmap_impl::MemEntryHashMap;
 pub use memory_entry::MemoryEntry;
 pub use memory_entry::{deserialize_header, deserialize_usize_value};
+pub use segment_trait::SegmentTrait;
 pub use timestamp::TimeStamp;
-pub use hashmap_impl::MemEntryHashMap;
 
 #[cfg(test)]
-mod tests {
+mod memory_entry_tests {
     use super::*;
 
     #[test]
@@ -23,10 +23,14 @@ mod tests {
 
     fn test_serialization_variable_encoding(use_variable_encoding: bool) {
         let entry = MemoryEntry::from(&[1], false, TimeStamp::Now.get_time());
-        let (key, new_entry) = match MemoryEntry::deserialize(&entry.serialize(&[1], use_variable_encoding), use_variable_encoding) {
+        let (key, new_entry) = match MemoryEntry::deserialize(
+            &entry.serialize(&[1], use_variable_encoding),
+            use_variable_encoding,
+        ) {
             Ok(value) => value,
-            Err(_e) => return
+            Err(_e) => return,
         };
+
         assert_eq!(&[1], key.as_ref());
         assert_eq!(entry.get_value(), new_entry.get_value());
         assert_eq!(entry.get_timestamp(), new_entry.get_timestamp());
@@ -41,10 +45,14 @@ mod tests {
 
     fn test_serialization_deleted_variable_encoding(use_variable_encoding: bool) {
         let entry = MemoryEntry::from(&[1], true, TimeStamp::Now.get_time());
-        let (key, new_entry) = match MemoryEntry::deserialize(&entry.serialize(&[1], use_variable_encoding), use_variable_encoding) {
+        let (key, new_entry) = match MemoryEntry::deserialize(
+            &entry.serialize(&[1], use_variable_encoding),
+            use_variable_encoding,
+        ) {
             Ok(value) => value,
-            Err(_e) => return
+            Err(_e) => return,
         };
+
         assert_eq!(&[1], key.as_ref());
         assert_eq!(&[] as &[u8], new_entry.get_value().as_ref());
         assert_eq!(entry.get_timestamp(), new_entry.get_timestamp());
@@ -59,10 +67,14 @@ mod tests {
 
     fn test_serialization_deleted_empty_variable_encoding(use_variable_encoding: bool) {
         let entry = MemoryEntry::from(&[], true, TimeStamp::Now.get_time());
-        let (key, new_entry) = match MemoryEntry::deserialize(&entry.serialize(&[1], use_variable_encoding), use_variable_encoding) {
+        let (key, new_entry) = match MemoryEntry::deserialize(
+            &entry.serialize(&[1], use_variable_encoding),
+            use_variable_encoding,
+        ) {
             Ok(value) => value,
-            Err(_e) => return
+            Err(_e) => return,
         };
+
         assert_eq!(&[1], key.as_ref());
         assert_eq!(entry.get_value(), new_entry.get_value());
         assert_eq!(entry.get_timestamp(), new_entry.get_timestamp());
@@ -82,8 +94,10 @@ mod tests_hashmap_impl {
         let timestamp = TimeStamp::Now;
 
         assert!(map.insert(&key, &value, timestamp));
-
-        assert_eq!(map.get(&key).unwrap().get_value(), value.to_vec().into_boxed_slice());
+        assert_eq!(
+            map.get(&key).unwrap().get_value(),
+            value.to_vec().into_boxed_slice()
+        );
     }
 
     #[test]
@@ -93,9 +107,7 @@ mod tests_hashmap_impl {
         let timestamp = TimeStamp::Now;
 
         assert!(map.insert(&key, &[4, 5, 6], timestamp));
-
         assert!(!map.delete(&key, timestamp));
-
         assert_eq!(map.get(&key).unwrap().get_value(), Box::from(&[] as &[u8]));
     }
 
@@ -119,4 +131,3 @@ mod tests_hashmap_impl {
         assert_eq!(iter.next(), None);
     }
 }
-

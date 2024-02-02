@@ -1,7 +1,6 @@
-use std::rc::Rc;
+use crate::dll_node::{Entry, Node};
 use std::cell::RefCell;
-use crate::dll_iterator::DLLIterator;
-use crate::dll_node::{ Entry, Node };
+use std::rc::Rc;
 
 #[derive(Debug)]
 pub(crate) struct DoublyLinkedList {
@@ -18,19 +17,7 @@ impl DoublyLinkedList {
     }
 
     fn is_empty(&self) -> bool {
-        self.tail == None
-    }
-
-    fn push_tail(&mut self, el: Entry) {
-        let node = Rc::new(RefCell::new(Node::new(el)));
-        if let Some(prev_tail) = self.tail.take() {
-            prev_tail.borrow_mut().prev = Some(Rc::clone(&node));
-            node.borrow_mut().next = Some(prev_tail);
-            self.tail = Some(node);
-        } else {
-            self.head = Some(Rc::clone(&node));
-            self.tail = Some(node);
-        }
+        self.tail.is_none()
     }
 
     pub(crate) fn push_head(&mut self, el: Entry) {
@@ -56,7 +43,7 @@ impl DoublyLinkedList {
                 self.head = None;
                 return Some(prev_tail);
             } else {
-                let new_last= prev_tail.as_ref().borrow().next.clone().unwrap();
+                let new_last = prev_tail.as_ref().borrow().next.clone().unwrap();
                 Rc::clone(&new_last).borrow_mut().prev = None;
                 self.tail = Some(Rc::clone(&new_last));
                 return Some(prev_tail);
@@ -81,7 +68,7 @@ impl DoublyLinkedList {
                 Rc::clone(&new_first).borrow_mut().next = None;
                 self.head = Some(Rc::clone(&new_first));
                 Some(prev_head)
-            }
+            };
         }
 
         None
@@ -99,17 +86,9 @@ impl DoublyLinkedList {
         if !self.is_empty() {
             return self.tail.clone();
         }
-
         None
     }
-
-    pub fn iter(&self) -> DLLIterator {
-        let current = &self.tail;
-        let iterator = DLLIterator::new(current.clone());
-        iterator
-    }
 }
-
 
 impl Drop for DoublyLinkedList {
     fn drop(&mut self) {

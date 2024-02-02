@@ -1,9 +1,9 @@
-use segment_elements::{MemoryEntry, TimeStamp};
-use crate::dll_node::{ Entry, Node };
+use crate::dll_node::{Entry, Node};
 use crate::doubly_linked_list::DoublyLinkedList;
+use segment_elements::{MemoryEntry, TimeStamp};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::cell::RefCell;
 
 pub struct LRUCache {
     pub(crate) list: DoublyLinkedList,
@@ -85,7 +85,12 @@ impl LRUCache {
 fn get_entry(key: &[u8], memory_entry: &Option<MemoryEntry>) -> Entry {
     if memory_entry.is_some() {
         let memory_entry = memory_entry.as_ref().unwrap();
-        Entry::from(key, memory_entry.get_value().as_ref(), memory_entry.get_tombstone(), TimeStamp::Custom(memory_entry.get_timestamp()))
+        Entry::from(
+            key,
+            memory_entry.get_value().as_ref(),
+            memory_entry.get_tombstone(),
+            TimeStamp::Custom(memory_entry.get_timestamp()),
+        )
     } else {
         Entry::from(key, &[], true, TimeStamp::Now)
     }
