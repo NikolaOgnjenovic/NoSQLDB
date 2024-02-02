@@ -72,7 +72,7 @@ pub fn db_menu(dbconfig: &mut DBConfig) {
                 }
                 let key = &key.unwrap();
 
-                match db.get(key, true).ok() {
+                match db.get(key).ok() {
                     Some(value) => println!("Value found: {:?}", value),
                     None => println!("Value not found for the given key."),
                 }

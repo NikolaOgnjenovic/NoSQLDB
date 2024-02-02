@@ -93,9 +93,13 @@ impl DB {
     }
 
     /// Retrieves the data that is associated to a given key.
-    pub fn get(&mut self, key: &[u8], check_reserved_prefixes: bool) -> std::io::Result<Option<Box<[u8]>>> {
+    pub fn get(&mut self, key: &[u8]) -> Result<Option<Box<[u8]>>, Box<dyn Error>> {
+        self.system_get(key, true)
+    }
+
+    fn system_get(&mut self, key: &[u8], check_reserved_prefixes: bool) -> Result<Option<Box<[u8]>>, Box<dyn Error>> {
         if key == "t0k3n_buck3t/state".as_bytes() {
-          return self.lsm.get(key);
+            self.lsm.get(key).map_err(|err| From::from(err))
         } else {
             match self.token_bucket_take() {
                 Ok(true) => {
@@ -108,12 +112,11 @@ impl DB {
                             }
                         }
                     }
-                    return self.lsm.get(key);
+                    self.lsm.get(key).map_err(|err| From::from(err))
                 }
-                _ => { return Err(From::from(TokenBucketError)) }
+                _ => { Err(From::from(TokenBucketError)) }
             }
         }
-        Ok(None);
     }
 
 
@@ -330,7 +333,7 @@ impl DB {
     fn reserved_get(&mut self, key: &[u8], index: usize) -> std::io::Result<Option<Box<[u8]>>> {
         let combined_key = self.get_combined_key(key, index);
 
-        if let Some(value) = self.get(&combined_key, false)? {
+        if let Some(value) = self.system_get(&combined_key, false)? {
             return Ok(Some(value));
         }
 
@@ -365,7 +368,7 @@ impl DB {
     /// Result containing the serialized bytes of the probabilistic data structure or an error
     /// wrapped in a `Box<dyn Error>`.
     fn get_probabilistic_ds_bytes(&mut self, combined_key: &[u8]) -> Result<Box<[u8]>, Box<dyn Error>> {
-        match self.get(combined_key, false)? {
+        match self.system_get(combined_key, false)? {
             Some(bytes) => Ok(bytes),
             None => {
                 Err(Box::new(ProbabilisticTypeError {
@@ -385,7 +388,7 @@ impl DB {
     /// A result indicating whether tokens were successfully taken (`Ok(true)`)
     /// or if an error occurred (`Err`).
     pub fn token_bucket_take(&mut self) -> Result<bool, Box<dyn Error>> {
-        let token_bucket_state = match self.get("t0k3n_buck3t/state".as_bytes(), false)? {
+        let token_bucket_state = match self.system_get("t0k3n_buck3t/state".as_bytes(), false)? {
             Some(bytes) => TokenBucket::deserialize(&bytes),
             None => TokenBucket::default(), // temporary
         };

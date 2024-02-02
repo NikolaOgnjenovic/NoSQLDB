@@ -301,7 +301,7 @@ impl LSM {
         let mut sstable = SSTable::open(sstable_base_path.to_owned(), in_single_file)?;
         sstable.flush(mem_table, summary_density, index_density, Some(&mut self.lru_cache), &mut self.compression_dictionary, use_variable_encoding)?;
 
-        self.wal.remove_logs_until(memtable_wal_bytes_len).unwrap();
+        self.wal.remove_logs_until(memtable_wal_bytes_len)?;
 
         self.sstable_directory_names[0].push(PathBuf::from(directory_name));
         if self.config.compaction_enabled && self.sstable_directory_names[0].len() > self.config.max_per_level {
@@ -576,21 +576,19 @@ impl LSM {
         scanned_entries
     }
 
-    pub fn load_from_dir(dbconfig: &DBConfig) -> Result<Self, Box<dyn Error>>{
-        let lru_cache = LRUCache::new(dbconfig.cache_max_size);
-        let mem_pool = MemoryPool::load_from_dir(dbconfig)?; // todo luka nez sta god
-        let wal = WriteAheadLog::new(dbconfig)?;
-        Ok(LSM {
-            config: LSMConfig::from(dbconfig),
-            wal,
-            mem_pool,
-            lru_cache,
-            compression_dictionary: match dbconfig.use_compression {
-                true => Some(CompressionDictionary::load(dbconfig.compression_dictionary_path.as_str()).unwrap()),
-                false => None
-            },
-            sstable_directory_names: Vec::with_capacity(dbconfig.lsm_max_level)
-        })
+    pub fn load_from_dir(dbconfig: &DBConfig) -> Result<Self, Box<dyn Error>> {
+        let (mem_pool, tables_to_be_flushed) =
+            MemoryPool::load_from_dir(dbconfig)?;
+
+        let mut new_lsm = LSM::new(&dbconfig)?;
+        new_lsm.mem_pool = mem_pool;
+        new_lsm.wal = WriteAheadLog::from_dir(&dbconfig)?;
+
+        for table in tables_to_be_flushed {
+            new_lsm.flush(table)?;
+        }
+
+        Ok(new_lsm)
     }
 
     pub(crate) fn iter(&self, min_key: Option<&[u8]>, max_key: Option<&[u8]>, prefix: Option<&[u8]>, scan_type: ScanType) -> io::Result<LSMIterator> {
@@ -671,7 +669,7 @@ impl LSM {
             data_offsets
         };
 
-        let (mut sstables, data_offsets): (Vec<_>, Vec<_>) = if let Some(prefix) = prefix {
+        let (mut sstables, data_offsets): (Vec<_>, Vec<_>) = if let Some(_) = prefix {
             let (mut sstables, data_offsets) = sstables
                 .into_iter()
                 .zip(data_offsets)
@@ -700,6 +698,20 @@ impl LSM {
 
         Ok(LSMIterator::new(merged_memory_entries, memory_offset, sstables, updates_offsets, scan_type, self.config.use_variable_encoding, upper_bound))
     }
+
+    pub fn finalize(self) {
+        self.wal.close();
+        // when adding concurrent sstable flushes, join all threads here
+    }
+}
+
+fn extract_prefix(slice: &[u8]) -> &[u8] {
+    for (i, &value) in slice.iter().enumerate().rev() {
+        if value != 0 {
+            return &slice[..=i];
+        }
+    }
+    &[0]
 }
 
 pub struct LSMIterator {
@@ -804,32 +816,3 @@ impl Iterator for LSMIterator {
         Some(return_entry)
     }
 }
-
-pub fn load_from_dir(dbconfig: &DBConfig) -> Result<Self, Box<dyn Error>> {
-        let (mem_pool, tables_to_be_flushed) =
-            MemoryPool::load_from_dir(dbconfig)?;
-
-        let mut new_lsm = LSM::new(&dbconfig)?;
-        new_lsm.mem_pool = mem_pool;
-        new_lsm.wal = WriteAheadLog::from_dir(&dbconfig)?;
-
-        for table in tables_to_be_flushed {
-            new_lsm.flush(table)?;
-        }
-
-        Ok(new_lsm)
-    }
-
-    pub fn finalize(self) {
-        self.wal.close();
-        // when adding concurrent sstable flushes, join all threads here
-    }
-
-  fn extract_prefix(slice: &[u8]) -> &[u8] {
-      for (i, &value) in slice.iter().enumerate().rev() {
-        if value != 0 {
-            return &slice[..=i];
-        }
-    }
-    &[0]
-  }
