@@ -806,7 +806,7 @@ impl SSTable {
         }
 
         // Deserialize the last read memory entry bytes
-        let data_entry_value = self.get_cursor_data(self.in_single_file, "SSTable-Data.db", SSTableElementType::DataEntryValue, Some(offset + traversed_offset + offset_to_key_len as u64), use_variable_encoding).ok()?.into_inner();
+        let data_entry_value = if tombstone { Vec::new() } else { self.get_cursor_data(self.in_single_file, "SSTable-Data.db", SSTableElementType::DataEntryValue, Some(offset + traversed_offset + offset_to_key_len as u64), use_variable_encoding).ok()?.into_inner() };
 
         let mut data_entry_bytes = Vec::new();
 
@@ -832,7 +832,10 @@ impl SSTable {
         }
 
         data_entry_bytes.extend(unwrapped_key);
-        data_entry_bytes.extend(data_entry_value);
+
+        if !tombstone {
+            data_entry_bytes.extend(data_entry_value);
+        }
 
         match MemoryEntry::deserialize(&data_entry_bytes, use_variable_encoding) {
             Ok(entry) => Some((entry, data_entry_bytes.len() as u64)),

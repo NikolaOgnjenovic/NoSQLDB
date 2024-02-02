@@ -69,12 +69,18 @@ mod lsm_tests {
             //lsm.insert(&i.to_ne_bytes(), &i.to_ne_bytes(), TimeStamp::Now)?;
         }
 
-        // ///Range
-        let mut lsm_iter = lsm.iter(Some(&80usize.to_ne_bytes()), Some(&160usize.to_ne_bytes()), None, ScanType::RangeScan)?;
-        while let Some(entry) = lsm_iter.next() {
-            println!("{:?}", entry.0);
-            println!("{:?}", entry.1);
+        let mut num = 0;
+        ///Range
+        let mut lsm_iter = lsm.iter(Some(&0usize.to_ne_bytes()), Some(&10usize.to_ne_bytes()), None, ScanType::RangeScan)?;
+        while let Some(inner) = lsm_iter.next() {
+            if let Some((entry)) = inner {
+                println!("{:?}", entry.0);
+                println!("{:?}", entry.1);
+                num += 1;
+            }
         }
+
+        //assert_eq!(80, num);
 
         println!();
         println!();
@@ -82,11 +88,12 @@ mod lsm_tests {
 
         ///Prefix
         // let mut lsm_iter = lsm.iter(None, None, Some(&80usize.to_ne_bytes()), ScanType::PrefixScan)?;
-        // while let Some(entry) = lsm_iter.next() {
-        //     println!("{:?}", entry.0);
-        //     println!("{:?}", entry.1);
+        // while let Some(inner) = lsm_iter.next() {
+        //     if let Some((entry)) = inner {
+        //         println!("{:?}", entry.0);
+        //         println!("{:?}", entry.1);
+        //     }
         // }
-        println!("{:?}", lsm.get(&[80,9,0,0,0,0,0,0]));
 
         Ok(())
     }

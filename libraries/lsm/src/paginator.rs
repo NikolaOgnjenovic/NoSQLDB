@@ -58,16 +58,19 @@ impl<'a> Paginator<'a> {
             .iter(start_key, end_key, prefix, scan_type)
             .expect("Failed to get LSM iterator");
 
-        while let Some((key, memory_entry)) = iter.next() {
-            if entries_traversed >= (page_number + 1) * page_size {
-                break;
-            }
+        while let Some(inner) = iter.next() {
+            if let Some((key, memory_entry)) = inner {
+                if entries_traversed >= (page_number + 1) * page_size {
+                    break;
+                }
 
-            if entries_traversed >= page_number * page_size {
-                result.push((key, memory_entry));
+                if entries_traversed >= page_number * page_size {
+                    result.push((key, memory_entry));
+                }
+                entries_traversed += 1;
+            } else {
+                continue
             }
-
-            entries_traversed += 1;
         }
 
         Ok(result)
