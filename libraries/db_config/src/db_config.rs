@@ -45,6 +45,8 @@ impl fmt::Display for CompactionAlgorithmType {
 pub struct DBConfig {
     pub bloom_filter_probability: f64,
     pub bloom_filter_cap: usize,
+    pub count_min_sketch_probability: f64,
+    pub count_min_sketch_tolerance: f64,
     pub skip_list_max_level: usize,
     pub hyperloglog_precision: u32,
     pub write_ahead_log_dir: String,
@@ -77,6 +79,8 @@ impl Default for DBConfig {
         DBConfig {
             bloom_filter_probability: 0.1,
             bloom_filter_cap: 1_000_000,
+            count_min_sketch_probability: 0.001,
+            count_min_sketch_tolerance: 0.99999,
             skip_list_max_level: 10,
             hyperloglog_precision: 10,
             write_ahead_log_dir: "./wal/".to_string(),

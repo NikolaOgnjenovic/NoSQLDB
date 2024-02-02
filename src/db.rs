@@ -134,6 +134,34 @@ impl DB {
         self.lsm.finalize();
     }
 
+    /// Creates or retrieves a Bloom filter for the specified key, then returns its serialized representation.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The key to identify the probabilistic structure.
+    /// * `probability` - Optional probability parameter for creating a new Bloom filter.
+    ///           If `None`, it will be loaded from the database configuration.
+    /// * `cap` - Optional capacity parameter for creating a new Bloom filter.
+    ///           If `None`, it will be loaded from the database configuration.
+    ///
+    /// # Returns
+    ///
+    /// A Result containing the serialized representation of the Bloom filter or an error if the operation fails.
+    ///
+    /// # Errors
+    ///
+    /// Returns a Boxed Error if there is an issue creating or serializing the Bloom filter.
+    pub fn bloom_filter_create(&mut self, key: &[u8], probability: Option<f64>, cap: Option<usize>) -> Result<Box<[u8]>, Box<dyn Error>> {
+        let probability = probability.unwrap_or(self.config.bloom_filter_probability);
+        let cap = cap.unwrap_or(self.config.bloom_filter_cap);
+        let bloom_filter = BloomFilter::new(probability, cap);
+
+        let combined_key = self.get_combined_key(key, 0);
+        self.system_insert(&combined_key, bloom_filter.serialize().as_ref(), false)?;
+
+        self.get_probabilistic_ds_bytes(&combined_key)
+    }
+
     /// Gets the value Bloom filter associated with the given key.
     ///
     /// # Arguments
@@ -200,6 +228,34 @@ impl DB {
         }
     }
 
+    /// Creates or retrieves a count-min sketch for the specified key, then returns its serialized representation.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The key to identify the probabilistic structure.
+    /// * `probability` - Optional probability parameter for creating a new count-min sketch.
+    ///           If `None`, it will be loaded from the database configuration.
+    /// * `tolerance` - Optional tolerance parameter for creating a new count-min sketch.
+    ///           If `None`, it will be loaded from the database configuration.
+    ///
+    /// # Returns
+    ///
+    /// A Result containing the serialized representation of the count-min sketch or an error if the operation fails.
+    ///
+    /// # Errors
+    ///
+    /// Returns a Boxed Error if there is an issue creating or serializing the count-min sketch.
+    pub fn count_min_sketch_create(&mut self, key: &[u8], probability: Option<f64>, tolerance: Option<f64>) -> Result<Box<[u8]>, Box<dyn Error>> {
+        let probability = probability.unwrap_or(self.config.count_min_sketch_probability);
+        let tolerance = tolerance.unwrap_or(self.config.count_min_sketch_tolerance);
+        let count_min_sketch = CMSketch::new(probability, tolerance);
+
+        let combined_key = self.get_combined_key(key, 1);
+        self.system_insert(&combined_key, count_min_sketch.serialize().as_ref(), false)?;
+
+        self.get_probabilistic_ds_bytes(&combined_key)
+    }
+
     /// Gets the Count-Min Sketch associated with the given key.
     ///
     /// # Arguments
@@ -257,6 +313,30 @@ impl DB {
         }
     }
 
+    /// Creates or retrieves a hyperloglog for the specified key, then returns its serialized representation.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The key to identify the probabilistic structure.
+    /// * `precision` - Optional precision parameter for creating a new hyperloglog.
+    ///           If `None`, it will be loaded from the database configuration.
+    ///
+    /// # Returns
+    ///
+    /// A Result containing the serialized representation of the hyperloglog or an error if the operation fails.
+    ///
+    /// # Errors
+    ///
+    /// Returns a Boxed Error if there is an issue creating or serializing the hyperloglog.
+    pub fn hyperloglog_create(&mut self, key: &[u8], precision: Option<u32>) -> Result<Box<[u8]>, Box<dyn Error>> {
+        let precision = precision.unwrap_or(self.config.hyperloglog_precision);
+        let hyperloglog = HLL::new(precision);
+
+        let combined_key = self.get_combined_key(key, 2);
+        self.system_insert(&combined_key, hyperloglog.serialize().as_ref(), false)?;
+
+        self.get_probabilistic_ds_bytes(&combined_key)
+    }
 
     /// Gets the value associated with the given key in the HyperLogLog.
     ///
