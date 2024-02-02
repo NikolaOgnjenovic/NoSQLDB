@@ -139,7 +139,7 @@ impl<'a> Paginator<'a> {
     ///
     /// An optional tuple containing the key and memory entry of the next entry, or `None` if no more entries are available.
     pub fn range_iterate_next(
-        &'a mut self,
+        &mut self,
         min_key: &[u8],
         max_key: &[u8],
     ) -> std::io::Result<Option<(Box<[u8]>, MemoryEntry)>> {
@@ -156,7 +156,7 @@ impl<'a> Paginator<'a> {
     ///
     /// An optional tuple containing the key and memory entry of the next entry, or `None` if no more entries are available.
     fn iterate_next_impl<F>(
-        &'a mut self,
+        &mut self,
         scan_fn: F,
     ) -> std::io::Result<Option<(Box<[u8]>, MemoryEntry)>>
         where
