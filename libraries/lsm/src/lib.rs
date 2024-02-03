@@ -3,6 +3,7 @@ mod mem_pool;
 mod sstable;
 mod memtable;
 mod paginator;
+
 pub use lsm::LSM;
 
 #[cfg(test)]
@@ -75,7 +76,7 @@ mod lsm_tests {
                 dir.map(|dir_entry| dir_entry.unwrap().path())
                     .filter(|dir| dir.file_name().unwrap() != ".keep")
                     .for_each(|dir| remove_dir_all(dir).unwrap_or(()))
-            },
+            }
             Err(_) => ()
         }
     }
@@ -345,7 +346,7 @@ mod paginator_tests {
         }
     }
 }
-      
+
 mod lsm_wal_tests {
     use std::fs;
     use std::fs::{read_dir, remove_dir_all, remove_file};
@@ -370,7 +371,7 @@ mod lsm_wal_tests {
                 dir.map(|dir_entry| dir_entry.unwrap().path())
                     .filter(|dir| dir.file_name().unwrap() != ".keep")
                     .for_each(|dir| remove_dir_all(dir).unwrap_or(()))
-            },
+            }
             Err(_) => ()
         }
     }
@@ -401,7 +402,7 @@ mod lsm_wal_tests {
             assert_eq!(load_lsm.get(&i.to_ne_bytes()).unwrap(), Some(Box::from((i * 2).to_ne_bytes())));
         }
     }
-  
+
     fn test_wal_size_cap() {
         let mut config = DBConfig::default();
         config.sstable_dir = "sstable_wal_test/".to_string();
@@ -414,7 +415,7 @@ mod lsm_wal_tests {
 
         prepare_dirs(&config);
 
-         let mut lsm = LSM::new(&config).unwrap();
+        let mut lsm = LSM::new(&config).unwrap();
 
         for i in 0..5u128 {
             lsm.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now).expect("IO error");
@@ -447,7 +448,7 @@ mod lsm_wal_tests {
 
         prepare_dirs(&config);
 
-         let mut lsm = LSM::new(&config).unwrap();
+        let mut lsm = LSM::new(&config).unwrap();
 
         for i in 0..100u128 {
             lsm.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now).expect("IO error");
@@ -480,7 +481,7 @@ mod lsm_wal_tests {
 
         prepare_dirs(&config);
 
-         let mut lsm = LSM::new(&config).unwrap();
+        let mut lsm = LSM::new(&config).unwrap();
 
         for i in 0..10u128 {
             lsm.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now).expect("IO error");
@@ -514,7 +515,7 @@ mod lsm_wal_tests {
 
         prepare_dirs(&config);
 
-         let mut lsm = LSM::new(&config).unwrap();
+        let mut lsm = LSM::new(&config).unwrap();
 
         for i in 0..10u128 {
             lsm.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now).expect("IO error");
@@ -548,7 +549,7 @@ mod lsm_wal_tests {
 
         prepare_dirs(&config);
 
-         let mut lsm = LSM::new(&config).unwrap();
+        let mut lsm = LSM::new(&config).unwrap();
 
         for i in 0..300000u128 {
             lsm.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now).expect("IO error");
@@ -581,10 +582,10 @@ mod lsm_wal_tests {
         }
 
         assert!(read_dir(&config.write_ahead_log_dir).unwrap()
-                       .map(|dir_entry| dir_entry.unwrap().path())
-                       .filter(|file| file.file_name().unwrap() != ".keep")
-                       .filter(|file| file.extension().unwrap() == "log")
-                       .count() < 25);
+            .map(|dir_entry| dir_entry.unwrap().path())
+            .filter(|file| file.file_name().unwrap() != ".keep")
+            .filter(|file| file.extension().unwrap() == "log")
+            .count() < 25);
     }
 
     #[test]
@@ -600,7 +601,7 @@ mod lsm_wal_tests {
 
         prepare_dirs(&config);
 
-         let mut lsm = LSM::new(&config).unwrap();
+        let mut lsm = LSM::new(&config).unwrap();
 
         let big_data = "老";
 
@@ -630,7 +631,7 @@ mod lsm_wal_tests {
 
         prepare_dirs(&config);
 
-         let mut lsm = LSM::new(&config).unwrap();
+        let mut lsm = LSM::new(&config).unwrap();
 
         for i in 0..53u8 {
             println!("{i}");
@@ -773,10 +774,10 @@ mod sstable_tests {
     }
 
     // Helper function to set up the test environment
-    fn setup_test_environment(mem_table_type: &MemoryTableType, use_compresion: bool) -> (TempDir, MemoryTable, usize, usize) {
+    fn setup_test_environment(mem_table_type: &MemoryTableType, use_compression: bool) -> (TempDir, MemoryTable, usize, usize) {
         // Create a temporary directory for testing
         let temp_dir = TempDir::new().expect("Failed to create temp directory");
-        let (summary_density, index_density, mem_table) = get_density_and_mem_table(mem_table_type, use_compresion);
+        let (summary_density, index_density, mem_table) = get_density_and_mem_table(mem_table_type, use_compression);
         (temp_dir, mem_table, summary_density, index_density)
     }
 
@@ -861,7 +862,7 @@ mod sstable_tests {
             let expected_value = format!("test_value_{}", i);
 
             // Retrieve value from the SSTable
-            if let Some(entry) = sstable.get(key.as_bytes(), index_density, &mut None, use_variable_encoding) {
+            if let Some(entry) = sstable.get(key.as_bytes(), index_density, &mut compression_dictionary, use_variable_encoding) {
                 // Get the value using the get_value method
                 let actual_value_bytes: Box<[u8]> = entry.get_value();
 
@@ -981,7 +982,7 @@ mod sstable_tests {
 
     #[test]
     fn test_merge_sstables_compressed_no_variable_encoding() {
-        for range in (1..=100).step_by(101) {
+        for range in (100..=100).step_by(101) {
             for mem_table_type in &[MemoryTableType::SkipList, MemoryTableType::HashMap, MemoryTableType::BTree] {
                 merge_sstables(vec![true, true], &mem_table_type.clone(), range, true, false, true);
                 merge_sstables(vec![true, true], &mem_table_type.clone(), range, false, false, true);
@@ -1046,16 +1047,16 @@ mod sstable_tests {
         let merged_sstable_path = temp_dir.path().join("merged_sstable");
 
         // Merge the two SSTables
-        SSTable::merge(sstable_paths, in_single_file, &merged_sstable_path.to_owned(), merged_in_single_file, summary_density, index_density, &mut None, use_variable_encoding)
+        SSTable::merge(sstable_paths, in_single_file, &merged_sstable_path.to_owned(), merged_in_single_file, summary_density, index_density, use_variable_encoding)
             .expect("Failed to merge SSTables");
 
-        verify_merged_sstable(&merged_sstable_path, index_density, range, merged_in_single_file, use_variable_encoding);
+        verify_merged_sstable(&merged_sstable_path, index_density, range, merged_in_single_file, use_variable_encoding, &mut compression_dictionary);
 
         remove_dir_all(&compression_dict_dir).expect("Failed to remove compression dict dirs");
     }
 
     // Helper function to verify that the merged SSTable contains the correct data
-    fn verify_merged_sstable(merged_sstable_path: &PathBuf, index_density: usize, range: i32, merged_in_single_file: bool, use_variable_encoding: bool) {
+    fn verify_merged_sstable(merged_sstable_path: &PathBuf, index_density: usize, range: i32, merged_in_single_file: bool, use_variable_encoding: bool, compression_dictionary: &mut Option<CompressionDictionary>) {
         // Open an SSTable from the merged SSTable path
         let mut merged_sstable = SSTable::open(merged_sstable_path.to_path_buf(), merged_in_single_file)
             .expect("Failed to create merged SSTable");
@@ -1066,7 +1067,7 @@ mod sstable_tests {
             let expected_value = format!("test_value_{}", i);
 
             // Retrieve value from the merged SSTable
-            if let Some(entry) = merged_sstable.get(key.as_bytes(), index_density, &mut None, use_variable_encoding) {
+            if let Some(entry) = merged_sstable.get(key.as_bytes(), index_density, compression_dictionary, use_variable_encoding) {
                 // Get the value using the get_value method
                 let actual_value_bytes: Box<[u8]> = entry.get_value();
 

@@ -155,7 +155,7 @@ impl SSTable {
 
             data.extend_from_slice(&entry_data);
             index_builder.push((encoded_key.to_vec(), offset));
-            bloom_filter.add(&key);
+            bloom_filter.add(&encoded_key);
 
             offset += entry_data.len();
         }
@@ -309,12 +309,11 @@ impl SSTable {
     ///
     /// None.
     pub(crate) fn get(&mut self, key: &[u8], index_density: usize, compression_dictionary: &mut Option<CompressionDictionary>, use_variable_encoding: bool) -> Option<MemoryEntry> {
-        if self.bloom_filter_contains_key(key).unwrap_or(false) {
-            let encoded_key = match compression_dictionary {
-                Some(compression_dictionary) => compression_dictionary.encode(&key.to_vec().into_boxed_slice()).unwrap().clone(),
-                None => key.to_vec().into_boxed_slice()
-            };
-
+        let encoded_key = match compression_dictionary {
+            Some(compression_dictionary) => compression_dictionary.encode(&key.to_vec().into_boxed_slice()).unwrap().clone(),
+            None => key.to_vec().into_boxed_slice()
+        };
+        if self.bloom_filter_contains_key(&encoded_key).unwrap_or(false) {
             if let Some(offset) = self.get_data_offset_from_summary(&encoded_key) {
                 return match self.get_entry_from_data_file(offset, Some(index_density), Some(&encoded_key), use_variable_encoding) {
                     Some(entry) => Some(entry.0.1),
@@ -384,7 +383,7 @@ impl SSTable {
     /// # Errors
     ///
     /// Returns an `io::Error` if the merging process fails.
-    pub(crate) fn merge(sstable_paths: Vec<PathBuf>, in_single_file: Vec<bool>, merged_base_path: &PathBuf, merged_in_single_file: bool, summary_density: usize, index_density: usize, compression_dictionary: &mut Option<CompressionDictionary>, use_variable_encoding: bool) -> io::Result<()> {
+    pub(crate) fn merge(sstable_paths: Vec<PathBuf>, in_single_file: Vec<bool>, merged_base_path: &PathBuf, merged_in_single_file: bool, summary_density: usize, index_density: usize, use_variable_encoding: bool) -> io::Result<()> {
         create_dir_all(merged_base_path)?;
 
         let merged_data = SSTable::merge_entries(sstable_paths.clone(), in_single_file, None, use_variable_encoding)?;
@@ -392,7 +391,7 @@ impl SSTable {
         let mut merged_sstable = SSTable::open(merged_base_path.to_owned(), merged_in_single_file)?;
 
         // Flush the new SSTable to disk
-        merged_sstable.flush_to_disk(merged_data, summary_density, index_density, None, compression_dictionary, use_variable_encoding)?;
+        merged_sstable.flush_to_disk(merged_data, summary_density, index_density, None, &mut None, use_variable_encoding)?;
 
         let _ = sstable_paths
             .iter()
@@ -859,7 +858,7 @@ impl SSTable {
                             return Ok(Cursor::new(Vec::new()));
                         }
                         len
-                    },
+                    }
                     Err(_) => return Ok(Cursor::new(Vec::new())), // Handle error or zero bytes read
                 };
 
@@ -906,7 +905,7 @@ impl SSTable {
                             return Ok(Cursor::new(Vec::new()));
                         }
                         len
-                    },
+                    }
                     Err(_) => return Ok(Cursor::new(Vec::new())), // Handle error or zero bytes read
                 };
 

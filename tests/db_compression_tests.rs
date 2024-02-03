@@ -16,7 +16,7 @@ fn prepare_dirs(dbconfig: &DBConfig) {
         Ok(dir) => {
             dir.map(|dir_entry| dir_entry.unwrap().path())
                 .for_each(|dir| remove_dir_all(dir).unwrap_or(()))
-        },
+        }
         Err(_) => ()
     }
 }
@@ -27,11 +27,12 @@ fn test_compressed_size_vs_uncompressed() {
     db_config.memory_table_type = BTree;
     db_config.summary_density = 10;
     db_config.index_density = 50;
-    db_config.use_variable_encoding = false;
     db_config.lsm_max_level = 5;
+    db_config.use_compression = false;
+    db_config.use_variable_encoding = false;
     db_config.token_bucket_capacity = 9999999999;
     db_config.token_bucket_refill_rate = 9999999999;
-    db_config.sstable_single_file = true;
+    db_config.compression_dictionary_path = "sstables/sstable_compression_test/dictionary.bin".to_string();
     db_config.sstable_dir += "sstable_compression_test/uncompressed/";
     db_config.write_ahead_log_dir += "sstable_compression_test/uncompressed/";
 
@@ -41,11 +42,14 @@ fn test_compressed_size_vs_uncompressed() {
 
     for i in 0..20_000u128 {
         // works in other tests, no need to test again here
-        db_uncompressed.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes()).unwrap();
+        let key = format!("test_key_{:0>10}{}", 0, i);
+        let value = format!("test_value_{}", i);
+        db_uncompressed.insert(key.as_bytes(), value.as_bytes()).unwrap();
     }
 
     db_config.sstable_dir = "sstables/sstable_compression_test/compressed/".to_string();
     db_config.write_ahead_log_dir = "wal/sstable_compression_test/uncompressed/".to_string();
+    db_config.use_variable_encoding = true;
     db_config.use_compression = true;
 
     prepare_dirs(&db_config);
@@ -53,11 +57,15 @@ fn test_compressed_size_vs_uncompressed() {
     let mut db_compressed = DB::build(db_config.clone()).unwrap();
 
     for i in 0..20_000u128 {
-        db_compressed.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes()).unwrap();
+        let key = format!("test_key_{:0>10}{}", 0, i);
+        let value = format!("test_value_{}", i);
+        db_compressed.insert(key.as_bytes(), value.as_bytes()).unwrap();
     }
 
     for i in 0..20_000u128 {
-        let get_op= match db_compressed.get(&i.to_ne_bytes()).unwrap() {
+        let key = format!("test_key_{:0>10}{}", 0, i);
+        let value = format!("test_value_{}", i);
+        let get_op = match db_compressed.get(key.as_bytes()).unwrap() {
             Some(val) => val,
             None => panic!("Get doesn't work")
         };
@@ -65,8 +73,8 @@ fn test_compressed_size_vs_uncompressed() {
         println!("{i}");
 
         assert_eq!(
-            &(i * 2).to_ne_bytes(),
-            &*get_op
+            value.as_bytes(),
+            get_op.as_ref()
         );
     }
 }

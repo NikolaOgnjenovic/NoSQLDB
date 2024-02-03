@@ -367,7 +367,7 @@ impl LSM {
             let merged_base_path = self.config.parent_dir.join(merged_directory.clone());
 
             // Merge them all together, push merged SSTable into sstable_directory_names and delete all SSTables involved in merging process
-            SSTable::merge(sstable_base_paths.clone(), sstable_single_file, &merged_base_path, merged_in_single_file, self.config.summary_density, self.config.index_density, &mut self.compression_dictionary, use_variable_encoding)?;
+            SSTable::merge(sstable_base_paths.clone(), sstable_single_file, &merged_base_path, merged_in_single_file, self.config.summary_density, self.config.index_density, use_variable_encoding)?;
             self.sstable_directory_names[level].clear();
             Self::remove_all_compacted(sstable_base_paths)?;
             self.sstable_directory_names[level+1].push(merged_directory);
@@ -423,7 +423,7 @@ impl LSM {
             let merged_base_path = self.config.parent_dir.join(merged_directory.clone());
 
             // Merge them all together
-            SSTable::merge(sstable_base_paths.clone(), sstable_single_file, &merged_base_path.to_path_buf(), merged_in_single_file, self.config.summary_density, self.config.index_density, &mut self.compression_dictionary, use_variable_encoding)?;
+            SSTable::merge(sstable_base_paths.clone(), sstable_single_file, &merged_base_path.to_path_buf(), merged_in_single_file, self.config.summary_density, self.config.index_density, use_variable_encoding)?;
 
             // Extract indexes of SSTable that need to be removed
             let indexes_to_delete: Vec<_> = in_range_paths

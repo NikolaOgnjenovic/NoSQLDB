@@ -5,11 +5,12 @@ use bitvec::view::BitView;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Error, ErrorKind, Read, Write};
+use std::path::Path;
 
 pub struct CompressionDictionary {
     file: File,
     pub(super) list: Vec<Box<[u8]>>,
-    pub(super) map: HashMap<Box<[u8]>, u64>,
+    pub(super) map: HashMap<Box<[u8]>, u128>,
 }
 
 impl CompressionDictionary {
@@ -25,6 +26,12 @@ impl CompressionDictionary {
         let mut file = match File::open(file_path) {
             Ok(file) => file,
             Err(_) => {
+                if let Some(parent_dir) = Path::new(&file_path).parent() {
+                    if !parent_dir.exists() {
+                        std::fs::create_dir_all(parent_dir)?;
+                    }
+                }
+
                 let file = File::create(file_path)?;
                 return Ok(CompressionDictionary { file, list, map });
             }
@@ -40,7 +47,7 @@ impl CompressionDictionary {
                 Box::from(&buffer[file_cursor..file_cursor + key_length.unwrap() as usize]);
             file_cursor += key_length.unwrap() as usize;
             if !map.contains_key(&key_decoded) {
-                map.insert(key_decoded.clone(), list.len() as u64);
+                map.insert(key_decoded.clone(), list.len() as u128);
                 list.push(key_decoded);
             }
         }
@@ -56,7 +63,7 @@ impl CompressionDictionary {
 
         for key_decoded in keys {
             if !self.map.contains_key(key_decoded) {
-                self.map.insert(key_decoded.clone(), self.list.len() as u64);
+                self.map.insert(key_decoded.clone(), self.list.len() as u128);
                 self.list.push(key_decoded.clone());
                 buffer.extend_from_slice(variable_encode(key_decoded.len() as u128).as_ref());
                 buffer.extend_from_slice(key_decoded);
@@ -71,15 +78,15 @@ impl CompressionDictionary {
     /// If it's not already in the dictionary, it will be automatically added.
     pub fn encode(&mut self, key: &[u8]) -> std::io::Result<Box<[u8]>> {
         match self.map.get(key) {
-            Some(value) => Ok(Box::from(value.to_ne_bytes())),
+            Some(value) => Ok(variable_encode(value.to_owned())),
             None => {
-                self.map.insert(Box::from(key), self.list.len() as u64);
+                self.map.insert(Box::from(key), self.list.len() as u128);
                 self.list.push(Box::from(key));
                 let mut buffer = Vec::new();
                 buffer.extend_from_slice(variable_encode(key.len() as u128).as_ref());
                 buffer.extend_from_slice(key);
                 self.file.write_all(&buffer)?;
-                Ok(Box::from((self.list.len() as u64).to_ne_bytes()))
+                Ok(variable_encode(self.list.len() as u128 - 1))
             }
         }
     }
@@ -87,14 +94,10 @@ impl CompressionDictionary {
     /// For a given `key` returns the decoded key from the dictionary.
     /// If the encoded key is not in the dictionary return an error.
     pub fn decode(&self, key: &[u8]) -> std::io::Result<Box<[u8]>> {
-        let key_encoded = {
-            let mut key_encoded_bytes = [0u8; 8];
-            key_encoded_bytes.copy_from_slice(key);
-            usize::from_ne_bytes(key_encoded_bytes)
-        };
+        let key_encoded = variable_decode(key).0.unwrap() as usize;
 
         match self.list.get(key_encoded) {
-            Some(key_decoded) => Ok(key_decoded.clone()),
+            Some(key_decoded) => Ok(key_decoded.to_owned()),
             None => Err(Error::new(
                 ErrorKind::InvalidData,
                 "Encoded key is not in the dictionary!",
