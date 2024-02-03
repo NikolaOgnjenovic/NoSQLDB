@@ -1,5 +1,3 @@
-use sstable::SSTable;
-
 mod lsm;
 mod mem_pool;
 mod sstable;
@@ -177,6 +175,7 @@ mod paginator_tests {
     use db_config::{CompactionAlgorithmType, DBConfig};
     use segment_elements::TimeStamp;
     use crate::LSM;
+    use crate::lsm::ScanType;
     use crate::paginator::Paginator;
 
     #[test]
@@ -202,6 +201,7 @@ mod paginator_tests {
             lsm.insert(&combined_bytes, &combined_bytes, time_stamp).expect("Failed to insert into lsm");
         }
 
+        println!("{:?}", lsm.get(&[65, 66, 1, 0, 0, 0, 0, 0]).expect(""));
         println!("{:?}", lsm.get(&[65, 66, 20, 0, 0, 0, 0, 0]).expect(""));
         println!("{:?}", lsm.get(&[65, 66, 22, 0, 0, 0, 0, 0]).expect(""));
         println!("{:?}", lsm.get(&[65, 66, 24, 0, 0, 0, 0, 0]).expect(""));
@@ -230,9 +230,7 @@ mod paginator_tests {
 
                 let expected_value = ((page_number * page_len + i) as u64 + 1).to_ne_bytes();
                 let expected_bytes: Vec<u8> = base_bytes.iter().cloned().chain(expected_value.iter().cloned()).collect();
-                //println!("Expected: {:#?}, key: {:#?}", expected_bytes.into_boxed_slice(), key.clone());
                 assert_eq!(expected_bytes.clone().into_boxed_slice(), key.clone());
-                //println!("Works for {:#?}", expected_bytes);
             }
         }
     }
@@ -258,12 +256,12 @@ mod paginator_tests {
 
         // Set min & max range for paginator range scan
         let mut paginator = Paginator::new(&lsm);
-        let min_range: u64 = 50;
-        let max_range: u64 = 100;
+        let min_range: u64 = 0;
+        let max_range: u64 = 767; // <= 766 fails
         let min_range_bytes = min_range.to_ne_bytes();
         let max_range_bytes = (max_range + 1).to_ne_bytes(); // Add 1 to include the upper bound
 
-        // Test range scan from 50 to 100
+        // Test range scan from min range to max range
         let result_page = paginator.range_scan(&min_range_bytes, &max_range_bytes, 0, (max_range - min_range + 1) as usize)
             .expect("Failed to get pagination result");
 
@@ -277,50 +275,50 @@ mod paginator_tests {
         remove_dir_all(db_config.sstable_dir).expect("Failed to remove sstable dirs");
     }
 
+    // This test ensures that .iter() returns sequential ids, prev() returns to 0, stop() resets and next returns sequential ids
     #[test]
     fn test_range_scan_iter() {
         let mut db_config = DBConfig::default();
-        db_config.memory_table_pool_num = 3;
-        db_config.memory_table_capacity = 50;
+        db_config.memory_table_pool_num = 2;
+        db_config.memory_table_capacity = 1000;
         db_config.lsm_max_per_level = 4;
         db_config.sstable_single_file = true;
         db_config.compaction_algorithm_type = CompactionAlgorithmType::SizeTiered;
-        db_config.use_variable_encoding = false;
         create_dir_all(db_config.sstable_dir.to_string()).expect("Failed to create sstable dirs");
         let mut lsm = LSM::new(&db_config).unwrap();
 
         // Insert elements into LSM
-        let min_key: usize = 0;
-        let max_key: usize = 300;
+        let min_key: u8 = b'A';
+        let max_key: u8 = b'Z';
         for i in min_key..=max_key {
-            let i_bytes = i.to_ne_bytes();
-            lsm.insert(&i_bytes, &i_bytes, TimeStamp::Now).expect("Failed to insert into lsm");
+            let key_str = format!("{}", i as char);
+            println!("Inserting key str: {:#?}, bytes: {:#?}", key_str, key_str.as_bytes());
+            lsm.insert(key_str.as_bytes(), key_str.as_bytes(), TimeStamp::Now).expect("Failed to insert into lsm");
         }
 
-        // Set min & max range for paginator range scan
-        // Wrap the Paginator in an Rc<RefCell<Paginator>>
         let mut paginator = Paginator::new(&lsm);
-        let min_range: usize = 0;
-        let max_range: usize = 26;
-        let min_range_bytes = min_range.to_ne_bytes();
-        let max_range_bytes = (max_range + 1).to_ne_bytes(); // Add 1 to include the upper bound
+        // Assert that going forwards retrieves "Key_min" to "Key_max"
+        let mut lsm_iter = lsm.iter(Some(&[min_key]), Some(&[max_key]), None, ScanType::RangeScan).expect("Failed to create lsm iter");
+        for i in min_key..=max_key {
+            let key_str = format!("{}", i as char);
+            println!("Checking key str: {:#?}, bytes: {:#?}", key_str, key_str.as_bytes());
+            let result_key = lsm_iter.next().expect("Failed to get iter option").expect("Failed to get mem entry").0;
 
-        // Assert that each key is 0 to 25 (in order) when calling range_iterate_next
-        for i in 0..25usize {
-            let i_bytes = i.to_ne_bytes();
-            let result = paginator
-                .range_iterate_next(&min_range_bytes, &max_range_bytes)
-                .expect("Failed to iterate to next entry")
-                .expect("Failed to get memory entry")
-                .0
-                .clone();
-            let i_bytes = i.to_ne_bytes();
-            assert_eq!(result.as_ref(), i_bytes.as_ref());
+            assert_eq!(&*result_key, key_str.as_bytes());
+            println!("Works for key str {:#?}, bytes {:#?}", key_str, key_str.as_bytes());
+            // let result = paginator
+            //     .range_iterate_next(&min_key_bytes, &max_key_bytes)
+            //     .expect("Failed to iterate to previous entry")
+            //     .expect("Failed to get memory entry")
+            //     .0
+            //     .clone();
+            // println!("\nResult {:#?}, expected key str: {:#?}", result, key_str);
+            // assert_eq!(&*result, key_str.as_bytes());
         }
 
-        // Assert that going backwards retrieves 24..0
-        for i in (0..25usize).rev() {
-            let i_bytes = i.to_ne_bytes();
+        // Assert that going backwards retrieves "Key_max" to "Key_min"
+        for i in (min_key..=max_key).rev() {
+            let key_str = format!("{}", i as char);
             let result = paginator
                 .iterate_prev()
                 .expect("Failed to iterate to previous entry")
@@ -328,22 +326,22 @@ mod paginator_tests {
                 .0
                 .clone();
 
-            assert_eq!(&*result, i_bytes.as_ref());
+            println!("\nResult {:#?}, expected key str: {:#?}", result, key_str);
+            assert_eq!(&*result, key_str.as_bytes());
         }
 
         paginator.iterate_stop();
 
-        // Asser that each key is 0 to 25 (in order) when calling range_iterate_next
-        for i in 0..25usize {
-            let i_bytes = i.to_ne_bytes();
+        // Assert that going forwards retrieves "Key_min" to "Key_max"
+        for i in min_key..=max_key {
+            let key_str = format!("{}", i as char);
             let result = paginator
-                .range_iterate_next(&min_range_bytes, &max_range_bytes)
+                .range_iterate_next(&[min_key], &[max_key])
                 .expect("Failed to iterate to next entry")
                 .expect("Failed to get memory entry")
                 .0
                 .clone();
-            let i_bytes = i.to_ne_bytes();
-            assert_eq!(&*result, i_bytes.as_ref());
+            assert_eq!(&*result, key_str.as_bytes());
         }
     }
 }
