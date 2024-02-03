@@ -14,6 +14,8 @@ enum CustomizeMenu {
     Back,
     BloomFilterProbability,
     BloomFilterCap,
+    CountMinSketchProbability,
+    CountMinSketchTolerance,
     SkipListMaxLevel,
     HyperloglogPrecision,
     WriteAheadLogDir,
@@ -43,6 +45,8 @@ impl_menu!(
     CustomizeMenu::Back, "Back".yellow().italic(),
     CustomizeMenu::BloomFilterProbability, "Bloom Filter Probability".blink(),
     CustomizeMenu::BloomFilterCap, "Bloom Filter Capacity".blink(),
+    CustomizeMenu::CountMinSketchProbability, "Count-Min Sketch Probability".blink(),
+    CustomizeMenu::CountMinSketchTolerance, "Count-Min Sketch Tolerance".blink(),
     CustomizeMenu::SkipListMaxLevel, "Skip List Max Level".blink(),
     CustomizeMenu::HyperloglogPrecision, "Hyperloglog Precision".blink(),
     CustomizeMenu::WriteAheadLogDir, "Write Ahead Log Directory".blink(),
@@ -103,6 +107,44 @@ pub fn customize_menu(dbconfig: &mut DBConfig) {
                 dbconfig.bloom_filter_cap = new_value;
                 println!("Bloom filter capacity changed to {}", new_value);
                 continue
+            }
+            CustomizeMenu::CountMinSketchProbability => {
+                clearscreen::clear().expect("Failed to clear screen.");
+                loop {
+                    print!("Enter new count-min sketch probability: (0-1): ");
+                    io::stdout().flush().unwrap();
+
+                    let mut input = String::new();
+                    io::stdin().read_line(&mut input).unwrap();
+
+                    match input.trim().parse::<f64>() {
+                        Ok(value) if value >= 0.0 && value <= 1.0 => {
+                            dbconfig.count_min_sketch_probability = value;
+                            println!("Count-min sketch probability changed to {}", value);
+                            break;
+                        }
+                        _ => println!("Invalid input. Please enter a valid number between 0 and 1."),
+                    }
+                }
+            }
+            CustomizeMenu::CountMinSketchTolerance => {
+                clearscreen::clear().expect("Failed to clear screen.");
+                loop {
+                    print!("Enter new count-min sketch tolerance: (0-1): ");
+                    io::stdout().flush().unwrap();
+
+                    let mut input = String::new();
+                    io::stdin().read_line(&mut input).unwrap();
+
+                    match input.trim().parse::<f64>() {
+                        Ok(value) if value >= 0.0 && value <= 1.0 => {
+                            dbconfig.count_min_sketch_tolerance = value;
+                            println!("Count-min sketch tolerance changed to {}", value);
+                            break;
+                        }
+                        _ => println!("Invalid input. Please enter a valid number between 0 and 1."),
+                    }
+                }
             }
             CustomizeMenu::SkipListMaxLevel => {
                 clearscreen::clear().expect("Failed to clear screen.");
