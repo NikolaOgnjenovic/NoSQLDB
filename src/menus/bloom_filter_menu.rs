@@ -2,7 +2,7 @@ use colored::Colorize;
 use enum_iterator::Sequence;
 use NoSQLDB::DB;
 use crate::impl_menu;
-use crate::menus::{get_input_f64, get_input_u32, get_input_u8, get_input_usize, get_input_with_range, UserMenu};
+use crate::menus::{get_input_f64, get_input_u8, get_input_usize, UserMenu};
 
 #[derive(Sequence)]
 enum BloomFilterMenu {

@@ -134,7 +134,7 @@ impl DB {
         self.lsm.finalize();
     }
 
-    /// Creates or retrieves a Bloom filter for the specified key, then returns its serialized representation.
+    /// Creates a Bloom filter for the specified key, then returns its serialized representation.
     ///
     /// # Arguments
     ///
@@ -228,7 +228,7 @@ impl DB {
         }
     }
 
-    /// Creates or retrieves a count-min sketch for the specified key, then returns its serialized representation.
+    /// Creates a count-min sketch for the specified key, then returns its serialized representation.
     ///
     /// # Arguments
     ///
@@ -313,7 +313,7 @@ impl DB {
         }
     }
 
-    /// Creates or retrieves a hyperloglog for the specified key, then returns its serialized representation.
+    /// Creates a hyperloglog for the specified key, then returns its serialized representation.
     ///
     /// # Arguments
     ///
