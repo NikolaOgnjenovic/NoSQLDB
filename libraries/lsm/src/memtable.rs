@@ -7,6 +7,7 @@ use std::error::Error;
 pub(crate) struct MemoryTable {
     capacity: usize,
     len: usize,
+    wal_size: usize,
     inner_mem: Box<dyn segment_elements::SegmentTrait + Send>,
 }
 
@@ -23,12 +24,14 @@ impl MemoryTable {
             inner_mem,
             capacity: dbconfig.memory_table_capacity,
             len: 0,
+            wal_size: 0
         })
     }
 
     /// Inserts or updates a key value pair into the memory table. Returns true
     /// if the memory table capacity is reached.
     pub(crate) fn insert(&mut self, key: &[u8], value: &[u8], time_stamp: TimeStamp) -> bool {
+        self.wal_size += 4 + 16 + 1 + 8 + 8 + key.len() + value.len();
         if self.inner_mem.insert(key, value, time_stamp) {
             self.len += 1;
         }
@@ -39,6 +42,7 @@ impl MemoryTable {
     /// Logically removes a key value pair if it's present. If it isn't present, inserts a
     /// new entry with tombstone set to true.
     pub(crate) fn delete(&mut self, key: &[u8], time_stamp: TimeStamp) -> bool {
+        self.wal_size += 4 + 16 + 1 + 8 + 8 + key.len();
         if self.inner_mem.delete(key, time_stamp) {
             self.len += 1;
         }
@@ -59,9 +63,7 @@ impl MemoryTable {
     }
 
     /// Returns the WAL size of the current table.
-    /// This means that for each element in the table, 20 bytes (8 for key len, 8 for value len and 4 for CRC)
-    /// is added to the size.
     pub(crate) fn wal_size(&self) -> usize {
-        20 * self.len + self.inner_mem.byte_size()
+        self.wal_size
     }
 }

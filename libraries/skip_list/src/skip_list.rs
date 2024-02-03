@@ -9,8 +9,7 @@ pub struct SkipList {
     tail: Arc<Mutex<Node>>,
     level: usize,
     max_level: usize,
-    length: usize,
-    byte_size: usize
+    length: usize
 }
 
 impl SkipList {
@@ -19,8 +18,7 @@ impl SkipList {
             tail: Arc::new(Mutex::new(Node::new(None, None, 0, max_level))),
             level: 0,
             max_level,
-            length: 0,
-            byte_size: 0
+            length: 0
         }
     }
 
@@ -102,8 +100,6 @@ impl segment_elements::SegmentTrait for SkipList {
                 match key.cmp(node_key) {
                     Ordering::Less => break,
                     Ordering::Equal => {
-                        self.byte_size -= helper.value.as_ref().unwrap().get_val_size();
-                        self.byte_size += value.len();
                         helper.value = Some(MemoryEntry::from(value, false, time_stamp.get_time()));
                         return false;
                     }
@@ -115,7 +111,7 @@ impl segment_elements::SegmentTrait for SkipList {
 
         let tombstone = value.is_empty();
 
-        let level = SkipList::random_gen(self);
+        let level = self.random_gen();
         let node_to_insert = Arc::new(Mutex::new(Node::new(
             Some(Box::from(key)),
             Some(MemoryEntry::from(value, tombstone, time_stamp.get_time())),
@@ -141,14 +137,12 @@ impl segment_elements::SegmentTrait for SkipList {
             }
         }
 
-        self.byte_size += key.len() + value.len() + 1 + 16;
         self.length += 1;
         true
     }
 
     fn delete(&mut self, key: &[u8], time_stamp: TimeStamp) -> bool {
-        if let Some(entry) = self.get(key) {
-            self.byte_size -= entry.get_val_size();
+        if self.get(key).is_some() {
             // logical delete
             let mut node = Arc::clone(&self.tail);
 
@@ -195,16 +189,8 @@ impl segment_elements::SegmentTrait for SkipList {
         None
     }
 
-    fn empty(&mut self) {
-        self.tail = Arc::new(Mutex::new(Node::new(None, None, 0, self.max_level)));
-    }
-
     fn iterator(&self) -> Box<dyn Iterator<Item = (Box<[u8]>, MemoryEntry)>> {
         Box::new(self.iter())
-    }
-
-    fn byte_size(&self) -> usize {
-        self.byte_size
     }
 }
 

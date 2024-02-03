@@ -8,8 +8,7 @@ use std::cmp::Ordering;
 pub struct BTree {
     root: Option<Node>,
     order: usize,
-    length: usize,
-    byte_size: usize
+    length: usize
 }
 
 impl BTree {
@@ -21,8 +20,7 @@ impl BTree {
             Ok(BTree {
                 root: None,
                 order,
-                length: 0,
-                byte_size: 0
+                length: 0
             })
         }
     }
@@ -31,7 +29,7 @@ impl BTree {
         self.root.as_ref().unwrap().print_node(0);
     }
 
-    pub fn size(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.length
     }
 
@@ -74,9 +72,7 @@ impl BTree {
 impl SegmentTrait for BTree {
     /// Inserts or updates a key with the corresponding value into the BTree.
     fn insert(&mut self, key: &[u8], value: &[u8], time_stamp: TimeStamp) -> bool {
-        if let Some(entry) = self.get(key) {
-            self.byte_size -= entry.get_val_size();
-            self.byte_size += value.len();
+        if self.get(key).is_some() {
             self.root.as_mut().unwrap().update(key, value, time_stamp);
             return false;
         }
@@ -118,14 +114,12 @@ impl SegmentTrait for BTree {
             }
         }
 
-        self.byte_size += key.len() + value.len() + 16 + 1;
         self.length += 1;
         true
     }
 
     fn delete(&mut self, key: &[u8], time_stamp: TimeStamp) -> bool {
-        if let Some(entry) = self.get(key) {
-            self.byte_size -= entry.get_val_size();
+        if self.get(key).is_some() {
             self.root
                 .as_mut()
                 .unwrap()
@@ -140,15 +134,7 @@ impl SegmentTrait for BTree {
         self.root.as_ref()?.get(key)
     }
 
-    fn empty(&mut self) {
-        self.root = None;
-    }
-
     fn iterator(&self) -> Box<dyn Iterator<Item = (Box<[u8]>, MemoryEntry)> + '_> {
         Box::new(self.iter())
-    }
-
-    fn byte_size(&self) -> usize {
-        self.byte_size
     }
 }
