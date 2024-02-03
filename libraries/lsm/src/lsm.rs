@@ -504,9 +504,9 @@ impl LSM {
         let mut min_key:Box<[u8]> = Box::new([255u8;255]);
         let mut min_indexes = vec![];
         for (index, element) in entries {
-            if element.1.get_tombstone() {
-                continue
-            }
+            // if element.1.get_tombstone() {
+            //     continue
+            // }
             let key = &element.0;
             let compare_result = min_key.cmp(key);
             if compare_result == Ordering::Equal {
@@ -571,6 +571,8 @@ impl LSM {
                 })
                 .collect();
 
+            if entries.is_empty() { break; }
+
             //updateuj offsete kako treba
             for i in 0..positions.len() {
                 positions[i] += update_positions[i];
@@ -604,9 +606,9 @@ impl LSM {
             let max_index = LSM::find_max_timestamp(&min_entries, entries.len()+1);
 
             //ovo znaci da niti jedan entry nije zadovoljio kriterijume(svi su obrisani)
-            if max_index == entries.len() + 1 {
-                continue;
-            }
+            // if max_index == entries.len() + 1 {
+            //     continue;
+            // }
             let pushed_entry = entries
                 .iter()
                 .filter(|(index, _)| max_index == *index)
@@ -792,19 +794,19 @@ impl LSMIterator {
 }
 
 impl Iterator for LSMIterator {
-    type Item = Option<(Box<[u8]>, MemoryEntry)>;
+    type Item = (Box<[u8]>, MemoryEntry);
 
     fn next(&mut self) -> Option<Self::Item> {
         let mut pushed = false;
         let mut copy_offsets = self.offsets.clone();
-        while self.memory_offset < self.memory_table_entries.len() {
-            let entry = self.memory_table_entries[self.memory_offset].clone();
-            if entry.1.get_tombstone() {
-                self.memory_offset += 1;
-            } else {
-                break;
-            }
-        }
+        // while self.memory_offset < self.memory_table_entries.len() {
+        //     let entry = self.memory_table_entries[self.memory_offset].clone();
+        //     if entry.1.get_tombstone() {
+        //         self.memory_offset += 1;
+        //     } else {
+        //         break;
+        //     }
+        // }
         let memory_table_entry = if self.memory_offset < self.memory_table_entries.len() {
             pushed = true;
             copy_offsets.push(self.memory_offset as u64);
@@ -908,9 +910,9 @@ impl Iterator for LSMIterator {
         }
 
         // znaci da su svi trenutni entriji logicki obrisani i rekurzivno pozivamo funk sa updateovanim parametrima
-        if min_entries.is_empty() {
-            return Some(None);
-        }
+        // if min_entries.is_empty() {
+        //     return Some(None);
+        // }
 
         //provera da li smo izasli iz opsega, sa donje strane smo se ogranicili ali sa gornje nismo
         //takodje provera da li je entry koji smo dobili logicki obrisan jer ovde korisitm funk iz sstabele koja mora vratiti 0
@@ -927,6 +929,6 @@ impl Iterator for LSMIterator {
             }
         }
 
-        Some(Some(return_entry))
+        Some(return_entry)
     }
 }

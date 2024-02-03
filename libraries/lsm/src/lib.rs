@@ -143,12 +143,10 @@ mod lsm_tests {
         let mut num = 0;
         //Range
         let mut lsm_iter = lsm.iter(Some(&80usize.to_ne_bytes()), Some(&160usize.to_ne_bytes()), None, ScanType::RangeScan)?;
-        while let Some(inner) = lsm_iter.next() {
-            if let Some(entry) = inner {
-                println!("{:?}", entry.0);
-                println!("{:?}", entry.1);
-                num += 1;
-            }
+        while let Some(entry) = lsm_iter.next() {
+            println!("{:?}", entry.0);
+            println!("{:?}", entry.1);
+            num += 1;
         }
 
         //assert_eq!(41, num);
@@ -303,7 +301,7 @@ mod paginator_tests {
         for i in min_key..=max_key {
             let key_str = format!("{}", i as char);
             println!("Checking key str: {:#?}, bytes: {:#?}", key_str, key_str.as_bytes());
-            let result_key = lsm_iter.next().expect("Failed to get iter option").expect("Failed to get mem entry").0;
+            let result_key = lsm_iter.next().expect("Failed to get mem entry").0;
 
             assert_eq!(&*result_key, key_str.as_bytes());
             println!("Works for key str {:#?}, bytes {:#?}", key_str, key_str.as_bytes());
