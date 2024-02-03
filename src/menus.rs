@@ -31,7 +31,7 @@ macro_rules! impl_menu {
                     $(
                         $op => write!(f, "{}", $op_msg),
                     )*
-                    _ => panic!("Unreachable")
+                    _ => panic!("Not all entries implemented on menu \"{}\"", <$menu>::get_message())
                 }
             }
         }
@@ -51,6 +51,17 @@ fn get_input_u8(prompt_message: &str) -> Option<Box<[u8]>> {
     None
 }
 
+fn get_input_u32(prompt_message: &str) -> Option<u32> {
+    let input_str = Text::new(prompt_message)
+        .prompt()
+        .unwrap();
+
+    match input_str.trim().parse::<u32>() {
+        Ok(value) => Some(value),
+        Err(_) => None,
+    }
+}
+
 /// Helper function to print out the requirements and get usize input
 fn get_input_with_range(prompt_message: &str, min: usize, max: usize) -> usize {
     let prompt_with_range = format!("{} ({:?} - {:?})", prompt_message, min, max);
@@ -66,4 +77,18 @@ fn get_input_with_range(prompt_message: &str, min: usize, max: usize) -> usize {
             _ => println!("Invalid input. Please enter a valid number between {} and {}.", min, max),
         }
     }
+}
+
+fn get_input_usize(prompt_message: &str) -> Option<usize> {
+    println!("{}", prompt_message);
+    let mut input = String::new();
+    std::io::stdin().read_line(&mut input).expect("Failed to read line");
+    input.trim().parse::<usize>().ok()
+}
+
+fn get_input_f64(prompt_message: &str) -> Option<f64> {
+    println!("{}", prompt_message);
+    let mut input = String::new();
+    std::io::stdin().read_line(&mut input).expect("Failed to read line");
+    input.trim().parse::<f64>().ok()
 }

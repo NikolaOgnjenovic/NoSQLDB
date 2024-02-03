@@ -34,10 +34,12 @@ enum CustomizeMenu {
     CompactionEnabled,
     CompactionAlgorithmType,
     CacheMaxSize,
-    TokenBucketNum,
-    TokenBucketInterval,
+    TokenBucketCap,
+    TokenBucketRefillRate,
     UseCompression,
     CompressionDictionaryPath,
+    LsmLeveledAmplification,
+    UseVariableEncoding
 }
 
 impl_menu!(
@@ -57,16 +59,19 @@ impl_menu!(
     CustomizeMenu::MemoryTableType, "Memory Table Type".blink(),
     CustomizeMenu::MemoryTablePoolNum, "Memory Table Pool Number".blink(),
     CustomizeMenu::SummaryDensity, "Summary Density".blink(),
+    CustomizeMenu::IndexDensity, "Index Density".blink(),
     CustomizeMenu::SSTableSingleFile, "SSTable Single File".blink(),
     CustomizeMenu::SSTableDir, "SSTable Directory".blink(),
     CustomizeMenu::LsmMaxLevel, "LSM Max Level".blink(),
     CustomizeMenu::LsmMaxPerLevel, "LSM Max Per Level".blink(),
+    CustomizeMenu::LsmLeveledAmplification, "LSM Leveled Amplification".blink(),
     CustomizeMenu::CompactionEnabled, "Compaction Enabled".blink(),
     CustomizeMenu::CompactionAlgorithmType, "Compaction Algorithm Type".blink(),
     CustomizeMenu::CacheMaxSize, "Cache Max Size".blink(),
-    CustomizeMenu::TokenBucketNum, "Token Bucket Number".blink(),
-    CustomizeMenu::TokenBucketInterval, "Token Bucket Interval".blink(),
+    CustomizeMenu::TokenBucketCap, "Token Bucket Number".blink(),
+    CustomizeMenu::TokenBucketRefillRate, "Token Bucket Interval".blink(),
     CustomizeMenu::UseCompression, "Use Compression".blink(),
+    CustomizeMenu::UseVariableEncoding, "Use Variable Encoding".blink(),
     CustomizeMenu::CompressionDictionaryPath, "Compression Dictionary Path".blink()
 );
 
@@ -79,7 +84,7 @@ pub fn customize_menu(dbconfig: &mut DBConfig) {
                 return
             }
             CustomizeMenu::BloomFilterProbability => {
-                 clearscreen::clear().expect("Failed to clear screen.");
+                clearscreen::clear().expect("Failed to clear screen.");
                 loop {
                     print!("Enter new bloom filter probability: (0-1): ");
                     io::stdout().flush().unwrap();
@@ -101,8 +106,8 @@ pub fn customize_menu(dbconfig: &mut DBConfig) {
                 clearscreen::clear().expect("Failed to clear screen.");
                 let new_value = get_input_with_range(
                     "Enter new bloom filter capacity:",
-                    10,
-                    3000000,
+                    10000,
+                    100000000,
                 );
                 dbconfig.bloom_filter_cap = new_value;
                 println!("Bloom filter capacity changed to {}", new_value);
@@ -300,6 +305,12 @@ pub fn customize_menu(dbconfig: &mut DBConfig) {
                 dbconfig.lsm_max_per_level = new_value;
                 println!("LSM max per level changed to {}", new_value);
             }
+            CustomizeMenu::LsmLeveledAmplification => {
+                clearscreen::clear().expect("Failed to clear screen.");
+                let new_value = get_input_with_range("Enter new LSM leveled amplification: ", 0, 10);
+                dbconfig.lsm_leveled_amplification = new_value;
+                println!("LSM leveled amplification changed to {}", new_value);
+            }
             CustomizeMenu::CompactionEnabled => {
                 clearscreen::clear().expect("Failed to clear screen.");
                 let is_enabled = Confirm::new("Enable compaction?")
@@ -341,13 +352,13 @@ pub fn customize_menu(dbconfig: &mut DBConfig) {
                 dbconfig.cache_max_size = new_value;
                 println!("Cache max size changed to {}", new_value);
             }
-            CustomizeMenu::TokenBucketNum => {
+            CustomizeMenu::TokenBucketCap => {
                 clearscreen::clear().expect("Failed to clear screen.");
                 let new_value = get_input_with_range("Enter new Token bucket capacity: ", 1, 30);
                 dbconfig.token_bucket_capacity = new_value;
                 println!("Token bucket capacity changed to {}", new_value);
             }
-            CustomizeMenu::TokenBucketInterval => {
+            CustomizeMenu::TokenBucketRefillRate => {
                 clearscreen::clear().expect("Failed to clear screen.");
                 let new_value = get_input_with_range("Enter new Token bucket refill rate (tokens per second): ", 0, 100);
                 dbconfig.token_bucket_refill_rate = new_value;
@@ -360,8 +371,20 @@ pub fn customize_menu(dbconfig: &mut DBConfig) {
                     .prompt();
 
                 match is_enabled {
-                    Ok(true) => println!("Compression enabled."),
-                    Ok(false) => println!("Compression disabled."),
+                    Ok(true) => { println!("Compression enabled."); dbconfig.use_compression = true }
+                    Ok(false) => { println!("Compression disabled."); dbconfig.use_compression = false }
+                    Err(_) => println!("Error, try again."),
+                }
+            }
+            CustomizeMenu::UseVariableEncoding => {
+                clearscreen::clear().expect("Failed to clear screen.");
+                let is_enabled = Confirm::new("Enable variable encoding?")
+                    .with_default(false)
+                    .prompt();
+
+                match is_enabled {
+                    Ok(true) => { println!("Variable encoding enabled."); dbconfig.use_variable_encoding = true }
+                    Ok(false) => { println!("Variable encoding enabled."); dbconfig.use_variable_encoding = false }
                     Err(_) => println!("Error, try again."),
                 }
             }

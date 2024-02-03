@@ -40,13 +40,14 @@ pub fn initializer_menu() {
                 db_menu(&mut dbconfig);
             }
             DBConfigMenu::CustomizeConfig => {
-                customize_menu(&mut dbconfig);
+                customize_menu(&mut dbconfig); // Customize config
+                dbconfig.save(CONFIG_FILE_PATH).expect("Failed to save config."); // Save changes made in customize_menu
             }
-            DBConfigMenu::RevertToDefault => { // revert config to default
+            DBConfigMenu::RevertToDefault => { // Revert config to default
                 clearscreen::clear().expect("Failed to clear screen.");
                 let default_dbconfig = DBConfig::default();
                 default_dbconfig.save(CONFIG_FILE_PATH).expect("Failed to revert back to default.");
-                DBConfig::load(CONFIG_FILE_PATH).expect("Failed to load from default.");
+                dbconfig = DBConfig::load(CONFIG_FILE_PATH).expect("Failed to load from default.");
                 println!("Configuration is set back to default.");
             }
             DBConfigMenu::Exit => {

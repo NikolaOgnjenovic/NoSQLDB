@@ -2,10 +2,11 @@ use colored::Colorize;
 use enum_iterator::Sequence;
 use NoSQLDB::DB;
 use crate::impl_menu;
-use crate::menus::{get_input_u8, UserMenu};
+use crate::menus::{get_input_f64, get_input_u32, get_input_u8, get_input_usize, get_input_with_range, UserMenu};
 
 #[derive(Sequence)]
 enum BloomFilterMenu {
+    CreateRetrieve,
     InsertValue,
     GetValueFromKey,
     ContainsFromKey,
@@ -14,6 +15,7 @@ enum BloomFilterMenu {
 
 impl_menu!(
     BloomFilterMenu, "BloomFilter",
+    BloomFilterMenu::CreateRetrieve, "Create/retrieve".blink(),
     BloomFilterMenu::InsertValue, "Insert value".blink(),
     BloomFilterMenu::GetValueFromKey, "Get value from key".blink(),
     BloomFilterMenu::ContainsFromKey, "Contains from key".blink(),
@@ -23,6 +25,22 @@ impl_menu!(
 pub fn bloom_filter_menu(db: &mut DB) {
     loop {
         match BloomFilterMenu::get_menu() {
+            BloomFilterMenu::CreateRetrieve => {
+                clearscreen::clear().expect("Failed to clear screen.");
+                let probability = get_input_f64("Enter probability: (0.001-1");
+                let cap = get_input_usize("Enter capacity: (10k-100mil)");
+                let key = get_input_u8("Enter key: ");
+                if key.is_none() {
+                    println!("Failed to serialize key into bytes.");
+                    continue;
+                }
+                let key = &key.unwrap();
+
+                match db.bloom_filter_create(key, probability, cap) {
+                    Ok(_) => println!("BloomFilter created."),
+                    Err(err) => eprintln!("Error during creation/retrieval: {}", err),
+                }
+            }
             BloomFilterMenu::InsertValue => {
                 clearscreen::clear().expect("Failed to clear screen.");
                 let key = get_input_u8("Enter key: ");

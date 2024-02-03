@@ -2,10 +2,11 @@ use enum_iterator::Sequence;
 use NoSQLDB::DB;
 use colored::Colorize;
 use crate::impl_menu;
-use crate::menus::{get_input_u8, UserMenu};
+use crate::menus::{get_input_f64, get_input_u8, UserMenu};
 
 #[derive(Sequence)]
 enum CountMinSketchMenu {
+    Create,
     Get,
     IncreaseCount,
     GetCount,
@@ -14,6 +15,7 @@ enum CountMinSketchMenu {
 
 impl_menu!(
     CountMinSketchMenu, "CountMinSketch",
+    CountMinSketchMenu::Create, "Create/retrieve".blink(),
     CountMinSketchMenu::Get, "Get value".blink(),
     CountMinSketchMenu::IncreaseCount, "Increase Count".blink(),
     CountMinSketchMenu::GetCount, "Get Count".blink(),
@@ -23,6 +25,22 @@ impl_menu!(
 pub fn count_min_sketch_menu(db: &mut DB) {
     loop {
         match CountMinSketchMenu::get_menu() {
+            CountMinSketchMenu::Create => {
+                clearscreen::clear().expect("Failed to clear screen.");
+                let probability = get_input_f64("Enter probability: (0.001-1");
+                let tolerance = get_input_f64("Enter tolerance: (0.001-1)");
+                let key = get_input_u8("Enter key: ");
+                if key.is_none() {
+                    println!("Failed to serialize key into bytes.");
+                    continue;
+                }
+                let key = &key.unwrap();
+
+                match db.count_min_sketch_create(key, probability, tolerance) {
+                    Ok(_) => println!("CountMinSketch created."),
+                    Err(err) => eprintln!("Error during creation/retrieval: {}", err),
+                }
+            }
             CountMinSketchMenu::Get => {
                  clearscreen::clear().expect("Failed to clear screen.");
                 let key = get_input_u8("Enter key: ");
