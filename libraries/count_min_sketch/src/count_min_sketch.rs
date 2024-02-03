@@ -9,6 +9,8 @@ impl CMSketch {
     /// Lower probability (of collisions) means the count of a key is less likely to be impacted by other keys.
     /// Higher tolerance (to error) means the count of some key is sampled more times.
     pub fn new(probability: f64, tolerance: f64) -> Self {
+        let probability = probability.clamp(0.001, 1.0);
+        let tolerance = tolerance.clamp(0.001, 1.0);
         let hash_func_len = max(
             1,
             ((1.0 - tolerance).ln() / (0.5_f64).ln()).floor() as usize,

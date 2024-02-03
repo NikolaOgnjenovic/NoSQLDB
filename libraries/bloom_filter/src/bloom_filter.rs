@@ -13,6 +13,8 @@ impl BloomFilter {
     /// The `probability` parameter represents the desired false positive probability,
     /// and the `cap` parameter is the expected maximum number of elements in the filter.
     pub fn new(probability: f64, cap: usize) -> Self {
+        let cap = cap.clamp(1000, 100_000_000);
+        let probability = probability.clamp(0.001, 1.0);
         let row_len = (-(cap as f64 * probability.ln()) / (2_f64.ln() * 2_f64.ln())) as usize;
         let hash_fun_count = ((row_len / cap) as f64 * 2_f64.ln()) as u8;
         BloomFilter {
