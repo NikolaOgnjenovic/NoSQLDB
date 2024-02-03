@@ -42,17 +42,14 @@ impl BloomFilter {
         let total_size = 10 + self.data.len();
         let mut serialized_data = vec![0u8; total_size].into_boxed_slice();
 
-        // The byte 0x01 to indicates that the data is a bloom filter (this is subject to change)
-        serialized_data[0] = 0x01;
-
         // Push the hash_fun_count as a single byte
-        serialized_data[1] = self.hash_fun_count;
+        serialized_data[0] = self.hash_fun_count;
 
         // Push 8 bytes for the data length
         let data_len_bytes = (self.data.len() as u64).to_ne_bytes();
-        serialized_data[2..10].copy_from_slice(&data_len_bytes);
+        serialized_data[1..9].copy_from_slice(&data_len_bytes);
 
-        let mut current_byte_index = 10;
+        let mut current_byte_index = 9;
         let mut bit_counter = 0; // Count bits to write them as single bytes to the array
         let mut current_byte = 0u8;
         for bit in self.data.iter() {
@@ -85,18 +82,10 @@ impl BloomFilter {
             ));
         }
 
-        // Read and validate the byte indicating the data is a bloom filter (0x01)
-        if input[0] != 0x01 {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "Invalid bloom filter header byte",
-            ));
-        }
-
-        let hash_fun_count = input[1];
+        let hash_fun_count = input[0];
 
         let mut data_len_bytes = [0u8; 8];
-        data_len_bytes.copy_from_slice(&input[2..10]);
+        data_len_bytes.copy_from_slice(&input[1..9]);
 
         let data_len = usize::from_ne_bytes(data_len_bytes);
 
@@ -106,7 +95,7 @@ impl BloomFilter {
         }
 
         let mut data_bytes = vec![0u8; data_bytes_count];
-        data_bytes.copy_from_slice(&input[10..(data_bytes_count + 10)]);
+        data_bytes.copy_from_slice(&input[9..(data_bytes_count + 9)]);
 
         let mut data = BitVec::new();
 
@@ -123,7 +112,7 @@ impl BloomFilter {
                 data.extend((0..8).map(|i| (bits >> i) & 1 == 1));
             } else {
                 // Mask the result to avoid shifting left by more than bits_to_read
-                let bits = (current_byte & ((1 << bits_to_read) - 1)) as u8;
+                let bits = current_byte & ((1 << bits_to_read) - 1);
                 data.extend((0..bits_to_read).map(|i| (bits >> i) & 1 == 1));
             }
 
