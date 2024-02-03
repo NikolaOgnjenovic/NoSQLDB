@@ -171,67 +171,165 @@ mod lsm_tests {
 #[cfg(test)]
 mod paginator_tests {
     use std::fs::{create_dir_all, remove_dir_all};
+    use tempfile::{tempdir, TempDir};
     use db_config::{CompactionAlgorithmType, DBConfig};
     use segment_elements::TimeStamp;
     use crate::LSM;
-    use crate::lsm::ScanType;
     use crate::paginator::Paginator;
 
     #[test]
-    fn test_prefix_scan() {
+    fn test_prefix_scan_base_prefix() {
         let mut db_config = DBConfig::default();
         db_config.memory_table_pool_num = 2;
         db_config.memory_table_capacity = 10;
         db_config.lsm_max_per_level = 4;
         db_config.sstable_single_file = true;
         db_config.compaction_algorithm_type = CompactionAlgorithmType::SizeTiered;
+        db_config.sstable_dir = String::from("temp_dir_for_test_safety");
         let mut lsm = LSM::new(&db_config).unwrap();
 
-        let base_string = "AB";
-        let base_bytes = base_string.as_bytes();
-        let page_len = 10;
-        let page_count = 3;
-        for i in 0..page_count * page_len + 1 {
-            let new_bytes = ((i as u64) + 1).to_ne_bytes();
-            let combined_bytes: Vec<u8> = base_bytes.iter().cloned().chain(new_bytes.iter().cloned()).collect();
+        let base_prefix = "AB";
+        let prefix_bytes = base_prefix.as_bytes();
+        let page_len = 20;
+        let page_count = 5;
 
-            //println!("Inserting key to LSM: {:#?}", combined_bytes);
+        // Generate strings from "AAA" to "ZZZ" and insert into LSM
+        for i in 0..page_count * page_len + 1 {
+            let new_suffix = ((i as u64) + 1).to_ne_bytes();
+            let combined_bytes: Vec<u8> = prefix_bytes.iter().cloned().chain(new_suffix.iter().cloned()).collect();
+
             let time_stamp = TimeStamp::Now;
             lsm.insert(&combined_bytes, &combined_bytes, time_stamp).expect("Failed to insert into lsm");
         }
 
-        println!("{:?}", lsm.get(&[65, 66, 1, 0, 0, 0, 0, 0]).expect(""));
-        println!("{:?}", lsm.get(&[65, 66, 20, 0, 0, 0, 0, 0]).expect(""));
-        println!("{:?}", lsm.get(&[65, 66, 22, 0, 0, 0, 0, 0]).expect(""));
-        println!("{:?}", lsm.get(&[65, 66, 24, 0, 0, 0, 0, 0]).expect(""));
-        println!("{:?}", lsm.get(&[65, 66, 26, 0, 0, 0, 0, 0]).expect(""));
-        println!("{:?}", lsm.get(&[65, 66, 29, 0, 0, 0, 0, 0]).expect(""));
-        println!("{:?}", lsm.get(&[65, 66, 31, 0, 0, 0, 0, 0]).expect(""));
-        // let mut iter = lsm.iter(Some(&[0]), Some(&[255]), None, RangeScan).expect("Failed to insert into lsm");
-        // while let Some(entry) = iter.next() {
-        //     println!("{:?}", entry.0);
-        //     println!("{:?}", entry.1);
-        // }
-        // let mut iter = lsm.iter(None, None, Some(&[65, 66]), PrefixScan).expect("Failed to insert into lsm");
-        // while let Some(entry) = iter.next() {
-        //     println!("{:?}", entry.0);
-        //     println!("{:?}", entry.1);
-        // }
-
         let mut paginator = Paginator::new(&lsm);
         // Test pages
         for page_number in 0..page_count {
-            let result_page = paginator.prefix_scan(base_bytes, page_number, page_len).expect("Failed to get pagination result");
+            let result_page = paginator.prefix_scan(prefix_bytes, page_number, page_len).expect("Failed to get pagination result");
             assert_eq!(result_page.len(), page_len);
 
             for (i, (key, _)) in result_page.iter().enumerate() {
-                assert!(key.starts_with(base_bytes));
+                assert!(key.starts_with(prefix_bytes));
 
-                let expected_value = ((page_number * page_len + i) as u64 + 1).to_ne_bytes();
-                let expected_bytes: Vec<u8> = base_bytes.iter().cloned().chain(expected_value.iter().cloned()).collect();
-                assert_eq!(expected_bytes.clone().into_boxed_slice(), key.clone());
+                let expected_suffix = ((page_number * page_len + i) as u64 + 1).to_ne_bytes();
+                let expected_bytes: Vec<u8> = prefix_bytes.iter().cloned().chain(expected_suffix.iter().cloned()).collect();
+                assert_eq!(expected_bytes.into_boxed_slice(), key.clone());
             }
         }
+
+        remove_dir_all(db_config.sstable_dir).expect("Failed to remove sstable dirs");
+        remove_dir_all(db_config.write_ahead_log_dir).expect("Failed to remove wal dirs");
+    }
+
+    #[test]
+    fn test_prefix_scan_from_large_range() {
+        let mut db_config = DBConfig::default();
+        db_config.memory_table_pool_num = 2;
+        db_config.memory_table_capacity = 10;
+        db_config.lsm_max_per_level = 4;
+        db_config.sstable_single_file = true;
+        db_config.compaction_algorithm_type = CompactionAlgorithmType::SizeTiered;
+        db_config.sstable_dir = TempDir::new().expect("Failed to create temp directory").path().to_str().unwrap().to_string();
+        db_config.write_ahead_log_dir = TempDir::new().expect("Failed to create temp directory").path().to_str().unwrap().to_string();
+        let mut lsm = LSM::new(&db_config).unwrap();
+
+        // Insert elements into LSM with keys from "AAA" to "ZZZ"
+        for i in b'A'..=b'Z' {
+            for j in b'A'..=b'Z' {
+                for k in b'A'..=b'Z' {
+                    let key_str = format!("{}{}{}", i as char, j as char, k as char);
+                    let key_bytes = key_str.as_bytes();
+                    let time_stamp = TimeStamp::Now;
+                    lsm.insert(key_bytes, key_bytes, time_stamp).expect("Failed to insert into lsm");
+                }
+            }
+        }
+
+        let mut paginator = Paginator::new(&lsm);
+
+        // Test prefix scan for keys starting with "AB"
+        let prefix_bytes = "AB".as_bytes();
+        let result_page = paginator.prefix_scan(prefix_bytes, 0, 26).expect("Failed to get pagination result");
+
+        for (i, (key, _)) in result_page.iter().enumerate() {
+            assert!(key.starts_with(prefix_bytes));
+        }
+
+        // Clean up
+        remove_dir_all(db_config.sstable_dir).expect("Failed to remove sstable dirs");
+        remove_dir_all(db_config.write_ahead_log_dir).expect("Failed to remove wal dirs");
+    }
+
+    #[test]
+    fn test_prefix_scan_iter() {
+        let mut db_config = DBConfig::default();
+        db_config.memory_table_pool_num = 3;
+        db_config.memory_table_capacity = 1000;
+        db_config.lsm_max_per_level = 4;
+        db_config.sstable_single_file = true;
+        db_config.compaction_algorithm_type = CompactionAlgorithmType::SizeTiered;
+        db_config.sstable_dir = TempDir::new().expect("Failed to create temp directory").path().to_str().unwrap().to_string();
+        db_config.write_ahead_log_dir = TempDir::new().expect("Failed to create temp directory").path().to_str().unwrap().to_string();
+        create_dir_all(db_config.sstable_dir.to_string()).expect("Failed to create sstable dirs");
+        let mut lsm = LSM::new(&db_config).unwrap();
+
+        // Insert elements into LSM with keys from "AAA" to "ZZZ"
+        for i in b'A'..=b'Z' {
+            for j in b'A'..=b'Z' {
+                for k in b'A'..=b'Z' {
+                    let key_str = format!("{}{}{}", i as char, j as char, k as char);
+                    lsm.insert(key_str.as_bytes(), key_str.as_bytes(), TimeStamp::Now).expect("Failed to insert into lsm");
+                }
+            }
+        }
+
+        let mut paginator = Paginator::new(&lsm);
+
+        // Test prefix scan for keys starting with "AB"
+        let prefix = "AB";
+        let prefix_bytes = prefix.as_bytes();
+
+        // Assert that going forward retrieves ABA...ABZ
+        for i in b'A'..b'Z' {
+            let key_str = format!("{}{}", prefix, i as char);
+            let result = paginator
+                .prefix_iterate_next(prefix_bytes)
+                .expect("Failed to iterate to next entry")
+                .expect("Failed to get memory entry")
+                .0
+                .clone();
+            assert_eq!(&*result, key_str.as_bytes());
+        }
+
+        // Assert that going backwards retrieves ABZ...ABA
+        for i in (b'A'..b'Z').rev() {
+            let key_str = format!("{}{}", prefix, i as char);
+            let result = paginator
+                .iterate_prev()
+                .expect("Failed to iterate to previous entry")
+                .expect("Failed to get memory entry")
+                .0
+                .clone();
+
+            assert_eq!(&*result, key_str.as_bytes());
+        }
+
+        paginator.iterate_stop();
+
+        // Assert that going forward retrieves ABA...ABZ
+        for i in b'A'..b'Z' {
+            let key_str = format!("{}{}", prefix, i as char);
+            let result = paginator
+                .prefix_iterate_next(prefix_bytes)
+                .expect("Failed to iterate to next entry")
+                .expect("Failed to get memory entry")
+                .0
+                .clone();
+            assert_eq!(&*result, key_str.as_bytes());
+        }
+
+        remove_dir_all(db_config.sstable_dir).expect("Failed to remove sstable dirs");
+        remove_dir_all(db_config.write_ahead_log_dir).expect("Failed to remove wal dirs");
     }
 
     #[test]
@@ -242,36 +340,34 @@ mod paginator_tests {
         db_config.lsm_max_per_level = 4;
         db_config.sstable_single_file = true;
         db_config.compaction_algorithm_type = CompactionAlgorithmType::SizeTiered;
+        db_config.sstable_dir = TempDir::new().expect("Failed to create temp directory").path().to_str().unwrap().to_string();
+        db_config.write_ahead_log_dir = TempDir::new().expect("Failed to create temp directory").path().to_str().unwrap().to_string();
         create_dir_all(db_config.sstable_dir.to_string()).expect("Failed to create sstable dirs");
         let mut lsm = LSM::new(&db_config).unwrap();
 
         // Insert elements into LSM
-        let min_key: usize = 0;
-        let max_key: usize = 1000;
+        let min_key: u8 = b'A';
+        let max_key: u8 = b'Z';
         for i in min_key..=max_key {
-            let i_bytes = i.to_ne_bytes();
-            lsm.insert(&i_bytes, &i_bytes, TimeStamp::Now).expect("Failed to insert into lsm");
+            let key_str = format!("{}", i as char);
+            lsm.insert(&key_str.as_bytes(), &key_str.as_bytes(), TimeStamp::Now).expect("Failed to insert into lsm");
         }
 
         // Set min & max range for paginator range scan
         let mut paginator = Paginator::new(&lsm);
-        let min_range: u64 = 0;
-        let max_range: u64 = 767; // <= 766 fails
-        let min_range_bytes = min_range.to_ne_bytes();
-        let max_range_bytes = (max_range + 1).to_ne_bytes(); // Add 1 to include the upper bound
 
         // Test range scan from min range to max range
-        let result_page = paginator.range_scan(&min_range_bytes, &max_range_bytes, 0, (max_range - min_range + 1) as usize)
+        let result_page = paginator.range_scan(&[min_key], &[max_key], 0, 26)
             .expect("Failed to get pagination result");
 
-        assert_eq!(result_page.len(), (max_range - min_range + 1) as usize);
+        assert_eq!(result_page.len(), 26);
 
         for (i, (key, _)) in result_page.iter().enumerate() {
-            assert!(key.as_ref() >= min_range_bytes.as_ref() && key.as_ref() <= max_range_bytes.as_ref());
-            println!("Works for {:#?}", key);
+            assert!(key.as_ref() >= min_key.to_ne_bytes().as_slice() && key.as_ref() <= max_key.to_ne_bytes().as_slice());
         }
 
         remove_dir_all(db_config.sstable_dir).expect("Failed to remove sstable dirs");
+        remove_dir_all(db_config.write_ahead_log_dir).expect("Failed to remove wal dirs");
     }
 
     // This test ensures that .iter() returns sequential ids, prev() returns to 0, stop() resets and next returns sequential ids
@@ -283,6 +379,8 @@ mod paginator_tests {
         db_config.lsm_max_per_level = 4;
         db_config.sstable_single_file = true;
         db_config.compaction_algorithm_type = CompactionAlgorithmType::SizeTiered;
+        db_config.sstable_dir = TempDir::new().expect("Failed to create temp directory").path().to_str().unwrap().to_string();
+        db_config.write_ahead_log_dir = TempDir::new().expect("Failed to create temp directory").path().to_str().unwrap().to_string();
         create_dir_all(db_config.sstable_dir.to_string()).expect("Failed to create sstable dirs");
         let mut lsm = LSM::new(&db_config).unwrap();
 
@@ -291,27 +389,19 @@ mod paginator_tests {
         let max_key: u8 = b'Z';
         for i in min_key..=max_key {
             let key_str = format!("{}", i as char);
-            println!("Inserting key str: {:#?}, bytes: {:#?}", key_str, key_str.as_bytes());
             lsm.insert(key_str.as_bytes(), key_str.as_bytes(), TimeStamp::Now).expect("Failed to insert into lsm");
         }
 
         let mut paginator = Paginator::new(&lsm);
         // Assert that going forwards retrieves "Key_min" to "Key_max"
-        // let mut lsm_iter = lsm.iter(Some(&[min_key]), Some(&[max_key]), None, ScanType::RangeScan).expect("Failed to create lsm iter");
         for i in min_key..=max_key {
              let key_str = format!("{}", i as char);
-        //     println!("Checking key str: {:#?}, bytes: {:#?}", key_str, key_str.as_bytes());
-        //     let result_key = lsm_iter.next().expect("Failed to get mem entry").0;
-
-            //assert_eq!(&*result_key, key_str.as_bytes());
-           //println!("Works for key str {:#?}, bytes {:#?}", key_str, key_str.as_bytes());
             let result = paginator
                 .range_iterate_next(&[min_key], &[max_key])
-                .expect("Failed to iterate to previous entry")
+                .expect("Failed to iterate to next entry")
                 .expect("Failed to get memory entry")
                 .0
                 .clone();
-            println!("\nResult {:#?}, expected key str: {:#?}", result, key_str);
             assert_eq!(&*result, key_str.as_bytes());
         }
 
@@ -325,7 +415,6 @@ mod paginator_tests {
                 .0
                 .clone();
 
-            println!("\nResult {:#?}, expected key str: {:#?}", result, key_str);
             assert_eq!(&*result, key_str.as_bytes());
         }
 
@@ -342,6 +431,9 @@ mod paginator_tests {
                 .clone();
             assert_eq!(&*result, key_str.as_bytes());
         }
+
+        remove_dir_all(db_config.sstable_dir).expect("Failed to remove sstable dirs");
+        remove_dir_all(db_config.write_ahead_log_dir).expect("Failed to remove wal dirs");
     }
 }
 
