@@ -98,33 +98,36 @@ impl BloomFilter {
         let mut data_len_bytes = [0u8; 8];
         data_len_bytes.copy_from_slice(&input[2..10]);
 
-        let data_len = u64::from_ne_bytes(data_len_bytes);
+        let data_len = usize::from_ne_bytes(data_len_bytes);
 
         let mut data_bytes_count = data_len / 8;
         if data_len % 8 != 0 {
             data_bytes_count += 1;
         }
 
-        let mut data_bytes = vec![0u8; data_bytes_count as usize];
-        data_bytes.copy_from_slice(&input[10..(data_bytes_count + 10) as usize]);
+        let mut data_bytes = vec![0u8; data_bytes_count];
+        data_bytes.copy_from_slice(&input[10..(data_bytes_count + 10)]);
 
         let mut data = BitVec::new();
 
-        /* Count each bit and stop reading when data_len bits are read.
-        This is done because data is read in bytes and the last byte can be incomplete
-        because the data of the bloom filter is a bit vector. */
-        let mut bit_counter = 0;
+        // Count bits read to properly read the last byte which can be incomplete
+        let mut bit_counter: usize = 0;
         for byte in data_bytes.iter() {
             let current_byte = *byte;
-            for i in 0..8 {
-                if bit_counter >= data_len {
-                    break;
-                }
+            let remaining_bits = data_len - bit_counter;
+            let mut bits_to_read = std::cmp::min(remaining_bits, 8);
 
-                let bit = (current_byte >> i) & 1;
-                data.push(bit == 1);
-                bit_counter += 1;
+            if bits_to_read == 8 {
+                // If we need to read all 8 bits, no need to mask the result
+                let bits = current_byte;
+                data.extend((0..8).map(|i| (bits >> i) & 1 == 1));
+            } else {
+                // Mask the result to avoid shifting left by more than bits_to_read
+                let bits = (current_byte & ((1 << bits_to_read) - 1)) as u8;
+                data.extend((0..bits_to_read).map(|i| (bits >> i) & 1 == 1));
             }
+
+            bit_counter += bits_to_read;
         }
 
         Ok(BloomFilter {
