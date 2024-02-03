@@ -183,7 +183,7 @@ mod tests {
             b.delete(&i.to_ne_bytes(), const_timestamp);
         }
 
-        assert_eq!(45, b.size());
+        assert_eq!(45, b.len());
         assert_eq!(
             b.get(&20u128.to_ne_bytes()).unwrap(),
             MemoryEntry::from(&40u128.to_ne_bytes(), false, const_timestamp.get_time())
@@ -238,27 +238,5 @@ mod tests {
 
             prev_key = key_bytes;
         }
-    }
-
-    #[test]
-    #[ignore]
-    fn test_memory() {
-        let mut b = BTree::new(3).unwrap();
-
-        for i in 0..1000000u128 {
-            b.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now);
-        }
-
-        println!(
-            "Current mem usage with full btree: {}MB",
-            PEAK_ALLOC.current_usage_as_mb()
-        );
-
-        b.empty();
-
-        println!(
-            "Current mem usage with empty btree: {}MB",
-            PEAK_ALLOC.current_usage_as_mb()
-        );
     }
 }

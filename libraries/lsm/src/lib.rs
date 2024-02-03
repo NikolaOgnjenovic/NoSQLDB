@@ -568,6 +568,38 @@ mod lsm_wal_tests {
         }
     }
 
+    #[test]
+    fn test_wal_same_key_multiple() {
+        let mut config = DBConfig::default();
+        config.sstable_dir = "sstable_wal_test/".to_string();
+        config.sstable_dir += "test_wal_same_key_multiple/";
+        config.write_ahead_log_dir = "wal_wal_test/".to_string();
+        config.write_ahead_log_dir += "test_wal_same_key_multiple/";
+        config.memory_table_capacity = 2;
+        config.write_ahead_log_num_of_logs = 1000;
+        config.memory_table_pool_num = 1;
+        config.write_ahead_log_size = 1000;
+
+        prepare_dirs(&config);
+
+        let mut lsm = LSM::new(&config).unwrap();
+
+        let key = "test_key";
+
+        for i in 0..100_000u32 {
+            lsm.insert(&key.as_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now).expect("IO error");
+        }
+
+        lsm.insert(&5u32.to_ne_bytes(), &10u32.to_ne_bytes(), TimeStamp::Now).expect("IO error");
+        lsm.insert(&10u32.to_ne_bytes(), &20u32.to_ne_bytes(), TimeStamp::Now).expect("IO error");
+
+        let mut new_lsm = LSM::load_from_dir(&config).unwrap();
+
+        assert_eq!(new_lsm.get(key.as_bytes()).unwrap().unwrap(), Box::from((99_999u32 * 2).to_ne_bytes()));
+        assert_eq!(new_lsm.get(&5u32.to_ne_bytes()).unwrap().unwrap(), Box::from(10u32.to_ne_bytes()));
+        assert_eq!(new_lsm.get(&10u32.to_ne_bytes()).unwrap().unwrap(), Box::from(20u32.to_ne_bytes()));
+    }
+
     fn test_wal_size_cap() {
         let mut config = DBConfig::default();
         config.sstable_dir = "sstable_wal_test/".to_string();

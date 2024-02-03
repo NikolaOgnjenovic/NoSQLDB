@@ -198,26 +198,4 @@ mod tests {
             prev_key = key_bytes;
         }
     }
-
-    #[test]
-    #[ignore]
-    fn test_memory() {
-        let mut s = SkipList::new(10);
-
-        for i in 0..100000u128 {
-            s.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now);
-        }
-
-        println!(
-            "Current mem usage with full skiplist: {}MB",
-            PEAK_ALLOC.current_usage_as_mb()
-        );
-
-        s.empty();
-
-        println!(
-            "Current mem usage with empty skiplist: {}MB",
-            PEAK_ALLOC.current_usage_as_mb()
-        );
-    }
 }
