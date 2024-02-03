@@ -1,9 +1,9 @@
-use bitvec::prelude::BitVec;
+use std::cmp::Ordering;
 use std::io::Result;
 use twox_hash::xxh3::hash64_with_seed;
 
 pub struct BloomFilter {
-    data: BitVec,
+    data: Vec<u8>,
     hash_fun_count: u8,
 }
 
@@ -16,7 +16,8 @@ impl BloomFilter {
         let row_len = (-(cap as f64 * probability.ln()) / (2_f64.ln() * 2_f64.ln())) as usize;
         let hash_fun_count = ((row_len / cap) as f64 * 2_f64.ln()) as u8;
         BloomFilter {
-            data: bitvec::bitvec![0; row_len],
+            data: vec![0; row_len],
+            //data: bitvec::bitvec![0; row_len],
             hash_fun_count,
         }
     }
@@ -25,7 +26,8 @@ impl BloomFilter {
     pub fn add(&mut self, key: &[u8]) {
         for i in 0..self.hash_fun_count {
             let hashed_index = hash64_with_seed(key, i as u64) as usize % self.data.len();
-            self.data.set(hashed_index, true);
+            self.data[hashed_index] = 1u8;
+            //self.data.set(hashed_index, true);
         }
     }
 
@@ -33,13 +35,12 @@ impl BloomFilter {
     pub fn contains(&self, key: &[u8]) -> bool {
         (0..self.hash_fun_count).all(|i| {
             let hashed_index = hash64_with_seed(key, i as u64) as usize % self.data.len();
-            self.data[hashed_index]
+            self.data[hashed_index].cmp(&1u8) == Ordering::Equal
         })
     }
 
-    /// Serializes the bloom filter into a boxed byte array.
     pub fn serialize(&self) -> Box<[u8]> {
-        let total_size = 10 + self.data.len();
+        let total_size = 9 + self.data.len();
         let mut serialized_data = vec![0u8; total_size].into_boxed_slice();
 
         // Push the hash_fun_count as a single byte
@@ -49,36 +50,17 @@ impl BloomFilter {
         let data_len_bytes = (self.data.len() as u64).to_ne_bytes();
         serialized_data[1..9].copy_from_slice(&data_len_bytes);
 
-        let mut current_byte_index = 9;
-        let mut bit_counter = 0; // Count bits to write them as single bytes to the array
-        let mut current_byte = 0u8;
-        for bit in self.data.iter() {
-            if *bit {
-                current_byte |= 1 << (bit_counter % 8);
-            }
-            bit_counter += 1;
-
-            if bit_counter % 8 == 0 {
-                serialized_data[current_byte_index] = current_byte;
-                current_byte_index += 1;
-                current_byte = 0;
-            }
-        }
-
-        // If there are remaining bits in the last byte, write it.
-        if bit_counter % 8 != 0 {
-            serialized_data[current_byte_index] = current_byte;
-        }
+        // Copy the data bytes directly
+        serialized_data[9..].copy_from_slice(&self.data);
 
         serialized_data
     }
 
-    /// Deserializes the bloom filter from a byte array.
     pub fn deserialize(input: &[u8]) -> Result<BloomFilter> {
-        if input.is_empty() {
+        if input.len() < 9 {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                "Bloom filter data is empty on deserialize",
+                "Bloom filter data is too short on deserialize",
             ));
         }
 
@@ -89,39 +71,15 @@ impl BloomFilter {
 
         let data_len = usize::from_ne_bytes(data_len_bytes);
 
-        let mut data_bytes_count = data_len / 8;
-        if data_len % 8 != 0 {
-            data_bytes_count += 1;
+        if input.len() != 9 + data_len {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Invalid bloom filter length",
+            ));
         }
 
-        let mut data_bytes = vec![0u8; data_bytes_count];
-        data_bytes.copy_from_slice(&input[9..(data_bytes_count + 9)]);
+        let data = input[9..].to_vec();
 
-        let mut data = BitVec::new();
-
-        // Count bits read to properly read the last byte which can be incomplete
-        let mut bit_counter: usize = 0;
-        for byte in data_bytes.iter() {
-            let current_byte = *byte;
-            let remaining_bits = data_len - bit_counter;
-            let mut bits_to_read = std::cmp::min(remaining_bits, 8);
-
-            if bits_to_read == 8 {
-                // If we need to read all 8 bits, no need to mask the result
-                let bits = current_byte;
-                data.extend((0..8).map(|i| (bits >> i) & 1 == 1));
-            } else {
-                // Mask the result to avoid shifting left by more than bits_to_read
-                let bits = current_byte & ((1 << bits_to_read) - 1);
-                data.extend((0..bits_to_read).map(|i| (bits >> i) & 1 == 1));
-            }
-
-            bit_counter += bits_to_read;
-        }
-
-        Ok(BloomFilter {
-            data,
-            hash_fun_count,
-        })
+        Ok(BloomFilter { data, hash_fun_count })
     }
 }

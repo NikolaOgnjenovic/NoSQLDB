@@ -7,4 +7,3 @@ authors = ["Nikola Ognjenović"]
 
 [dependencies]
 twox-hash = "1.6.3"
-bitvec = "1.0.1"
