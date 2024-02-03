@@ -1080,11 +1080,29 @@ impl SSTable {
         file_handle.read_exact(&mut max_key_bytes)?;
         let max_key = max_key_bytes.into_boxed_slice();
 
+
         Ok((min_key, max_key))
     }
 
-    /// prvo kroz index svih sstabela idemo dok ne dodjemo do keya koji je veci od minimalnog i onda vrnemo offset
-    pub(crate) fn get_sstable_offset(sstable_base_path: PathBuf, in_single_file: bool, searched_key: &[u8], scan_type: ScanType, non_existant_thresh: Option<u64>) -> io::Result<u64> {
+    /// Function that returns the offset from index file of a first key that meets the search criteria for either range or prefix scan
+    ///
+    ///
+    /// # Arguments
+    ///
+    /// * `sstable_base_path` - base path to SSTable.
+    /// * `in_single_file` - Indicates whether the table is stored in a single or multiple files.
+    /// * `searched_key` - Can either be min key or prefix based on the scan type.
+    /// * `scan_type` - The type of scan operation, range or prefix scan.
+    /// * `non_existent_thresh` - if this value is returned that means that sstable doesn't have keys that meet the search criteria
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing offset of first key in Index file that meets the search criteria.
+    ///
+    /// # Errors
+    ///
+    /// Returns an `io::Error` if there's an issue when reading contents of SStable file.
+    pub(crate) fn get_sstable_offset(sstable_base_path: PathBuf, in_single_file: bool, searched_key: &[u8], scan_type: ScanType, non_existent_thresh: Option<u64>) -> io::Result<u64> {
         let mut offset = 0;
 
         let mut open_options = OpenOptions::new();
@@ -1105,8 +1123,7 @@ impl SSTable {
             let mut index_offset_bytes = [0u8; std::mem::size_of::<usize>()];
             let result = file_handle.read_exact(&mut index_offset_bytes);
             if result.is_err() {
-                println!("failed tro fill index i nsingle");
-                return Ok(non_existant_thresh.unwrap());
+                return Ok(non_existent_thresh.unwrap());
             }
             let index_offset = usize::from_ne_bytes(index_offset_bytes) as u64;
 
@@ -1117,9 +1134,7 @@ impl SSTable {
             let mut key_len_bytes = [0u8; std::mem::size_of::<usize>()];
             let result = file_handle.read_exact(&mut key_len_bytes);
             if result.is_err() {
-                println!("failed to fill key len in loop");
-
-                return Ok(non_existant_thresh.unwrap());
+                return Ok(non_existent_thresh.unwrap());
             }
 
             let key_len = usize::from_ne_bytes(key_len_bytes);
@@ -1127,9 +1142,7 @@ impl SSTable {
             let mut key_bytes = vec![0u8; key_len];
             let result = file_handle.read_exact(&mut key_bytes);
             if result.is_err() {
-                println!("failed to fill key in loop");
-
-                return Ok(non_existant_thresh.unwrap());
+                return Ok(non_existent_thresh.unwrap());
             }
             let key = key_bytes.into_boxed_slice();
             let key_slice = &*key;
@@ -1137,9 +1150,7 @@ impl SSTable {
             let mut offset_bytes = [0u8; std::mem::size_of::<usize>()];
             let result = file_handle.read_exact(&mut offset_bytes);
             if result.is_err() {
-                println!("failed to fill offset bytes in loop");
-
-                return Ok(non_existant_thresh.unwrap());
+                return Ok(non_existent_thresh.unwrap());
             }
 
             let current_offset = usize::from_ne_bytes(offset_bytes);
@@ -1156,7 +1167,7 @@ impl SSTable {
                         break;
                     }
                     if key_slice > searched_key {
-                        return Ok(non_existant_thresh.unwrap());
+                        return Ok(non_existent_thresh.unwrap());
                     }
                     offset = current_offset;
                 }
@@ -1166,7 +1177,24 @@ impl SSTable {
         Ok(offset as u64)
     }
 
-    /// idem ovom funkcijom dok ne naidjem na prvi key koji je veci od mog i tada ne updateujem offset vec vrnem taj offset nazad
+    /// Function that returns the offset from data file of a first key that meets the search criteria for either range or prefix scan
+    ///
+    ///
+    /// # Arguments
+    ///
+    /// * `sstables` - Vector containing sstables
+    /// * `current_offsets` - offsets form index file of a first key that meets the search criteria
+    /// * `searched_key` - Can either be min key or prefix based on the scan type.
+    /// * `scan_type` - The type of scan operation, range or prefix scan.
+    /// * `use_variable_encoding` - set to true if the user decided to use variable encoding
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing updated offsets of all sstables of first key that meets the serach criteria
+    ///
+    /// # Errors
+    ///
+    /// Returns an `io::Error` if there's an issue when reading contents of SStable file.
     pub(crate) fn update_sstable_offsets(sstables: &mut Vec<SSTable>, mut current_offsets: Vec<u64>, searched_key: &[u8], scan_type: ScanType, use_variable_encoding: bool) -> io::Result<Vec<u64>> {
         for (index, sstable) in sstables.iter_mut().enumerate() {
             loop {

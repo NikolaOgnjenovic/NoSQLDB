@@ -184,6 +184,7 @@ mod paginator_tests {
         db_config.memory_table_capacity = 10;
         db_config.lsm_max_per_level = 4;
         db_config.sstable_single_file = true;
+        //db_config.use_compression = true;
         db_config.compaction_algorithm_type = CompactionAlgorithmType::SizeTiered;
         db_config.sstable_dir = String::from("temp_dir_for_test_safety");
         let mut lsm = LSM::new(&db_config).unwrap();
@@ -224,11 +225,11 @@ mod paginator_tests {
     #[test]
     fn test_prefix_scan_from_large_range() {
         let mut db_config = DBConfig::default();
-        db_config.memory_table_pool_num = 2;
-        db_config.memory_table_capacity = 10;
+        db_config.memory_table_pool_num = 10;
+        db_config.memory_table_capacity = 500;
         db_config.lsm_max_per_level = 4;
         db_config.sstable_single_file = true;
-        db_config.compaction_algorithm_type = CompactionAlgorithmType::SizeTiered;
+        db_config.compaction_algorithm_type = CompactionAlgorithmType::Leveled;
         db_config.sstable_dir = TempDir::new().expect("Failed to create temp directory").path().to_str().unwrap().to_string();
         db_config.write_ahead_log_dir = TempDir::new().expect("Failed to create temp directory").path().to_str().unwrap().to_string();
         let mut lsm = LSM::new(&db_config).unwrap();
@@ -252,6 +253,7 @@ mod paginator_tests {
         let result_page = paginator.prefix_scan(prefix_bytes, 0, 26).expect("Failed to get pagination result");
 
         for (i, (key, _)) in result_page.iter().enumerate() {
+            println!("{:?}", key);
             assert!(key.starts_with(prefix_bytes));
         }
 
