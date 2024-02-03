@@ -142,10 +142,10 @@ mod lsm_tests {
         }
 
         let mut num = 0;
-        ///Range
+        //Range
         let mut lsm_iter = lsm.iter(Some(&80usize.to_ne_bytes()), Some(&160usize.to_ne_bytes()), None, ScanType::RangeScan)?;
         while let Some(inner) = lsm_iter.next() {
-            if let Some((entry)) = inner {
+            if let Some(entry) = inner {
                 println!("{:?}", entry.0);
                 println!("{:?}", entry.1);
                 num += 1;
@@ -158,7 +158,7 @@ mod lsm_tests {
         println!();
         println!();
 
-        ///Prefix
+        // Prefix
         // let mut lsm_iter = lsm.iter(None, None, Some(&80usize.to_ne_bytes()), ScanType::PrefixScan)?;
         // while let Some(inner) = lsm_iter.next() {
         //     if let Some((entry)) = inner {
@@ -755,18 +755,19 @@ mod lsm_wal_tests {
 
 #[cfg(test)]
 mod sstable_tests {
-    use std::fs::remove_dir_all;
+    use std::fs::{create_dir_all, remove_dir_all};
     use std::path::PathBuf;
-    use super::*;
     use tempfile::TempDir;
+    use compression::CompressionDictionary;
     use segment_elements::TimeStamp;
     use db_config::{DBConfig, MemoryTableType};
     use crate::memtable::MemoryTable;
     use crate::sstable::SSTable;
 
     // Helper function to get default config and inner mem of memory type
-    fn get_density_and_mem_table(mem_table_type: &MemoryTableType) -> (usize, usize, MemoryTable) {
+    fn get_density_and_mem_table(mem_table_type: &MemoryTableType, use_compression: bool) -> (usize, usize, MemoryTable) {
         let mut db_config = DBConfig::default();
+        db_config.use_compression = use_compression;
         db_config.memory_table_type = mem_table_type.clone();
         let mem_table = MemoryTable::new(&db_config).expect("Failed to create memory table");
 
@@ -774,10 +775,10 @@ mod sstable_tests {
     }
 
     // Helper function to set up the test environment
-    fn setup_test_environment(mem_table_type: &MemoryTableType) -> (TempDir, MemoryTable, usize, usize) {
+    fn setup_test_environment(mem_table_type: &MemoryTableType, use_compresion: bool) -> (TempDir, MemoryTable, usize, usize) {
         // Create a temporary directory for testing
         let temp_dir = TempDir::new().expect("Failed to create temp directory");
-        let (summary_density, index_density, mem_table) = get_density_and_mem_table(mem_table_type);
+        let (summary_density, index_density, mem_table) = get_density_and_mem_table(mem_table_type, use_compresion);
         (temp_dir, mem_table, summary_density, index_density)
     }
 
@@ -791,25 +792,70 @@ mod sstable_tests {
         }
     }
 
+    fn get_compression_dict(compression_dict_dir: &TempDir, use_compression: bool) -> Option<CompressionDictionary> {
+        if use_compression {
+            let dir_path = compression_dict_dir.path().join("compression_dict");
+            let compression_dict_filename = dir_path.to_str().expect("Failed to unwrap compression dict filename");
+            create_dir_all(&compression_dict_dir).expect("Failed to create compression dict dirs");
+
+            Some(CompressionDictionary::load(compression_dict_filename).expect("Faileed to load compression dictionary"))
+        } else {
+            None
+        }
+    }
+
     #[test]
-    fn test_flushing() {
-        for range in (1..=1001).step_by(1000) {
+    fn test_flushing_uncompressed_no_variable_encoding() {
+        for range in (1..=100).step_by(101) {
             for mem_table_type in &[MemoryTableType::SkipList, MemoryTableType::HashMap, MemoryTableType::BTree] {
-                check_flushed_table(true, &mem_table_type.clone(), range, true);
-                check_flushed_table(true, &mem_table_type.clone(), range, false);
-                check_flushed_table(false, &mem_table_type.clone(), range, true);
-                check_flushed_table(false, &mem_table_type.clone(), range, false);
+                check_flushed_table(true, &mem_table_type.clone(), range, false, false);
+                check_flushed_table(false, &mem_table_type.clone(), range, false, false);
             }
         }
     }
 
-    fn check_flushed_table(in_single_file: bool, mem_table_type: &MemoryTableType, range: i32, use_variable_encoding: bool) {
-        let (temp_dir, mut mem_table, summary_density, index_density) = setup_test_environment(mem_table_type);
+    #[test]
+    fn test_flushing_uncompressed_variable_encoding() {
+        for range in (1..=100).step_by(101) {
+            for mem_table_type in &[MemoryTableType::SkipList, MemoryTableType::HashMap, MemoryTableType::BTree] {
+                check_flushed_table(true, &mem_table_type.clone(), range, true, false);
+                check_flushed_table(false, &mem_table_type.clone(), range, true, false);
+            }
+        }
+    }
+
+    #[test]
+    fn test_flushing_compressed_no_variable_encoding() {
+        for range in (1..=100).step_by(101) {
+            for mem_table_type in &[MemoryTableType::SkipList, MemoryTableType::HashMap, MemoryTableType::BTree] {
+                check_flushed_table(true, &mem_table_type.clone(), range, false, true);
+                check_flushed_table(false, &mem_table_type.clone(), range, false, true);
+            }
+        }
+    }
+
+    #[test]
+    fn test_flushing_compressed_variable_encoding() {
+        for range in (1..=100).step_by(101) {
+            for mem_table_type in &[MemoryTableType::SkipList, MemoryTableType::HashMap, MemoryTableType::BTree] {
+                check_flushed_table(true, &mem_table_type.clone(), range, true, true);
+                check_flushed_table(false, &mem_table_type.clone(), range, true, true);
+            }
+        }
+    }
+
+    fn check_flushed_table(in_single_file: bool, mem_table_type: &MemoryTableType, range: i32, use_variable_encoding: bool, use_compression: bool) {
+        let (temp_dir, mut mem_table, summary_density, index_density) = setup_test_environment(mem_table_type, use_compression);
         insert_test_data(&mut mem_table, range);
 
         // Create an SSTable and flush
         let mut sstable = SSTable::open((&temp_dir.path()).to_path_buf(), in_single_file).expect("Failed to open SSTable");
-        sstable.flush(mem_table, summary_density, index_density, None, &mut None, use_variable_encoding).expect("Failed to flush sstable");
+
+        // Create compression dict if required
+        let compression_dict_dir = tempfile::tempdir().expect("Failed to create temporary directory");
+        let mut compression_dictionary = get_compression_dict(&compression_dict_dir, use_compression);
+
+        sstable.flush(mem_table, summary_density, index_density, None, &mut compression_dictionary, use_variable_encoding).expect("Failed to flush sstable");
 
         // Retrieve and validate data from the SSTable
         for i in 0..range {
@@ -825,89 +871,173 @@ mod sstable_tests {
                 assert_eq!(actual_value_bytes, expected_value.as_bytes().into());
             } else {
                 // If the key is not found, fail the test
+                if use_compression {
+                    remove_dir_all(&compression_dict_dir).expect("Failed to remove compression dictionary dirs");
+                }
                 panic!("{i}");
+            }
+        }
+
+        remove_dir_all(&compression_dict_dir).expect("Failed to remove compression dictionary dirs");
+    }
+
+    #[test]
+    fn test_merkle_uncompressed_no_variable_encoding() {
+        for range in (1..=100).step_by(101) {
+            for mem_table_type in &[MemoryTableType::SkipList, MemoryTableType::HashMap, MemoryTableType::BTree] {
+                check_merkle_tree(true, &mem_table_type.clone(), range, false, false);
+                check_merkle_tree(false, &mem_table_type.clone(), range, false, false);
             }
         }
     }
 
     #[test]
-    fn test_merkle() {
-        let multiplier = 2;
-
-        for range in (1..=2000).step_by(1000) {
+    fn test_merkle_uncompressed_variable_encoding() {
+        for range in (1..=100).step_by(101) {
             for mem_table_type in &[MemoryTableType::SkipList, MemoryTableType::HashMap, MemoryTableType::BTree] {
-                check_merkle_tree(true, &mem_table_type.clone(), range, true);
-                check_merkle_tree(true, &mem_table_type.clone(), range, false);
-                check_merkle_tree(false, &mem_table_type.clone(), range, true);
-                check_merkle_tree(false, &mem_table_type.clone(), range, false);
+                check_merkle_tree(true, &mem_table_type.clone(), range, true, false);
+                check_merkle_tree(false, &mem_table_type.clone(), range, true, false);
             }
         }
     }
 
-    fn check_merkle_tree(in_single_file: bool, mem_table_type: &MemoryTableType, range: i32, use_variable_encoding: bool) {
-        let (temp_dir, mut mem_table, summary_density, index_density) = setup_test_environment(mem_table_type);
+    #[test]
+    fn test_merkle_compressed_no_variable_encoding() {
+        for range in (1..=100).step_by(101) {
+            for mem_table_type in &[MemoryTableType::SkipList, MemoryTableType::HashMap, MemoryTableType::BTree] {
+                check_merkle_tree(true, &mem_table_type.clone(), range, false, true);
+                check_merkle_tree(false, &mem_table_type.clone(), range, false, true);
+            }
+        }
+    }
+
+    #[test]
+    fn test_merkle_compressed_variable_encoding() {
+        for range in (1..=100).step_by(101) {
+            for mem_table_type in &[MemoryTableType::SkipList, MemoryTableType::HashMap, MemoryTableType::BTree] {
+                check_merkle_tree(true, &mem_table_type.clone(), range, true, true);
+                check_merkle_tree(false, &mem_table_type.clone(), range, true, true);
+            }
+        }
+    }
+
+    fn check_merkle_tree(in_single_file: bool, mem_table_type: &MemoryTableType, range: i32, use_variable_encoding: bool, use_compression: bool) {
+        let (temp_dir, mut mem_table, summary_density, index_density) = setup_test_environment(mem_table_type, use_compression);
         insert_test_data(&mut mem_table, range);
 
         // Create an SSTable from the MemoryPool's inner_mem
         let mut sstable = SSTable::open((&temp_dir.path()).to_path_buf(), in_single_file).expect("Failed to open SSTable");
-        sstable.flush(mem_table, summary_density, index_density, None, &mut None, use_variable_encoding).expect("Failed to flush sstable");
+
+        // Create compression dict if required
+        let compression_dict_dir = tempfile::tempdir().expect("Failed to create temporary directory");
+        let mut compression_dictionary = get_compression_dict(&compression_dict_dir, use_compression);
+
+        sstable.flush(mem_table, summary_density, index_density, None, &mut compression_dictionary, use_variable_encoding).expect("Failed to flush sstable");
 
         // Get the merkle tree from the SSTable
         let merkle_tree = sstable.get_merkle().expect("Failed to get merkle tree");
 
         // Check merkle tree against itself, expecting no differences
         let different_chunks_indices = sstable.check_merkle(&merkle_tree).expect("Failed to check merkle tree");
+        remove_dir_all(compression_dict_dir).expect("Failed to remove compression dict dirs");
         assert!(different_chunks_indices.is_empty());
     }
 
     #[test]
-    fn test_merge_sstables() {
-        let multiplier = 2;
-
-        for range in (1..=1001).step_by(1000) {
+    fn test_merge_sstables_uncompressed_no_variable_encoding() {
+        for range in (1..=100).step_by(101) {
             for mem_table_type in &[MemoryTableType::SkipList, MemoryTableType::HashMap, MemoryTableType::BTree] {
-                merge_sstables(vec![true, true], &mem_table_type.clone(), range, true, true);
-                merge_sstables(vec![true, true], &mem_table_type.clone(), range, false, true);
+                merge_sstables(vec![true, true], &mem_table_type.clone(), range, true, false, false);
+                merge_sstables(vec![true, true], &mem_table_type.clone(), range, false, false, false);
 
-                merge_sstables(vec![true, false], &mem_table_type.clone(), range, true, true);
-                merge_sstables(vec![true, false], &mem_table_type.clone(), range, false, true);
+                merge_sstables(vec![true, false], &mem_table_type.clone(), range, true, false, false);
+                merge_sstables(vec![true, false], &mem_table_type.clone(), range, false, false, false);
 
-                merge_sstables(vec![false, true], &mem_table_type.clone(), range, true, true);
-                merge_sstables(vec![false, true], &mem_table_type.clone(), range, false, true);
+                merge_sstables(vec![false, true], &mem_table_type.clone(), range, true, false, false);
+                merge_sstables(vec![false, true], &mem_table_type.clone(), range, false, false, false);
 
-                merge_sstables(vec![false, false], &mem_table_type.clone(), range, true, true);
-                merge_sstables(vec![false, false], &mem_table_type.clone(), range, false, true);
-
-                merge_sstables(vec![true, true], &mem_table_type.clone(), range, true, false);
-                merge_sstables(vec![true, true], &mem_table_type.clone(), range, false, false);
-
-                merge_sstables(vec![true, false], &mem_table_type.clone(), range, true, false);
-                merge_sstables(vec![true, false], &mem_table_type.clone(), range, false, false);
-
-                merge_sstables(vec![false, true], &mem_table_type.clone(), range, true, false);
-                merge_sstables(vec![false, true], &mem_table_type.clone(), range, false, false);
-
-                merge_sstables(vec![false, false], &mem_table_type.clone(), range, true, false);
-                merge_sstables(vec![false, false], &mem_table_type.clone(), range, false, false);
+                merge_sstables(vec![false, false], &mem_table_type.clone(), range, true, false, false);
+                merge_sstables(vec![false, false], &mem_table_type.clone(), range, false, false, false);
             }
         }
     }
 
-    fn merge_sstables(in_single_file: Vec<bool>, mem_table_type: &MemoryTableType, range: i32, merged_in_single_file: bool, use_variable_encoding: bool) {
+    #[test]
+    fn test_merge_sstables_uncompressed_variable_encoding() {
+        for range in (1..=100).step_by(101) {
+            for mem_table_type in &[MemoryTableType::SkipList, MemoryTableType::HashMap, MemoryTableType::BTree] {
+                merge_sstables(vec![true, true], &mem_table_type.clone(), range, true, true, false);
+                merge_sstables(vec![true, true], &mem_table_type.clone(), range, false, true, false);
+
+                merge_sstables(vec![true, false], &mem_table_type.clone(), range, true, true, false);
+                merge_sstables(vec![true, false], &mem_table_type.clone(), range, false, true, false);
+
+                merge_sstables(vec![false, true], &mem_table_type.clone(), range, true, true, false);
+                merge_sstables(vec![false, true], &mem_table_type.clone(), range, false, true, false);
+
+                merge_sstables(vec![false, false], &mem_table_type.clone(), range, true, true, false);
+                merge_sstables(vec![false, false], &mem_table_type.clone(), range, false, true, false);
+            }
+        }
+    }
+
+    #[test]
+    fn test_merge_sstables_compressed_no_variable_encoding() {
+        for range in (1..=100).step_by(101) {
+            for mem_table_type in &[MemoryTableType::SkipList, MemoryTableType::HashMap, MemoryTableType::BTree] {
+                merge_sstables(vec![true, true], &mem_table_type.clone(), range, true, false, true);
+                merge_sstables(vec![true, true], &mem_table_type.clone(), range, false, false, true);
+
+                merge_sstables(vec![true, false], &mem_table_type.clone(), range, true, false, true);
+                merge_sstables(vec![true, false], &mem_table_type.clone(), range, false, false, true);
+
+                merge_sstables(vec![false, true], &mem_table_type.clone(), range, true, false, true);
+                merge_sstables(vec![false, true], &mem_table_type.clone(), range, false, false, true);
+
+                merge_sstables(vec![false, false], &mem_table_type.clone(), range, true, false, true);
+                merge_sstables(vec![false, false], &mem_table_type.clone(), range, false, false, true);
+            }
+        }
+    }
+
+    #[test]
+    fn test_merge_sstables_compressed_variable_encoding() {
+        for range in (1..=100).step_by(101) {
+            for mem_table_type in &[MemoryTableType::SkipList, MemoryTableType::HashMap, MemoryTableType::BTree] {
+                merge_sstables(vec![true, true], &mem_table_type.clone(), range, true, true, true);
+                merge_sstables(vec![true, true], &mem_table_type.clone(), range, false, true, true);
+
+                merge_sstables(vec![true, false], &mem_table_type.clone(), range, true, true, true);
+                merge_sstables(vec![true, false], &mem_table_type.clone(), range, false, true, true);
+
+                merge_sstables(vec![false, true], &mem_table_type.clone(), range, true, true, true);
+                merge_sstables(vec![false, true], &mem_table_type.clone(), range, false, true, true);
+
+                merge_sstables(vec![false, false], &mem_table_type.clone(), range, true, true, true);
+                merge_sstables(vec![false, false], &mem_table_type.clone(), range, false, true, true);
+            }
+        }
+    }
+
+    fn merge_sstables(in_single_file: Vec<bool>, mem_table_type: &MemoryTableType, range: i32, merged_in_single_file: bool, use_variable_encoding: bool, use_compression: bool) {
         // contains paths to all sstables
         let mut sstable_paths = Vec::new();
 
-        let (temp_dir, _, summary_density, index_density) = setup_test_environment(mem_table_type);
+        let (temp_dir, _, summary_density, index_density) = setup_test_environment(mem_table_type, use_compression);
+
+        // Create compression dict if required
+        let compression_dict_dir = tempfile::tempdir().expect("Failed to create temporary directory");
+        let mut compression_dictionary = get_compression_dict(&compression_dict_dir, use_compression);
 
         // generate data for all sstables nad insert paths to sstable_paths
         for i in 0..in_single_file.len() {
-            let (_, _, mut mem_table) = get_density_and_mem_table(mem_table_type);
+            let (_, _, mut mem_table) = get_density_and_mem_table(mem_table_type, use_compression);
             insert_test_data(&mut mem_table, range);
 
             let sstable_path = temp_dir.path().join("sstable".to_string() + (i + 1).to_string().as_str());
             let mut sstable = SSTable::open(sstable_path.to_owned(), in_single_file[i]).expect("Failed to open SSTable");
 
-            sstable.flush(mem_table, summary_density, index_density, None, &mut None, use_variable_encoding).expect("Failed to flush sstable");
+            sstable.flush(mem_table, summary_density, index_density, None, &mut compression_dictionary, use_variable_encoding).expect("Failed to flush sstable");
             sstable_paths.push(sstable_path.to_owned());
         }
 
@@ -922,6 +1052,8 @@ mod sstable_tests {
             .expect("Failed to merge SSTables");
 
         verify_merged_sstable(&merged_sstable_path, index_density, range, merged_in_single_file, use_variable_encoding);
+
+        remove_dir_all(&compression_dict_dir).expect("Failed to remove compression dict dirs");
     }
 
     // Helper function to verify that the merged SSTable contains the correct data
