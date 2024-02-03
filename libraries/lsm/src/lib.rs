@@ -297,22 +297,22 @@ mod paginator_tests {
 
         let mut paginator = Paginator::new(&lsm);
         // Assert that going forwards retrieves "Key_min" to "Key_max"
-        let mut lsm_iter = lsm.iter(Some(&[min_key]), Some(&[max_key]), None, ScanType::RangeScan).expect("Failed to create lsm iter");
+        // let mut lsm_iter = lsm.iter(Some(&[min_key]), Some(&[max_key]), None, ScanType::RangeScan).expect("Failed to create lsm iter");
         for i in min_key..=max_key {
-            let key_str = format!("{}", i as char);
-            println!("Checking key str: {:#?}, bytes: {:#?}", key_str, key_str.as_bytes());
-            let result_key = lsm_iter.next().expect("Failed to get mem entry").0;
+             let key_str = format!("{}", i as char);
+        //     println!("Checking key str: {:#?}, bytes: {:#?}", key_str, key_str.as_bytes());
+        //     let result_key = lsm_iter.next().expect("Failed to get mem entry").0;
 
-            assert_eq!(&*result_key, key_str.as_bytes());
-            println!("Works for key str {:#?}, bytes {:#?}", key_str, key_str.as_bytes());
-            // let result = paginator
-            //     .range_iterate_next(&min_key_bytes, &max_key_bytes)
-            //     .expect("Failed to iterate to previous entry")
-            //     .expect("Failed to get memory entry")
-            //     .0
-            //     .clone();
-            // println!("\nResult {:#?}, expected key str: {:#?}", result, key_str);
-            // assert_eq!(&*result, key_str.as_bytes());
+            //assert_eq!(&*result_key, key_str.as_bytes());
+           //println!("Works for key str {:#?}, bytes {:#?}", key_str, key_str.as_bytes());
+            let result = paginator
+                .range_iterate_next(&[min_key], &[max_key])
+                .expect("Failed to iterate to previous entry")
+                .expect("Failed to get memory entry")
+                .0
+                .clone();
+            println!("\nResult {:#?}, expected key str: {:#?}", result, key_str);
+            assert_eq!(&*result, key_str.as_bytes());
         }
 
         // Assert that going backwards retrieves "Key_max" to "Key_min"
