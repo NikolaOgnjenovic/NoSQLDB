@@ -1002,7 +1002,7 @@ mod sstable_tests {
 
     #[test]
     fn test_flushing_uncompressed_no_variable_encoding() {
-        for range in (1..=100).step_by(101) {
+        for range in (1..=1_000).step_by(99) {
             for mem_table_type in &[MemoryTableType::SkipList, MemoryTableType::HashMap, MemoryTableType::BTree] {
                 check_flushed_table(true, &mem_table_type.clone(), range, false, false);
                 check_flushed_table(false, &mem_table_type.clone(), range, false, false);
@@ -1012,7 +1012,7 @@ mod sstable_tests {
 
     #[test]
     fn test_flushing_uncompressed_variable_encoding() {
-        for range in (1..=100).step_by(101) {
+        for range in (1..=1_000).step_by(99) {
             for mem_table_type in &[MemoryTableType::SkipList, MemoryTableType::HashMap, MemoryTableType::BTree] {
                 check_flushed_table(true, &mem_table_type.clone(), range, true, false);
                 check_flushed_table(false, &mem_table_type.clone(), range, true, false);
@@ -1022,7 +1022,7 @@ mod sstable_tests {
 
     #[test]
     fn test_flushing_compressed_no_variable_encoding() {
-        for range in (1..=100).step_by(101) {
+        for range in (1..=1_000).step_by(99) {
             for mem_table_type in &[MemoryTableType::SkipList, MemoryTableType::HashMap, MemoryTableType::BTree] {
                 check_flushed_table(true, &mem_table_type.clone(), range, false, true);
                 check_flushed_table(false, &mem_table_type.clone(), range, false, true);
@@ -1032,7 +1032,7 @@ mod sstable_tests {
 
     #[test]
     fn test_flushing_compressed_variable_encoding() {
-        for range in (1..=100).step_by(101) {
+        for range in (1..=1_000).step_by(99) {
             for mem_table_type in &[MemoryTableType::SkipList, MemoryTableType::HashMap, MemoryTableType::BTree] {
                 check_flushed_table(true, &mem_table_type.clone(), range, true, true);
                 check_flushed_table(false, &mem_table_type.clone(), range, true, true);
@@ -1079,7 +1079,7 @@ mod sstable_tests {
 
     #[test]
     fn test_merkle_uncompressed_no_variable_encoding() {
-        for range in (1..=100).step_by(101) {
+        for range in (1..=1_000).step_by(99) {
             for mem_table_type in &[MemoryTableType::SkipList, MemoryTableType::HashMap, MemoryTableType::BTree] {
                 check_merkle_tree(true, &mem_table_type.clone(), range, false, false);
                 check_merkle_tree(false, &mem_table_type.clone(), range, false, false);
@@ -1089,7 +1089,7 @@ mod sstable_tests {
 
     #[test]
     fn test_merkle_uncompressed_variable_encoding() {
-        for range in (1..=100).step_by(101) {
+        for range in (1..=1_000).step_by(99) {
             for mem_table_type in &[MemoryTableType::SkipList, MemoryTableType::HashMap, MemoryTableType::BTree] {
                 check_merkle_tree(true, &mem_table_type.clone(), range, true, false);
                 check_merkle_tree(false, &mem_table_type.clone(), range, true, false);
@@ -1099,7 +1099,7 @@ mod sstable_tests {
 
     #[test]
     fn test_merkle_compressed_no_variable_encoding() {
-        for range in (1..=100).step_by(101) {
+        for range in (1..=1_000).step_by(99) {
             for mem_table_type in &[MemoryTableType::SkipList, MemoryTableType::HashMap, MemoryTableType::BTree] {
                 check_merkle_tree(true, &mem_table_type.clone(), range, false, true);
                 check_merkle_tree(false, &mem_table_type.clone(), range, false, true);
@@ -1109,7 +1109,7 @@ mod sstable_tests {
 
     #[test]
     fn test_merkle_compressed_variable_encoding() {
-        for range in (1..=100).step_by(101) {
+        for range in (1..=1_000).step_by(99) {
             for mem_table_type in &[MemoryTableType::SkipList, MemoryTableType::HashMap, MemoryTableType::BTree] {
                 check_merkle_tree(true, &mem_table_type.clone(), range, true, true);
                 check_merkle_tree(false, &mem_table_type.clone(), range, true, true);
@@ -1141,7 +1141,7 @@ mod sstable_tests {
 
     #[test]
     fn test_merge_sstables_uncompressed_no_variable_encoding() {
-        for range in (1..=100).step_by(101) {
+        for range in (1..=1_000).step_by(99) {
             for mem_table_type in &[MemoryTableType::SkipList, MemoryTableType::HashMap, MemoryTableType::BTree] {
                 merge_sstables(vec![true, true], &mem_table_type.clone(), range, true, false, false);
                 merge_sstables(vec![true, true], &mem_table_type.clone(), range, false, false, false);
@@ -1160,7 +1160,7 @@ mod sstable_tests {
 
     #[test]
     fn test_merge_sstables_uncompressed_variable_encoding() {
-        for range in (1..=100).step_by(101) {
+        for range in (1..=1_000).step_by(99) {
             for mem_table_type in &[MemoryTableType::SkipList, MemoryTableType::HashMap, MemoryTableType::BTree] {
                 merge_sstables(vec![true, true], &mem_table_type.clone(), range, true, true, false);
                 merge_sstables(vec![true, true], &mem_table_type.clone(), range, false, true, false);
@@ -1179,7 +1179,7 @@ mod sstable_tests {
 
     #[test]
     fn test_merge_sstables_compressed_no_variable_encoding() {
-        for range in (100..=100).step_by(101) {
+        for range in (100..=100).step_by(99) {
             for mem_table_type in &[MemoryTableType::SkipList, MemoryTableType::HashMap, MemoryTableType::BTree] {
                 merge_sstables(vec![true, true], &mem_table_type.clone(), range, true, false, true);
                 merge_sstables(vec![true, true], &mem_table_type.clone(), range, false, false, true);
@@ -1198,7 +1198,7 @@ mod sstable_tests {
 
     #[test]
     fn test_merge_sstables_compressed_variable_encoding() {
-        for range in (1..=100).step_by(101) {
+        for range in (1..=1_000).step_by(99) {
             for mem_table_type in &[MemoryTableType::SkipList, MemoryTableType::HashMap, MemoryTableType::BTree] {
                 merge_sstables(vec![true, true], &mem_table_type.clone(), range, true, true, true);
                 merge_sstables(vec![true, true], &mem_table_type.clone(), range, false, true, true);
