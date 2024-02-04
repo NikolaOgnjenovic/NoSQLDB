@@ -3,7 +3,7 @@ use bitvec::prelude::{BitArray, Msb0};
 use bitvec::vec::BitVec;
 use bitvec::view::BitView;
 use std::collections::HashMap;
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io::{Error, ErrorKind, Read, Write};
 use std::path::Path;
 
@@ -23,7 +23,7 @@ impl CompressionDictionary {
         let mut buffer = Vec::new();
         let mut file_cursor: usize = 0;
 
-        let mut file = match File::open(file_path) {
+        let mut file = match OpenOptions::new().read(true).write(true).open(file_path) {
             Ok(file) => file,
             Err(_) => {
                 if let Some(parent_dir) = Path::new(&file_path).parent() {
@@ -32,7 +32,7 @@ impl CompressionDictionary {
                     }
                 }
 
-                let file = File::create(file_path)?;
+                let file = OpenOptions::new().read(true).write(true).create(true).open(file_path)?;
                 return Ok(CompressionDictionary { file, list, map });
             }
         };

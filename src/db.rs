@@ -6,6 +6,8 @@ use lsm::{Paginator, LSM};
 use segment_elements::TimeStamp;
 use simhash::hamming_distance;
 use std::error::Error;
+use std::fs::create_dir_all;
+use std::path::Path;
 use token_bucket::token_bucket::TokenBucket;
 
 use crate::token_bucket_error::TokenBucketError;
@@ -19,34 +21,26 @@ pub struct DB {
     reserved_key_prefixes: [&'static [u8]; 5],
 }
 
-impl Default for DB {
-    fn default() -> Self {
-        let default_config = DBConfig::default();
-        DB {
-            lsm: LSM::new(&default_config).unwrap(),
-            config: default_config,
-            reserved_key_prefixes: [
-                "bl00m_f1lt3r/".as_bytes(),
-                "c0unt_m1n_$k3tch/".as_bytes(),
-                "hyp3r_l0g_l0g/".as_bytes(),
-                "$1m_ha$h/".as_bytes(),
-                "t0k3n_buck3t/".as_bytes(),
-            ],
-        }
-    }
-}
-
 impl DB {
     pub fn build(config: DBConfig) -> Result<Self, Box<dyn Error>> {
-        Ok(DB {
-            lsm: match LSM::load_from_dir(&config) {
+        let lsm = if Path::new(&config.write_ahead_log_dir).exists() {
+            match LSM::load_from_dir(&config) {
                 Ok(lsm) => lsm,
                 Err(e) => {
                     eprintln!("Error occurred: {}", e);
                     eprintln!("Memory pool wasn't reconstructed.");
                     LSM::new(&config)?
                 }
-            },
+            }
+        } else {
+            LSM::new(&config)?
+        };
+
+        create_dir_all(&config.sstable_dir)?;
+        create_dir_all(&config.write_ahead_log_dir)?;
+
+        Ok(DB {
+            lsm,
             config,
             reserved_key_prefixes: [
                 "bl00m_f1lt3r/".as_bytes(),

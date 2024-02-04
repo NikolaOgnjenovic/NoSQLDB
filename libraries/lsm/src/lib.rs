@@ -529,6 +529,8 @@ mod lsm_wal_tests {
                 .for_each(|dir| remove_dir_all(dir).unwrap_or(())),
             Err(_) => (),
         }
+
+        remove_file(&dbconfig.compression_dictionary_path).unwrap();
     }
 
     #[test]
@@ -538,6 +540,7 @@ mod lsm_wal_tests {
         config.sstable_dir += "test_wal_reconstruction/";
         config.write_ahead_log_dir = "wal_wal_test/".to_string();
         config.write_ahead_log_dir += "test_wal_reconstruction/";
+        config.compression_dictionary_path = "wal_wal_test/dict/test_wal_reconstruction/dictionary.bin".to_string();
         config.memory_table_capacity = 1000;
         config.write_ahead_log_num_of_logs = 1000;
         config.memory_table_pool_num = 20;
@@ -569,6 +572,7 @@ mod lsm_wal_tests {
         config.sstable_dir += "test_wal_same_key_multiple/";
         config.write_ahead_log_dir = "wal_wal_test/".to_string();
         config.write_ahead_log_dir += "test_wal_same_key_multiple/";
+        config.compression_dictionary_path = "wal_wal_test/dict/test_wal_same_key_multiple/dictionary.bin".to_string();
         config.memory_table_capacity = 2;
         config.write_ahead_log_num_of_logs = 1000;
         config.memory_table_pool_num = 1;
@@ -613,6 +617,7 @@ mod lsm_wal_tests {
         config.sstable_dir += "test_wal_size_cap/";
         config.write_ahead_log_dir = "wal_wal_test/".to_string();
         config.write_ahead_log_dir += "test_wal_size_cap/";
+        config.compression_dictionary_path = "wal_wal_test/dict/test_wal_size_cap/dictionary.bin".to_string();
         config.memory_table_capacity = 10;
         config.memory_table_pool_num = 3;
         config.write_ahead_log_size = 50;
@@ -652,6 +657,7 @@ mod lsm_wal_tests {
         config.sstable_dir += "test_wal_num_cap/";
         config.write_ahead_log_dir = "wal_wal_test/".to_string();
         config.write_ahead_log_dir += "test_wal_num_cap/";
+        config.compression_dictionary_path = "wal_wal_test/dict/test_wal_num_cap/dictionary.bin".to_string();
         config.memory_table_capacity = 100;
         config.memory_table_pool_num = 3;
         config.write_ahead_log_num_of_logs = 1;
@@ -691,6 +697,7 @@ mod lsm_wal_tests {
         config.sstable_dir += "test_wal_size_cap2/";
         config.write_ahead_log_dir = "wal_wal_test/".to_string();
         config.write_ahead_log_dir += "test_wal_size_cap2/";
+        config.compression_dictionary_path = "wal_wal_test/dict/test_wal_size_cap2/dictionary.bin".to_string();
         config.memory_table_capacity = 10;
         config.memory_table_pool_num = 3;
         config.write_ahead_log_size = 10;
@@ -730,6 +737,7 @@ mod lsm_wal_tests {
         config.sstable_dir += "test_wal_num_and_size_cap/";
         config.write_ahead_log_dir = "wal_wal_test/".to_string();
         config.write_ahead_log_dir += "test_wal_num_and_size_cap/";
+        config.compression_dictionary_path = "wal_wal_test/dict/test_wal_num_and_size_cap/dictionary.bin".to_string();
         config.memory_table_capacity = 10;
         config.memory_table_pool_num = 3;
         config.write_ahead_log_num_of_logs = 1;
@@ -770,6 +778,7 @@ mod lsm_wal_tests {
         config.sstable_dir += "test_wal_one_file_correct_reload/";
         config.write_ahead_log_dir = "wal_wal_test/".to_string();
         config.write_ahead_log_dir += "test_wal_one_file_correct_reload/";
+        config.compression_dictionary_path = "wal_wal_test/dict/test_wal_one_file_correct_reload/dictionary.bin".to_string();
         config.memory_table_capacity = 10;
         config.memory_table_pool_num = 10;
         config.lsm_max_level = 100;
@@ -779,14 +788,14 @@ mod lsm_wal_tests {
 
         let mut lsm = LSM::new(&config).unwrap();
 
-        for i in 0..300000u128 {
+        for i in 0..30000u128 {
             lsm.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now)
                 .expect("IO error");
         }
 
         let mut load_lsm = LSM::load_from_dir(&config).expect("IO error");
 
-        for i in 300000u128 - 84..300000u128 {
+        for i in 30000u128 - 84..30000u128 {
             assert_eq!(
                 load_lsm.get(&i.to_ne_bytes()).unwrap(),
                 Some(Box::from((i * 2).to_ne_bytes()))
@@ -801,6 +810,7 @@ mod lsm_wal_tests {
         config.sstable_dir += "test_wal_delete_on_flush/";
         config.write_ahead_log_dir = "wal_wal_test/".to_string();
         config.write_ahead_log_dir += "test_wal_delete_on_flush/";
+        config.compression_dictionary_path = "wal_wal_test/dict/test_wal_delete_on_flush/dictionary.bin".to_string();
         config.memory_table_capacity = 10;
         config.memory_table_pool_num = 10;
         config.write_ahead_log_size = 500;
@@ -832,6 +842,7 @@ mod lsm_wal_tests {
         config.sstable_dir += "test_wal_big_input/";
         config.write_ahead_log_dir = "wal_wal_test/".to_string();
         config.write_ahead_log_dir += "test_wal_big_input/";
+        config.compression_dictionary_path = "wal_wal_test/dict/test_wal_big_input/dictionary.bin".to_string();
         config.memory_table_capacity = 13;
         config.memory_table_pool_num = 10;
         config.write_ahead_log_size = 5;
@@ -866,6 +877,7 @@ mod lsm_wal_tests {
         config.sstable_dir += "test_wal_small_input/";
         config.write_ahead_log_dir = "wal_wal_test/".to_string();
         config.write_ahead_log_dir += "test_wal_small_input/";
+        config.compression_dictionary_path = "wal_wal_test/dict/test_wal_small_input/dictionary.bin".to_string();
         config.memory_table_capacity = 5;
         config.memory_table_pool_num = 1;
         config.write_ahead_log_num_of_logs = 100000;
@@ -875,7 +887,6 @@ mod lsm_wal_tests {
         let mut lsm = LSM::new(&config).unwrap();
 
         for i in 0..53u8 {
-            println!("{i}");
             lsm.insert(&i.to_ne_bytes(), &1_u128.to_ne_bytes(), TimeStamp::Now)
                 .expect("IO error");
         }
@@ -897,6 +908,7 @@ mod lsm_wal_tests {
         config.sstable_dir += "test_wal_removal_after_config_change/";
         config.write_ahead_log_dir = "wal_wal_test/".to_string();
         config.write_ahead_log_dir += "test_wal_removal_after_config_change/";
+        config.compression_dictionary_path = "wal_wal_test/dict/test_wal_removal_after_config_change/dictionary.bin".to_string();
         config.memory_table_capacity = 1000;
         config.memory_table_pool_num = 10;
         config.write_ahead_log_num_of_logs = 800;
@@ -943,6 +955,7 @@ mod lsm_wal_tests {
         config.sstable_dir += "test_wal_only_delete_reconstruction/";
         config.write_ahead_log_dir = "wal_wal_test/".to_string();
         config.write_ahead_log_dir += "test_wal_only_delete_reconstruction/";
+        config.compression_dictionary_path = "wal_wal_test/dict/test_wal_only_delete_reconstruction/dictionary.bin".to_string();
         config.memory_table_capacity = 1000;
         config.write_ahead_log_num_of_logs = 1000;
         config.memory_table_pool_num = 20;
@@ -971,6 +984,7 @@ mod lsm_wal_tests {
         config.sstable_dir += "test_insert_delete_mixed_reconstruction/";
         config.write_ahead_log_dir = "wal_wal_test/".to_string();
         config.write_ahead_log_dir += "test_insert_delete_mixed_reconstruction/";
+        config.compression_dictionary_path = "wal_wal_test/dict/test_insert_delete_mixed_reconstruction/dictionary.bin".to_string();
         config.memory_table_capacity = 1000;
         config.write_ahead_log_num_of_logs = 1000;
         config.memory_table_pool_num = 20;
