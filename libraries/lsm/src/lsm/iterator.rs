@@ -68,8 +68,7 @@ impl<'a> Iterator for LSMIterator<'a> {
             .sstables
             .iter_mut()
             .zip(self.offsets.iter())
-            .enumerate()
-            .map(|(index, (sstable, offset))| {
+            .map(|(sstable, offset)| {
                 let return_value;
                 let mut new_offset = *offset; // new offset from which we continue reading in sstable
                 let mut added_offset = 0; // how many bytes we have read from stable

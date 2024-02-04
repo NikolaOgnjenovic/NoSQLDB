@@ -530,7 +530,7 @@ mod lsm_wal_tests {
             Err(_) => (),
         }
 
-        remove_file(&dbconfig.compression_dictionary_path);
+        remove_file(&dbconfig.compression_dictionary_path).ok();
     }
 
     #[test]

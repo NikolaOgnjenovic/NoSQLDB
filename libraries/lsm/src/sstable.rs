@@ -944,9 +944,10 @@ impl SSTable {
         expected_key: Option<&[u8]>,
         use_variable_encoding: bool,
     ) -> Option<((Box<[u8]>, MemoryEntry), u64)> {
-        let (mut crc, mut timestamp, mut tombstone, mut key_len, mut offset_to_key_len, mut length) =
-            (0u32, 0u128, false, 0usize, 0usize, 0usize);
+        let (mut crc, mut timestamp, mut tombstone, mut offset_to_key_len) =
+            (0u32, 0u128, false, 0usize);
         let mut traversed_offset = 0;
+        let mut length: usize;
 
         let mut unwrapped_key = vec![];
 
@@ -976,7 +977,7 @@ impl SSTable {
                 (offset_to_key_len, length) =
                     deserialize_usize_value(&buffer[buffer_offset..], false);
                 buffer_offset += length;
-                (crc, timestamp, tombstone, key_len, _, length, _) =
+                (crc, timestamp, tombstone, _, _, length, _) =
                     deserialize_header(&buffer[buffer_offset..], false);
                 buffer_offset += length;
 
@@ -1010,7 +1011,7 @@ impl SSTable {
             let (_, mut buffer_offset) = deserialize_usize_value(&buffer, false);
             (offset_to_key_len, length) = deserialize_usize_value(&buffer[buffer_offset..], false);
             buffer_offset += length;
-            (crc, timestamp, tombstone, key_len, _, length, _) =
+            (crc, timestamp, tombstone, _, _, length, _) =
                 deserialize_header(&buffer[buffer_offset..], false);
             buffer_offset += length;
 

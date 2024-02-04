@@ -530,56 +530,6 @@ impl LSM {
         Ok(())
     }
 
-    /// Function that gets all keys from memory table that are withing range or that start with a given prefix
-    ///
-    /// # Arguments
-    ///
-    /// * `memory_table` - The emory table we are extracting keys from
-    /// * `min_key` - Option containing minimum key used for range scan
-    /// * `max_key` - Option containing maximum key used for prefix scan
-    /// * `searched_key` - Option containing key prefix for prefix scan
-    /// * `scan_type` - indicates the scan type, range or prefix scan
-    /// # Returns
-    ///
-    /// A vector of memory entries
-    fn get_keys_from_mem_table(
-        memory_table: &MemoryTable,
-        min_key: Option<&[u8]>,
-        max_key: Option<&[u8]>,
-        searched_key: Option<&[u8]>,
-        scan_type: ScanType,
-    ) -> Vec<(Box<[u8]>, MemoryEntry)> {
-        let mut entries = Vec::new();
-        let mut iterator = memory_table.iterator();
-        let mut flag = false;
-
-        while let Some(entry) = iterator.next() {
-            let curr_key = entry.0.clone();
-            match scan_type {
-                ScanType::RangeScan => {
-                    let (min_key, max_key) = (min_key.unwrap(), max_key.unwrap());
-                    if curr_key.as_ref() >= min_key && curr_key.as_ref() <= max_key {
-                        entries.push(entry);
-                    }
-                    if curr_key.as_ref() > max_key {
-                        break;
-                    }
-                }
-                ScanType::PrefixScan => {
-                    let searched_key = searched_key.unwrap();
-                    if curr_key.starts_with(searched_key) {
-                        flag = true;
-                        entries.push(entry);
-                    }
-                    if !curr_key.starts_with(searched_key) && flag {
-                        break;
-                    }
-                }
-            }
-        }
-        entries
-    }
-
     /// Function that returns index in the vector of an entry with the biggest timestamp
     ///
     /// # Arguments
