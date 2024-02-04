@@ -23,7 +23,7 @@ impl_menu!(
 );
 
 pub fn range_scan_menu(db: &mut DB) {
-    let (mut page_count, mut page_len) = (Some(5), Some(20));
+    let (mut page_count, mut page_len) = (Some(0), Some(20));
     loop {
         println!(
             "Current page number: {}, current page length: {}",
