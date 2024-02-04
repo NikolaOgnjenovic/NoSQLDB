@@ -81,13 +81,6 @@ impl DoublyLinkedList {
 
         None
     }
-
-    pub fn peak_tail(&self) -> Link {
-        if !self.is_empty() {
-            return self.tail.clone();
-        }
-        None
-    }
 }
 
 impl Drop for DoublyLinkedList {

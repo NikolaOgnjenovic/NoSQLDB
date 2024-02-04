@@ -188,7 +188,6 @@ impl<'a> Paginator<'a> {
     ///
     /// An optional tuple containing the key and memory entry of the previous entry, or `None` if no more entries are available.
     pub fn iterate_prev(&mut self) -> std::io::Result<Option<(Box<[u8]>, MemoryEntry)>> {
-        println!("Cached size: {:#?}, index: {:#?}", self.cached_entries.len(), self.cached_entry_index);
         // If the cache is empty or the cached index is 0, there is no previous entry
         if self.cached_entries.is_empty() || self.cached_entry_index == 0 || self.cached_entry_index > self.cached_entries.len() {
             return Ok(None);

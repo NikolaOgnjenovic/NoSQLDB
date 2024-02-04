@@ -142,7 +142,9 @@ fn test_compressed_size_vs_uncompressed_50000_diff_keys() {
             None => panic!("Get doesn't work")
         };
 
-        println!("{i}");
+        if i % 100 == 0 {
+            println!("{i} / 100_000");
+        }
 
         assert_eq!(
             value.as_bytes(),

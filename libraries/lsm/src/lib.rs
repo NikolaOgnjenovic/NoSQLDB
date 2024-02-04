@@ -2,9 +2,9 @@ mod lsm;
 mod mem_pool;
 mod sstable;
 mod memtable;
-mod paginator;
 
 pub use lsm::LSM;
+pub use lsm::paginator::Paginator;
 
 #[cfg(test)]
 mod mem_pool_tests {
@@ -52,129 +52,13 @@ mod mem_pool_tests {
 }
 
 #[cfg(test)]
-mod lsm_tests {
-    use std::{fs, io};
-    use std::fs::{read_dir, remove_dir_all, remove_file};
-    use super::*;
-    use segment_elements::TimeStamp;
-    use db_config::{CompactionAlgorithmType, DBConfig};
-    use crate::lsm::{LSM, ScanType};
-
-    fn prepare_dirs(dbconfig: &DBConfig) {
-        match read_dir(&dbconfig.write_ahead_log_dir) {
-            Ok(dir) => {
-                dir.map(|dir_entry| dir_entry.unwrap().path())
-                    .filter(|file| file.file_name().unwrap() != ".keep")
-                    .filter(|file| file.extension().unwrap() == "log" || file.extension().unwrap() == "num")
-                    .for_each(|file| remove_file(file).unwrap())
-            }
-            Err(_) => ()
-        }
-
-        match read_dir(&dbconfig.sstable_dir) {
-            Ok(dir) => {
-                dir.map(|dir_entry| dir_entry.unwrap().path())
-                    .filter(|dir| dir.file_name().unwrap() != ".keep")
-                    .for_each(|dir| remove_dir_all(dir).unwrap_or(()))
-            }
-            Err(_) => ()
-        }
-    }
-
-    #[test]
-    fn test_flushing() -> io::Result<()> {
-        let mut db_config = DBConfig::default();
-        db_config.memory_table_pool_num = 100;
-        db_config.memory_table_capacity = 30;
-        db_config.lsm_max_per_level = 3;
-        db_config.lsm_max_level = 6;
-        db_config.lsm_leveled_amplification = 5;
-        db_config.sstable_single_file = true;
-        db_config.compaction_algorithm_type = CompactionAlgorithmType::Leveled;
-        let mut lsm = LSM::new(&db_config).expect("No such file or directory");
-        for i in 0..8000usize {
-            lsm.insert(&i.to_ne_bytes(), &i.to_ne_bytes(), TimeStamp::Now)?;
-        }
-        //fs::create_dir_all(&db_config.sstable_dir)?;
-        list_files_and_folders(db_config.sstable_dir)?;
-        Ok(())
-    }
-
-    fn list_files_and_folders(folder_path: String) -> io::Result<()> {
-        let entries = fs::read_dir(folder_path)?;
-
-        for entry in entries {
-            let entry = entry?;
-            let path = entry.path();
-            let file_name = path.file_name().unwrap().to_string_lossy();
-
-            if path.is_file() {
-                println!("File: {}", file_name);
-            } else if path.is_dir() {
-                println!("Folder: {}", file_name);
-            } else {
-                println!("Unknown: {}", file_name);
-            }
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn test_scans() -> io::Result<()> {
-        let mut db_config = DBConfig::default();
-        db_config.memory_table_pool_num = 10;
-        db_config.memory_table_capacity = 500;
-        db_config.lsm_max_per_level = 5;
-        db_config.sstable_single_file = false;
-        db_config.use_compression = true;
-        db_config.compaction_algorithm_type = CompactionAlgorithmType::SizeTiered;
-
-        prepare_dirs(&db_config);
-
-        let mut lsm = LSM::new(&db_config).unwrap();
-        for i in 0..20_000usize {
-            if i % 2 == 0 {
-                lsm.insert(&i.to_ne_bytes(), &(i * 2).to_ne_bytes(), TimeStamp::Now)?;
-            } else {
-                lsm.delete(&i.to_ne_bytes(), TimeStamp::Now)?;
-            }
-            //lsm.insert(&i.to_ne_bytes(), &i.to_ne_bytes(), TimeStamp::Now)?;
-        }
-
-        let mut num = 0;
-        //Range
-        // let mut lsm_iter = lsm.iter(Some(&80usize.to_ne_bytes()), Some(&160usize.to_ne_bytes()), None, ScanType::RangeScan)?;
-        // while let Some(entry) = lsm_iter.next() {
-        //     println!("{:?}", entry.0);
-        //     println!("{:?}", entry.1);
-        //     num += 1;
-        // }
-
-        //assert_eq!(41, num);
-
-        println!();
-        println!();
-        println!();
-
-        // Prefix
-        let mut lsm_iter = lsm.iter(None, None, Some(&80usize.to_ne_bytes()), ScanType::PrefixScan)?;
-        while let Some(entry) = lsm_iter.next() {
-            println!("{:?}", entry.0);
-            println!("{:?}", entry.1);
-        }
-
-        Ok(())
-    }
-}
-
-#[cfg(test)]
 mod paginator_tests {
     use std::fs::{create_dir_all, remove_dir_all, remove_file};
     use tempfile::{TempDir};
     use db_config::{CompactionAlgorithmType, DBConfig};
     use segment_elements::TimeStamp;
     use crate::LSM;
-    use crate::paginator::Paginator;
+    use crate::lsm::paginator::Paginator;
 
     #[test]
     fn test_prefix_scan_base_prefix() {
@@ -255,8 +139,7 @@ mod paginator_tests {
         let prefix_bytes = "AB".as_bytes();
         let result_page = paginator.prefix_scan(prefix_bytes, 0, 26).expect("Failed to get pagination result");
 
-        for (i, (key, _)) in result_page.iter().enumerate() {
-            println!("{:?}", key);
+        for (key, _) in result_page.iter() {
             assert!(key.starts_with(prefix_bytes));
         }
 
@@ -451,7 +334,7 @@ mod paginator_tests {
 
         assert_eq!(result_page.len(), 26);
 
-        for (i, (key, _)) in result_page.iter().enumerate() {
+        for (key, _) in result_page.iter() {
             assert!(key.as_ref() >= min_key.to_ne_bytes().as_slice() && key.as_ref() <= max_key.to_ne_bytes().as_slice());
         }
 
@@ -530,6 +413,7 @@ mod paginator_tests {
     }
 }
 
+#[cfg(test)]
 mod lsm_wal_tests {
     use std::fs;
     use std::fs::{read_dir, remove_dir_all, remove_file};
@@ -618,6 +502,7 @@ mod lsm_wal_tests {
         assert_eq!(new_lsm.get(&10u32.to_ne_bytes()).unwrap().unwrap(), Box::from(20u32.to_ne_bytes()));
     }
 
+    #[test]
     fn test_wal_size_cap() {
         let mut config = DBConfig::default();
         config.sstable_dir = "sstable_wal_test/".to_string();

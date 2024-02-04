@@ -134,7 +134,7 @@ impl SSTable {
     /// None.
     fn build_data_and_index_and_filter(&self, sstable_data: Vec<(Box<[u8]>, MemoryEntry)>, lru_cache: Option<&mut LRUCache>, compression_dictionary: &mut Option<CompressionDictionary>, use_variable_encoding: bool) -> (Vec<u8>, Vec<(Vec<u8>, usize)>, BloomFilter) {
         let mut index_builder = Vec::new();
-        let mut bloom_filter = BloomFilter::new(0.01, 100_000);
+        let mut bloom_filter = BloomFilter::new(0.01, sstable_data.len());
         let mut data = Vec::new();
 
         if let Some(compression_dict) = compression_dictionary {

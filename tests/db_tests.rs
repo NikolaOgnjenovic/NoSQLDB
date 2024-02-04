@@ -50,7 +50,6 @@ fn test_read_write_path_multiple() {
     db_config.memory_table_type = BTree;
     db_config.summary_density = 10;
     db_config.index_density = 50;
-    db_config.use_variable_encoding = false;
     db_config.lsm_max_level = 5;
     db_config.token_bucket_capacity = 9999999999;
     db_config.token_bucket_refill_rate = 9999999999;
@@ -106,7 +105,9 @@ fn test_read_write_path_multiple() {
             None => panic!("Get doesn't work")
         };
 
-        println!("{i}");
+        if i % 100 == 0 {
+            println!("{i} / 20_000");
+        }
 
         assert_eq!(
             value,
@@ -121,7 +122,6 @@ fn test_read_write_path_multiple_single_file() {
     db_config.memory_table_type = BTree;
     db_config.summary_density = 10;
     db_config.index_density = 50;
-    db_config.use_variable_encoding = false;
     db_config.lsm_max_level = 5;
     db_config.token_bucket_capacity = 9999999999;
     db_config.token_bucket_refill_rate = 9999999999;

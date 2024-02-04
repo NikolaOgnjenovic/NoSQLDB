@@ -148,8 +148,8 @@ mod tests {
                 let key = entry.0;
                 let entry = entry.1;
                 assert_eq!(<[u8; 4] as Into<Box<[u8]>>>::into(i.to_ne_bytes()), key);
+                assert_eq!(<[u8; 4] as Into<Box<[u8]>>>::into((i * 2).to_ne_bytes()), entry.get_value());
                 i += 1;
-                println!("{:?}", key);
             }
         }
     }

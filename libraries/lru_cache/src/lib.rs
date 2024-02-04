@@ -74,7 +74,6 @@ mod tests {
 
         for i in 250..550{
             let key = format!("{}{}", base_key, i.to_string());
-            let value = format!("{}{}", base_value, i.to_string());
 
             let newest = lru.get(key.as_bytes());
             if let Some(element) = newest {
@@ -101,7 +100,13 @@ mod tests {
                     )),
                 );
             }
-            let oldest = lru.list.peak_tail();
+
+            let oldest = if !lru.list.tail.is_none() {
+                lru.list.tail.clone()
+            } else {
+                None
+            };
+
             if let Some(node_ptr) = oldest {
                 let memory_entry = node_ptr.borrow().el.mem_entry.clone();
                 assert_eq!(memory_entry, lru.get(&1_u32.to_ne_bytes()).unwrap())
