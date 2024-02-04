@@ -66,6 +66,7 @@ pub fn db_menu(dbconfig: &mut DBConfig) {
             return;
         }
     };
+
     loop {
         match DBMenu::get_menu() {
             DBMenu::Insert => {

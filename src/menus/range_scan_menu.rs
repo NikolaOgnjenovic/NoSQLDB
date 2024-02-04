@@ -26,13 +26,13 @@ pub fn range_scan_menu(db: &mut DB) {
     let (mut page_count, mut page_len) = (Some(5), Some(20));
     loop {
         println!(
-            "Current page count: {}, current page length: {}",
+            "Current page number: {}, current page length: {}",
             page_count.unwrap(),
             page_len.unwrap()
         );
         match RangeScanMenu::get_menu() {
             RangeScanMenu::ChangeParameters => {
-                page_count = get_input_usize("Enter page count: ");
+                page_count = get_input_usize("Enter page number: ");
                 page_len = get_input_usize("Enter page size: ");
 
                 if page_count.is_none() {
