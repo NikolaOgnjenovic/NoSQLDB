@@ -784,7 +784,7 @@ impl LSM {
             .collect();
 
         // open all sstables that meet the criteria
-        let sstables: Vec<_> = sstable_base_paths
+        let mut sstables: Vec<_> = sstable_base_paths
             .iter()
             .zip(in_single_files.iter())
             .map(
@@ -795,58 +795,7 @@ impl LSM {
             )
             .collect();
 
-        let value_to_remove: u64 = 1_000_000_000;
-
-        // get offset of first entries in each sstable that meet the searching criteria
-        let data_offsets = if let Some(min_key) = min_key {
-            let data_offsets: Vec<_> = sstable_base_paths
-                .iter()
-                .zip(in_single_files.iter())
-                .map(|(path, in_single_file)| {
-                    SSTable::get_sstable_offset(
-                        path.to_path_buf(),
-                        *in_single_file,
-                        min_key,
-                        scan_type,
-                        None,
-                        &mut self.compression_dictionary,
-                    )
-                    .unwrap_or_else(|err| panic!("{}", err))
-                })
-                .collect();
-            data_offsets
-        } else {
-            let data_offsets: Vec<_> = sstable_base_paths
-                .iter()
-                .zip(in_single_files.iter())
-                .map(|(path, in_single_file)| {
-                    SSTable::get_sstable_offset(
-                        path.to_path_buf(),
-                        *in_single_file,
-                        prefix.unwrap(),
-                        scan_type,
-                        Some(value_to_remove),
-                        &mut self.compression_dictionary,
-                    )
-                    .unwrap_or_else(|err| panic!("{}", err))
-                })
-                .collect();
-            data_offsets
-        };
-
-        // keep only sstables that contain entries that meet the criteria(only for prefix scan)
-        let (mut sstables, data_offsets): (Vec<_>, Vec<_>) = if let Some(_) = prefix {
-            let (sstables, data_offsets) = sstables
-                .into_iter()
-                .zip(data_offsets)
-                .filter(|(_, offset)| *offset != value_to_remove)
-                .map(|(table, offset)| (table, offset))
-                .unzip();
-
-            (sstables, data_offsets)
-        } else {
-            (sstables, data_offsets)
-        };
+        let data_offsets = vec![0; sstables.len()];
 
         // update offsets because the index is jagged
         let updates_offsets = if let Some(min_key) = min_key {
