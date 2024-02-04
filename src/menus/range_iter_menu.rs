@@ -1,12 +1,11 @@
 use crate::impl_menu;
-use crate::menus::{get_input_u8, get_input_usize, UserMenu};
+use crate::menus::{get_input_u8, UserMenu};
 use colored::Colorize;
 use enum_iterator::Sequence;
 use NoSQLDB::DB;
 
 #[derive(Sequence)]
 enum RangeIterMenu {
-    ChangeParameters,
     StartIteration,
     Back,
 }
@@ -14,8 +13,6 @@ enum RangeIterMenu {
 impl_menu!(
     RangeIterMenu,
     "Prefix iterator",
-    RangeIterMenu::ChangeParameters,
-    "Change parameters".blink(),
     RangeIterMenu::StartIteration,
     "Start iteration".blink(),
     RangeIterMenu::Back,
@@ -41,28 +38,8 @@ impl_menu!(
 );
 
 pub fn range_iter_menu(db: &mut DB) {
-    let (mut page_count, mut page_len) = (Some(5), Some(20));
     loop {
-        println!(
-            "Current page number: {}, current page length: {}",
-            page_count.unwrap(),
-            page_len.unwrap()
-        );
         match RangeIterMenu::get_menu() {
-            RangeIterMenu::ChangeParameters => {
-                page_count = get_input_usize("Enter page number: ");
-                page_len = get_input_usize("Enter page size: ");
-
-                if page_count.is_none() {
-                    println!("Failed to interpret page count");
-                    continue;
-                }
-
-                if page_len.is_none() {
-                    println!("Failed to page length");
-                    continue;
-                }
-            }
             RangeIterMenu::StartIteration => {
                 let min_key = get_input_u8("Enter minimum key: ");
                 let max_key = get_input_u8("Enter maximum key: ");
@@ -100,6 +77,7 @@ pub fn range_iter_menu(db: &mut DB) {
                                 Ok(iter_element_result) => match iter_element_result {
                                     None => {
                                         on_last = true;
+                                        println!("On last element, nothing found");
                                         continue;
                                     }
                                     Some((key, entry)) => {
@@ -131,6 +109,7 @@ pub fn range_iter_menu(db: &mut DB) {
                                 Ok(iter_element_result) => match iter_element_result {
                                     None => {
                                         on_first = true;
+                                        println!("On first element, nothing found");
                                         continue;
                                     }
                                     Some((key, entry)) => {

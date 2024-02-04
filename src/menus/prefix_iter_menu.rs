@@ -1,12 +1,11 @@
 use crate::impl_menu;
-use crate::menus::{get_input_u8, get_input_usize, UserMenu};
+use crate::menus::{get_input_u8, UserMenu};
 use colored::Colorize;
 use enum_iterator::Sequence;
 use NoSQLDB::DB;
 
 #[derive(Sequence)]
 enum PrefixIterMenu {
-    ChangeParameters,
     StartIteration,
     Back,
 }
@@ -14,8 +13,6 @@ enum PrefixIterMenu {
 impl_menu!(
     PrefixIterMenu,
     "Prefix iterator",
-    PrefixIterMenu::ChangeParameters,
-    "Change parameters".blink(),
     PrefixIterMenu::StartIteration,
     "Start iteration".blink(),
     PrefixIterMenu::Back,
@@ -41,28 +38,8 @@ impl_menu!(
 );
 
 pub fn prefix_iter_menu(db: &mut DB) {
-    let (mut page_count, mut page_len) = (Some(5), Some(20));
     loop {
-        println!(
-            "Current page number: {}, current page length: {}",
-            page_count.unwrap(),
-            page_len.unwrap()
-        );
         match PrefixIterMenu::get_menu() {
-            PrefixIterMenu::ChangeParameters => {
-                page_count = get_input_usize("Enter page number: ");
-                page_len = get_input_usize("Enter page size: ");
-
-                if page_count.is_none() {
-                    println!("Failed to interpret page count");
-                    continue;
-                }
-
-                if page_len.is_none() {
-                    println!("Failed to page length");
-                    continue;
-                }
-            }
             PrefixIterMenu::StartIteration => {
                 let prefix = get_input_u8("Enter prefix: ");
 
