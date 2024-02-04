@@ -171,7 +171,7 @@ impl LSM {
     /// A `Result` containing vector with tuple as elements.
     /// Each tuple contains index of a path in sstable_directory_names[level] as well as an actual path to that SSTable.
     /// The purpose of an index is to be able to quickly delete all the tables involved in compaction process later.
-    fn find_similar_key_ranges<'a>(sstable_directory_names: &'a Vec<Vec<PathBuf>>, parent_dir: &'a PathBuf, main_min_key: &[u8], main_max_key: &[u8], level: usize) -> io::Result<Vec<(usize, &'a PathBuf)>> {
+    fn find_similar_key_ranges<'a>(sstable_directory_names: &'a Vec<Vec<PathBuf>>, parent_dir: &'a PathBuf, main_min_key: &[u8], main_max_key: &[u8], level: usize, compression_dictionary: &mut Option<CompressionDictionary>) -> io::Result<Vec<(usize, &'a PathBuf)>> {
         let base_paths = sstable_directory_names[level]
             .iter()
             .enumerate()
@@ -180,12 +180,16 @@ impl LSM {
                 let in_single_file = LSM::is_in_single_file(path);
                 match SSTable::get_key_range(sstable_base_path, in_single_file) {
                     Ok((min_key, max_key)) => {
-                        let max_key_slice = &*max_key;
-                        let min_key_slice = &*min_key;
-                        let main_max_key_slice = &*main_max_key;
-                        let main_min_key_slice = &*main_min_key;
-                        let left = max_key >= Box::from(main_min_key);
-                        let right = min_key <= Box::from(main_max_key);
+                        let decoded_min_key = match compression_dictionary {
+                            Some(compression_dictionary) => compression_dictionary.decode(&min_key.to_vec().into_boxed_slice()).unwrap().clone(),
+                            None => min_key.to_vec().into_boxed_slice()
+                        };
+                        let decoded_max_key = match compression_dictionary {
+                            Some(compression_dictionary) => compression_dictionary.decode(&max_key.to_vec().into_boxed_slice()).unwrap().clone(),
+                            None => max_key.to_vec().into_boxed_slice()
+                        };
+                        let left = decoded_max_key >= Box::from(main_min_key);
+                        let right = decoded_min_key <= Box::from(main_max_key);
                         let condition = left && right;
                         condition
                     }
@@ -404,7 +408,7 @@ impl LSM {
             let (main_min_key, main_max_key) = SSTable::get_key_range(main_sstable_base_path.to_owned(), in_single_file)?;
 
             // Find SStables with keys in similar range one level below
-            let in_range_paths = LSM::find_similar_key_ranges(&self.sstable_directory_names, &self.config.parent_dir, &main_min_key, &main_max_key, level + 1)?;
+            let in_range_paths = LSM::find_similar_key_ranges(&self.sstable_directory_names, &self.config.parent_dir, &main_min_key, &main_max_key, level + 1, &mut self.compression_dictionary)?;
             let mut sstable_base_paths: Vec<_> = in_range_paths.clone()
                 .into_iter()
                 .map(|(_, path)| self.config.parent_dir.join(path.to_owned()))
@@ -700,7 +704,7 @@ impl LSM {
         let sstable_base_paths = if let (Some(min_key), Some(max_key)) = (min_key, max_key) {
             let mut sstable_paths = Vec::new();
             for level in 0..self.config.max_level {
-                sstable_paths.extend(LSM::find_similar_key_ranges(&self.sstable_directory_names, &self.config.parent_dir, min_key, max_key, level)?);
+                sstable_paths.extend(LSM::find_similar_key_ranges(&self.sstable_directory_names, &self.config.parent_dir, min_key, max_key, level, &mut self.compression_dictionary)?);
             }
             let sstable_base_paths: Vec<_> = sstable_paths
                 .into_iter()
@@ -918,7 +922,13 @@ impl<'a> Iterator for LSMIterator<'a> {
 
         // find entry with the biggest timestamp
         let max_index = SSTable::find_max_timestamp(&min_entries);
-        let return_entry = enumerated_entries[max_index].1.as_ref().unwrap().0.clone();
+
+        let (key, entry) = enumerated_entries[max_index].1.as_ref().unwrap().0.clone();
+        let decoded_key = match self.compression_dictionary {
+            Some(compression_dictionary) => compression_dictionary.decode(&key.to_vec().into_boxed_slice()).unwrap().clone(),
+            None => key.to_vec().into_boxed_slice()
+        };
+        let return_entry = (decoded_key, entry);
         let _ = &*return_entry.0;
 
         // update offsets in LSMIterator

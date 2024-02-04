@@ -126,6 +126,7 @@ mod lsm_tests {
         db_config.memory_table_capacity = 500;
         db_config.lsm_max_per_level = 5;
         db_config.sstable_single_file = false;
+        db_config.use_compression = true;
         db_config.compaction_algorithm_type = CompactionAlgorithmType::SizeTiered;
 
         prepare_dirs(&db_config);
@@ -142,12 +143,12 @@ mod lsm_tests {
 
         let mut num = 0;
         //Range
-        let mut lsm_iter = lsm.iter(Some(&80usize.to_ne_bytes()), Some(&160usize.to_ne_bytes()), None, ScanType::RangeScan)?;
-        while let Some(entry) = lsm_iter.next() {
-            println!("{:?}", entry.0);
-            println!("{:?}", entry.1);
-            num += 1;
-        }
+        // let mut lsm_iter = lsm.iter(Some(&80usize.to_ne_bytes()), Some(&160usize.to_ne_bytes()), None, ScanType::RangeScan)?;
+        // while let Some(entry) = lsm_iter.next() {
+        //     println!("{:?}", entry.0);
+        //     println!("{:?}", entry.1);
+        //     num += 1;
+        // }
 
         //assert_eq!(41, num);
 
@@ -156,13 +157,11 @@ mod lsm_tests {
         println!();
 
         // Prefix
-        // let mut lsm_iter = lsm.iter(None, None, Some(&80usize.to_ne_bytes()), ScanType::PrefixScan)?;
-        // while let Some(inner) = lsm_iter.next() {
-        //     if let Some((entry)) = inner {
-        //         println!("{:?}", entry.0);
-        //         println!("{:?}", entry.1);
-        //     }
-        // }
+        let mut lsm_iter = lsm.iter(None, None, Some(&80usize.to_ne_bytes()), ScanType::PrefixScan)?;
+        while let Some(entry) = lsm_iter.next() {
+            println!("{:?}", entry.0);
+            println!("{:?}", entry.1);
+        }
 
         Ok(())
     }
@@ -170,7 +169,7 @@ mod lsm_tests {
 
 #[cfg(test)]
 mod paginator_tests {
-    use std::fs::{create_dir_all, remove_dir_all};
+    use std::fs::{create_dir_all, remove_dir_all, remove_file};
     use tempfile::{TempDir};
     use db_config::{CompactionAlgorithmType, DBConfig};
     use segment_elements::TimeStamp;
@@ -187,6 +186,7 @@ mod paginator_tests {
         db_config.use_compression = true;
         db_config.compaction_algorithm_type = CompactionAlgorithmType::SizeTiered;
         db_config.sstable_dir = String::from("temp_dir_for_test_safety");
+        db_config.compression_dictionary_path = "dict1.bin".to_string();
         let mut lsm = LSM::new(&db_config).unwrap();
 
         let base_prefix = "AB";
@@ -220,6 +220,7 @@ mod paginator_tests {
 
         remove_dir_all(db_config.sstable_dir).expect("Failed to remove sstable dirs");
         remove_dir_all(db_config.write_ahead_log_dir).expect("Failed to remove wal dirs");
+        remove_file(db_config.compression_dictionary_path).expect("Failed to remove dictionary");
     }
 
     #[test]
@@ -233,6 +234,7 @@ mod paginator_tests {
         db_config.compaction_algorithm_type = CompactionAlgorithmType::Leveled;
         db_config.sstable_dir = TempDir::new().expect("Failed to create temp directory").path().to_str().unwrap().to_string();
         db_config.write_ahead_log_dir = TempDir::new().expect("Failed to create temp directory").path().to_str().unwrap().to_string();
+        db_config.compression_dictionary_path = "dict2.bin".to_string();
         let mut lsm = LSM::new(&db_config).unwrap();
 
         // Insert elements into LSM with keys from "AAA" to "ZZZ"
@@ -261,6 +263,7 @@ mod paginator_tests {
         // Clean up
         remove_dir_all(db_config.sstable_dir).expect("Failed to remove sstable dirs");
         remove_dir_all(db_config.write_ahead_log_dir).expect("Failed to remove wal dirs");
+        remove_file(db_config.compression_dictionary_path).expect("Failed to remove dictionary");
     }
 
     #[test]
@@ -274,6 +277,7 @@ mod paginator_tests {
         db_config.compaction_algorithm_type = CompactionAlgorithmType::SizeTiered;
         db_config.sstable_dir = TempDir::new().expect("Failed to create temp directory").path().to_str().unwrap().to_string();
         db_config.write_ahead_log_dir = TempDir::new().expect("Failed to create temp directory").path().to_str().unwrap().to_string();
+        db_config.compression_dictionary_path = "dict3.bin".to_string();
         create_dir_all(db_config.sstable_dir.to_string()).expect("Failed to create sstable dirs");
         let mut lsm = LSM::new(&db_config).unwrap();
 
@@ -334,6 +338,7 @@ mod paginator_tests {
 
         remove_dir_all(db_config.sstable_dir).expect("Failed to remove sstable dirs");
         remove_dir_all(db_config.write_ahead_log_dir).expect("Failed to remove wal dirs");
+        remove_file(db_config.compression_dictionary_path).expect("Failed to remove dictionary");
     }
 
     #[test]
@@ -347,6 +352,7 @@ mod paginator_tests {
         db_config.compaction_algorithm_type = CompactionAlgorithmType::SizeTiered;
         db_config.sstable_dir = TempDir::new().expect("Failed to create temp directory").path().to_str().unwrap().to_string();
         db_config.write_ahead_log_dir = TempDir::new().expect("Failed to create temp directory").path().to_str().unwrap().to_string();
+        db_config.compression_dictionary_path = "dict4.bin".to_string();
         create_dir_all(db_config.sstable_dir.to_string()).expect("Failed to create sstable dirs");
         let mut lsm = LSM::new(&db_config).unwrap();
 
@@ -410,6 +416,7 @@ mod paginator_tests {
 
         remove_dir_all(db_config.sstable_dir).expect("Failed to remove sstable dirs");
         remove_dir_all(db_config.write_ahead_log_dir).expect("Failed to remove wal dirs");
+        remove_file(db_config.compression_dictionary_path).expect("Failed to remove dictionary");
     }
 
     #[test]
@@ -423,6 +430,7 @@ mod paginator_tests {
         db_config.compaction_algorithm_type = CompactionAlgorithmType::SizeTiered;
         db_config.sstable_dir = TempDir::new().expect("Failed to create temp directory").path().to_str().unwrap().to_string();
         db_config.write_ahead_log_dir = TempDir::new().expect("Failed to create temp directory").path().to_str().unwrap().to_string();
+        db_config.compression_dictionary_path = "dict5.bin".to_string();
         create_dir_all(db_config.sstable_dir.to_string()).expect("Failed to create sstable dirs");
         let mut lsm = LSM::new(&db_config).unwrap();
 
@@ -449,6 +457,7 @@ mod paginator_tests {
 
         remove_dir_all(db_config.sstable_dir).expect("Failed to remove sstable dirs");
         remove_dir_all(db_config.write_ahead_log_dir).expect("Failed to remove wal dirs");
+        remove_file(db_config.compression_dictionary_path).expect("Failed to remove dictionary");
     }
 
     // This test ensures that .iter() returns sequential ids, prev() returns to 0, stop() resets and next returns sequential ids
@@ -463,6 +472,7 @@ mod paginator_tests {
         db_config.compaction_algorithm_type = CompactionAlgorithmType::SizeTiered;
         db_config.sstable_dir = TempDir::new().expect("Failed to create temp directory").path().to_str().unwrap().to_string();
         db_config.write_ahead_log_dir = TempDir::new().expect("Failed to create temp directory").path().to_str().unwrap().to_string();
+        db_config.compression_dictionary_path = "dict6.bin".to_string();
         create_dir_all(db_config.sstable_dir.to_string()).expect("Failed to create sstable dirs");
         let mut lsm = LSM::new(&db_config).unwrap();
 
@@ -516,6 +526,7 @@ mod paginator_tests {
 
         remove_dir_all(db_config.sstable_dir).expect("Failed to remove sstable dirs");
         remove_dir_all(db_config.write_ahead_log_dir).expect("Failed to remove wal dirs");
+        remove_file(db_config.compression_dictionary_path).expect("Failed to remove dictionary");
     }
 }
 
