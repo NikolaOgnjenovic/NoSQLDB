@@ -1,12 +1,12 @@
-use segment_elements::MemoryEntry;
-use crate::LSM;
 use crate::lsm::ScanType;
+use crate::LSM;
+use segment_elements::MemoryEntry;
 
 /// A Paginator provides paginated access to entries in an LSM (Log-Structured Merge) tree.
-pub struct Paginator<'a>{
+pub struct Paginator<'a> {
     lsm: &'a mut LSM,
     cached_entry_index: usize,
-    cached_entries: Vec<(Box<[u8]>, MemoryEntry)>
+    cached_entries: Vec<(Box<[u8]>, MemoryEntry)>,
 }
 
 impl<'a> Paginator<'a> {
@@ -23,7 +23,7 @@ impl<'a> Paginator<'a> {
         Self {
             lsm,
             cached_entry_index: 0,
-            cached_entries: vec![]
+            cached_entries: vec![],
         }
     }
 
@@ -89,7 +89,14 @@ impl<'a> Paginator<'a> {
         page_number: usize,
         page_size: usize,
     ) -> std::io::Result<Vec<(Box<[u8]>, MemoryEntry)>> {
-        self.scan_entries(None, None, Some(prefix), ScanType::PrefixScan, page_number, page_size)
+        self.scan_entries(
+            None,
+            None,
+            Some(prefix),
+            ScanType::PrefixScan,
+            page_number,
+            page_size,
+        )
     }
 
     /// Performs a range scan and retrieves entries for a specific page.
@@ -111,7 +118,14 @@ impl<'a> Paginator<'a> {
         page_number: usize,
         page_size: usize,
     ) -> std::io::Result<Vec<(Box<[u8]>, MemoryEntry)>> {
-        self.scan_entries(Some(min_key), Some(max_key), None, ScanType::RangeScan, page_number, page_size)
+        self.scan_entries(
+            Some(min_key),
+            Some(max_key),
+            None,
+            ScanType::RangeScan,
+            page_number,
+            page_size,
+        )
     }
 
     /// Retrieves the next entry based on prefix scan.
@@ -123,7 +137,10 @@ impl<'a> Paginator<'a> {
     /// # Returns
     ///
     /// An optional tuple containing the key and memory entry of the next entry, or `None` if no more entries are available.
-    pub fn prefix_iterate_next(&mut self, prefix: &[u8]) -> std::io::Result<Option<(Box<[u8]>, MemoryEntry)>> {
+    pub fn prefix_iterate_next(
+        &mut self,
+        prefix: &[u8],
+    ) -> std::io::Result<Option<(Box<[u8]>, MemoryEntry)>> {
         self.iterate_next_impl(|this| this.prefix_scan(prefix, this.cached_entry_index, 1))
     }
 
@@ -158,8 +175,8 @@ impl<'a> Paginator<'a> {
         &mut self,
         scan_fn: F,
     ) -> std::io::Result<Option<(Box<[u8]>, MemoryEntry)>>
-        where
-            F: FnOnce(&mut Self) -> std::io::Result<Vec<(Box<[u8]>, MemoryEntry)>>,
+    where
+        F: FnOnce(&mut Self) -> std::io::Result<Vec<(Box<[u8]>, MemoryEntry)>>,
     {
         // Check if by calling prev next returns a cached entry
         if self.cached_entry_index > 0 && self.cached_entry_index < self.cached_entries.len() - 1 {
@@ -189,7 +206,10 @@ impl<'a> Paginator<'a> {
     /// An optional tuple containing the key and memory entry of the previous entry, or `None` if no more entries are available.
     pub fn iterate_prev(&mut self) -> std::io::Result<Option<(Box<[u8]>, MemoryEntry)>> {
         // If the cache is empty or the cached index is 0, there is no previous entry
-        if self.cached_entries.is_empty() || self.cached_entry_index == 0 || self.cached_entry_index > self.cached_entries.len() {
+        if self.cached_entries.is_empty()
+            || self.cached_entry_index == 0
+            || self.cached_entry_index > self.cached_entries.len()
+        {
             return Ok(None);
         }
 

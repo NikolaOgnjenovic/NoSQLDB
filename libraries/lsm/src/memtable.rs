@@ -24,7 +24,7 @@ impl MemoryTable {
             inner_mem,
             capacity: dbconfig.memory_table_capacity,
             len: 0,
-            wal_size: 0
+            wal_size: 0,
         })
     }
 

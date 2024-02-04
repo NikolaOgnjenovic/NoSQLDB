@@ -39,11 +39,7 @@ impl MemoryPool {
 
     /// Logically deletes an element in-place, and updates the number of elements if
     /// the deletion is "adding" a new element.
-    pub(crate) fn delete(
-        &mut self,
-        key: &[u8],
-        time_stamp: TimeStamp,
-    ) -> Option<MemoryTable> {
+    pub(crate) fn delete(&mut self, key: &[u8], time_stamp: TimeStamp) -> Option<MemoryTable> {
         if self.read_write_table.delete(key, time_stamp) {
             return self.swap();
         }
@@ -101,7 +97,9 @@ impl MemoryPool {
     }
 
     /// Loads from every log file in the given directory.
-    pub(crate) fn load_from_dir(config: &DBConfig) -> Result<(MemoryPool, Vec<MemoryTable>), Box<dyn Error>> {
+    pub(crate) fn load_from_dir(
+        config: &DBConfig,
+    ) -> Result<(MemoryPool, Vec<MemoryTable>), Box<dyn Error>> {
         let mut pool = MemoryPool::new(config)?;
         let mut to_be_flushed = vec![];
 

@@ -3,7 +3,7 @@ use std::fmt;
 
 #[derive(Debug)]
 pub struct ProbabilisticTypeError {
-    pub message: String
+    pub message: String,
 }
 
 impl fmt::Display for ProbabilisticTypeError {

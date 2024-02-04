@@ -1,8 +1,8 @@
+use crate::impl_menu;
+use crate::menus::{get_input_f64, get_input_u8, get_input_usize, UserMenu};
 use colored::Colorize;
 use enum_iterator::Sequence;
 use NoSQLDB::DB;
-use crate::impl_menu;
-use crate::menus::{get_input_f64, get_input_u8, get_input_usize, UserMenu};
 
 #[derive(Sequence)]
 enum BloomFilterMenu {
@@ -14,12 +14,18 @@ enum BloomFilterMenu {
 }
 
 impl_menu!(
-    BloomFilterMenu, "BloomFilter",
-    BloomFilterMenu::CreateRetrieve, "Create/retrieve".blink(),
-    BloomFilterMenu::InsertValue, "Insert value".blink(),
-    BloomFilterMenu::GetValueFromKey, "Get value from key".blink(),
-    BloomFilterMenu::ContainsFromKey, "Contains from key".blink(),
-    BloomFilterMenu::Back, "Back".yellow().italic()
+    BloomFilterMenu,
+    "BloomFilter",
+    BloomFilterMenu::CreateRetrieve,
+    "Create/retrieve".blink(),
+    BloomFilterMenu::InsertValue,
+    "Insert value".blink(),
+    BloomFilterMenu::GetValueFromKey,
+    "Get value from key".blink(),
+    BloomFilterMenu::ContainsFromKey,
+    "Contains from key".blink(),
+    BloomFilterMenu::Back,
+    "Back".yellow().italic()
 );
 
 pub fn bloom_filter_menu(db: &mut DB) {
@@ -71,13 +77,11 @@ pub fn bloom_filter_menu(db: &mut DB) {
                 let key = &key.unwrap();
 
                 match db.bloom_filter_get(key) {
-                    Ok(value) => {
-                        match value {
-                            Some(value) => println!("Value found: {:?}", value),
-                            None => println!("Value not found.")
-                        }
+                    Ok(value) => match value {
+                        Some(value) => println!("Value found: {:?}", value),
+                        None => println!("Value not found."),
                     },
-                    Err(err) => eprintln!("Error while getting: {}", err)
+                    Err(err) => eprintln!("Error while getting: {}", err),
                 }
             }
             BloomFilterMenu::ContainsFromKey => {

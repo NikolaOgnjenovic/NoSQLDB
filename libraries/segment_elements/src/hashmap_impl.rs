@@ -2,7 +2,7 @@ use crate::hashmap_iterator::SortedHashMapIterator;
 use crate::{MemoryEntry, SegmentTrait, TimeStamp};
 use std::collections::HashMap;
 pub struct MemEntryHashMap {
-    inner_hashmap: HashMap<Box<[u8]>, MemoryEntry>
+    inner_hashmap: HashMap<Box<[u8]>, MemoryEntry>,
 }
 
 impl SegmentTrait for MemEntryHashMap {
@@ -34,7 +34,7 @@ impl SegmentTrait for MemEntryHashMap {
 impl MemEntryHashMap {
     pub fn new() -> Self {
         MemEntryHashMap {
-            inner_hashmap: HashMap::new()
+            inner_hashmap: HashMap::new(),
         }
     }
 }

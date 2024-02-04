@@ -1,19 +1,19 @@
 pub(crate) mod sstable_element_type;
 
-use std::cmp::{Ordering};
-use std::collections::HashMap;
-use std::fs::{create_dir_all, File, OpenOptions, remove_dir_all};
-use std::io;
-use std::io::{Cursor, Read, Seek, SeekFrom, Write};
-use std::path::PathBuf;
-use bloom_filter::BloomFilter;
-use lru_cache::LRUCache;
-use segment_elements::{deserialize_header, deserialize_usize_value, MemoryEntry};
-use merkle_tree::merkle_tree::MerkleTree;
-use compression::{CompressionDictionary, variable_encode};
 use crate::lsm::ScanType;
 use crate::memtable::MemoryTable;
 use crate::sstable::sstable_element_type::SSTableElementType;
+use bloom_filter::BloomFilter;
+use compression::{variable_encode, CompressionDictionary};
+use lru_cache::LRUCache;
+use merkle_tree::merkle_tree::MerkleTree;
+use segment_elements::{deserialize_header, deserialize_usize_value, MemoryEntry};
+use std::cmp::Ordering;
+use std::collections::HashMap;
+use std::fs::{create_dir_all, remove_dir_all, File, OpenOptions};
+use std::io;
+use std::io::{Cursor, Read, Seek, SeekFrom, Write};
+use std::path::PathBuf;
 
 /// Struct representing an SSTable (Sorted String Table) for storing key-value pairs on disk.
 pub struct SSTable {
@@ -81,8 +81,23 @@ impl SSTable {
     /// # Errors
     ///
     /// Returns an `io::Error` if there is an issue flushing the data or serializing components.
-    pub(crate) fn flush(&mut self, mem_table: MemoryTable, summary_density: usize, index_density: usize, lru_cache: Option<&mut LRUCache>, compression_dictionary: &mut Option<CompressionDictionary>, use_variable_encoding: bool) -> io::Result<()> {
-        self.flush_to_disk(mem_table.iterator().collect(), summary_density, index_density, lru_cache, compression_dictionary, use_variable_encoding)
+    pub(crate) fn flush(
+        &mut self,
+        mem_table: MemoryTable,
+        summary_density: usize,
+        index_density: usize,
+        lru_cache: Option<&mut LRUCache>,
+        compression_dictionary: &mut Option<CompressionDictionary>,
+        use_variable_encoding: bool,
+    ) -> io::Result<()> {
+        self.flush_to_disk(
+            mem_table.iterator().collect(),
+            summary_density,
+            index_density,
+            lru_cache,
+            compression_dictionary,
+            use_variable_encoding,
+        )
     }
 
     /// Flushes the memory table to the SSTable files on disk.
@@ -100,18 +115,38 @@ impl SSTable {
     /// # Errors
     ///
     /// Returns an `io::Error` if there is an issue flushing the data or serializing components.
-    fn flush_to_disk(&mut self, sstable_data: Vec<(Box<[u8]>, MemoryEntry)>, summary_density: usize, index_density: usize, lru_cache: Option<&mut LRUCache>, compression_dictionary: &mut Option<CompressionDictionary>, use_variable_encoding: bool) -> io::Result<()> {
+    fn flush_to_disk(
+        &mut self,
+        sstable_data: Vec<(Box<[u8]>, MemoryEntry)>,
+        summary_density: usize,
+        index_density: usize,
+        lru_cache: Option<&mut LRUCache>,
+        compression_dictionary: &mut Option<CompressionDictionary>,
+        use_variable_encoding: bool,
+    ) -> io::Result<()> {
         // Build serialized data, index_builder, and bloom_filter
-        let (serialized_data, index_builder, bloom_filter) = self.build_data_and_index_and_filter(sstable_data, lru_cache, compression_dictionary, use_variable_encoding);
+        let (serialized_data, index_builder, bloom_filter) = self.build_data_and_index_and_filter(
+            sstable_data,
+            lru_cache,
+            compression_dictionary,
+            use_variable_encoding,
+        );
 
         // Serialize the index, summary, bloom filter and merkle tree
         let serialized_index = self.get_serialized_index(&index_builder, index_density);
-        let serialized_index_summary = self.get_serialized_summary(&index_builder, index_density, summary_density);
+        let serialized_index_summary =
+            self.get_serialized_summary(&index_builder, index_density, summary_density);
         let serialized_bloom_filter = bloom_filter.serialize();
         let serialized_merkle_tree = MerkleTree::new(&serialized_data).serialize();
 
         if self.in_single_file {
-            self.write_to_single_file(&serialized_data, &serialized_index, &serialized_index_summary, &serialized_bloom_filter, &serialized_merkle_tree)?;
+            self.write_to_single_file(
+                &serialized_data,
+                &serialized_index,
+                &serialized_index_summary,
+                &serialized_bloom_filter,
+                &serialized_merkle_tree,
+            )?;
         } else {
             self.write_to_file(&serialized_data, "SSTable-Data.db")?;
             self.write_to_file(&serialized_index, "SSTable-Index.db")?;
@@ -132,21 +167,35 @@ impl SSTable {
     /// # Errors
     ///
     /// None.
-    fn build_data_and_index_and_filter(&self, sstable_data: Vec<(Box<[u8]>, MemoryEntry)>, lru_cache: Option<&mut LRUCache>, compression_dictionary: &mut Option<CompressionDictionary>, use_variable_encoding: bool) -> (Vec<u8>, Vec<(Vec<u8>, usize)>, BloomFilter) {
+    fn build_data_and_index_and_filter(
+        &self,
+        sstable_data: Vec<(Box<[u8]>, MemoryEntry)>,
+        lru_cache: Option<&mut LRUCache>,
+        compression_dictionary: &mut Option<CompressionDictionary>,
+        use_variable_encoding: bool,
+    ) -> (Vec<u8>, Vec<(Vec<u8>, usize)>, BloomFilter) {
         let mut index_builder = Vec::new();
         let mut bloom_filter = BloomFilter::new(0.01, sstable_data.len());
         let mut data = Vec::new();
 
         if let Some(compression_dict) = compression_dictionary {
-            let keys: Vec<Box<[u8]>> = sstable_data.clone().into_iter().map(|(boxed_slice, _)| boxed_slice).collect();
-            compression_dict.add(&keys).expect("Failed to add keys to the dictionary!");
+            let keys: Vec<Box<[u8]>> = sstable_data
+                .clone()
+                .into_iter()
+                .map(|(boxed_slice, _)| boxed_slice)
+                .collect();
+            compression_dict
+                .add(&keys)
+                .expect("Failed to add keys to the dictionary!");
         }
 
         let mut offset = 0;
         for (key, entry) in sstable_data {
             let encoded_key = match compression_dictionary {
-                Some(compression_dictionary) => compression_dictionary.encode(&key.clone()).unwrap(),
-                None => key.clone()
+                Some(compression_dictionary) => {
+                    compression_dictionary.encode(&key.clone()).unwrap()
+                }
+                None => key.clone(),
             };
             let entry_data = entry.serialize(&encoded_key, use_variable_encoding);
             if let Some(&mut ref mut lru) = lru_cache {
@@ -176,7 +225,11 @@ impl SSTable {
     /// # Errors
     ///
     /// None.
-    fn get_serialized_index(&self, index_builder: &[(Vec<u8>, usize)], index_density: usize) -> Vec<u8> {
+    fn get_serialized_index(
+        &self,
+        index_builder: &[(Vec<u8>, usize)],
+        index_density: usize,
+    ) -> Vec<u8> {
         let mut index = Vec::new();
 
         // Add every step-th key and its offset to the summary
@@ -203,7 +256,12 @@ impl SSTable {
     /// # Errors
     ///
     /// None.
-    fn get_serialized_summary(&self, index_builder: &[(Vec<u8>, usize)], index_density: usize, summary_density: usize) -> Vec<u8> {
+    fn get_serialized_summary(
+        &self,
+        index_builder: &[(Vec<u8>, usize)],
+        index_density: usize,
+        summary_density: usize,
+    ) -> Vec<u8> {
         if index_builder.is_empty() || index_density < 1 || summary_density < 1 {
             return Vec::new();
         }
@@ -253,7 +311,14 @@ impl SSTable {
     /// # Errors
     ///
     /// Returns an `io::Error` if the writing process fails.
-    fn write_to_single_file(&mut self, serialized_data: &[u8], serialized_index: &[u8], serialized_index_summary: &[u8], serialized_bloom_filter: &[u8], serialized_merkle_tree: &[u8]) -> io::Result<()> {
+    fn write_to_single_file(
+        &mut self,
+        serialized_data: &[u8],
+        serialized_index: &[u8],
+        serialized_index_summary: &[u8],
+        serialized_bloom_filter: &[u8],
+        serialized_merkle_tree: &[u8],
+    ) -> io::Result<()> {
         // Calculate the offset for each part of the file and write them into the buffer
         let mut total_offset = 5 * std::mem::size_of::<usize>();
         self.data_offset = total_offset;
@@ -308,16 +373,35 @@ impl SSTable {
     /// # Errors
     ///
     /// None.
-    pub(crate) fn get(&mut self, key: &[u8], index_density: usize, compression_dictionary: &mut Option<CompressionDictionary>, use_variable_encoding: bool) -> Option<MemoryEntry> {
+    pub(crate) fn get(
+        &mut self,
+        key: &[u8],
+        index_density: usize,
+        compression_dictionary: &mut Option<CompressionDictionary>,
+        use_variable_encoding: bool,
+    ) -> Option<MemoryEntry> {
         let encoded_key = match compression_dictionary {
-            Some(compression_dictionary) => compression_dictionary.encode(&key.to_vec().into_boxed_slice()).unwrap().clone(),
-            None => key.to_vec().into_boxed_slice()
+            Some(compression_dictionary) => compression_dictionary
+                .encode(&key.to_vec().into_boxed_slice())
+                .unwrap()
+                .clone(),
+            None => key.to_vec().into_boxed_slice(),
         };
-        if self.bloom_filter_contains_key(&encoded_key).unwrap_or(false) {
-            if let Some(offset) = self.get_data_offset_from_summary(&encoded_key, compression_dictionary) {
-                return match self.get_entry_from_data_file(offset, Some(index_density), Some(&encoded_key), use_variable_encoding) {
-                    Some(entry) => Some(entry.0.1),
-                    None => None
+        if self
+            .bloom_filter_contains_key(&encoded_key)
+            .unwrap_or(false)
+        {
+            if let Some(offset) =
+                self.get_data_offset_from_summary(&encoded_key, compression_dictionary)
+            {
+                return match self.get_entry_from_data_file(
+                    offset,
+                    Some(index_density),
+                    Some(&encoded_key),
+                    use_variable_encoding,
+                ) {
+                    Some(entry) => Some(entry.0 .1),
+                    None => None,
                 };
             }
         }
@@ -354,7 +438,13 @@ impl SSTable {
     ///
     /// Returns an `io::Error` if the retrieval of the merkle tree fails.
     pub(crate) fn get_merkle(&mut self) -> io::Result<MerkleTree> {
-        let mut merkle_cursor = self.get_cursor_data(self.in_single_file, "SSTable-MerkleTree.db", SSTableElementType::MerkleTree, None, false)?;
+        let mut merkle_cursor = self.get_cursor_data(
+            self.in_single_file,
+            "SSTable-MerkleTree.db",
+            SSTableElementType::MerkleTree,
+            None,
+            false,
+        )?;
 
         let mut merkle_data = Vec::new();
         merkle_cursor.read_to_end(&mut merkle_data)?;
@@ -383,19 +473,39 @@ impl SSTable {
     /// # Errors
     ///
     /// Returns an `io::Error` if the merging process fails.
-    pub(crate) fn merge(sstable_paths: Vec<PathBuf>, in_single_file: Vec<bool>, merged_base_path: &PathBuf, merged_in_single_file: bool, summary_density: usize, index_density: usize, use_variable_encoding: bool, compression_dictionary: &mut Option<CompressionDictionary>) -> io::Result<()> {
+    pub(crate) fn merge(
+        sstable_paths: Vec<PathBuf>,
+        in_single_file: Vec<bool>,
+        merged_base_path: &PathBuf,
+        merged_in_single_file: bool,
+        summary_density: usize,
+        index_density: usize,
+        use_variable_encoding: bool,
+        compression_dictionary: &mut Option<CompressionDictionary>,
+    ) -> io::Result<()> {
         create_dir_all(merged_base_path)?;
 
-        let merged_data = SSTable::merge_entries(sstable_paths.clone(), in_single_file, None, use_variable_encoding, compression_dictionary)?;
+        let merged_data = SSTable::merge_entries(
+            sstable_paths.clone(),
+            in_single_file,
+            None,
+            use_variable_encoding,
+            compression_dictionary,
+        )?;
 
         let mut merged_sstable = SSTable::open(merged_base_path.to_owned(), merged_in_single_file)?;
 
         // Flush the new SSTable to disk
-        merged_sstable.flush_to_disk(merged_data, summary_density, index_density, None, &mut None, use_variable_encoding)?;
+        merged_sstable.flush_to_disk(
+            merged_data,
+            summary_density,
+            index_density,
+            None,
+            &mut None,
+            use_variable_encoding,
+        )?;
 
-        let _ = sstable_paths
-            .iter()
-            .map(|path| remove_dir_all(path));
+        let _ = sstable_paths.iter().map(|path| remove_dir_all(path));
 
         Ok(())
     }
@@ -418,7 +528,13 @@ impl SSTable {
     /// # Errors
     ///
     /// Returns an `io::Error` if there is an issue when reading from the SSTables or if deserialization fails.
-    pub(crate) fn merge_entries(sstable_paths: Vec<PathBuf>, in_single_file: Vec<bool>, total_entry_offsets: Option<Vec<u64>>, use_variable_encoding: bool, compression_dictionary: &mut Option<CompressionDictionary>) -> io::Result<Vec<(Box<[u8]>, MemoryEntry)>> {
+    pub(crate) fn merge_entries(
+        sstable_paths: Vec<PathBuf>,
+        in_single_file: Vec<bool>,
+        total_entry_offsets: Option<Vec<u64>>,
+        use_variable_encoding: bool,
+        compression_dictionary: &mut Option<CompressionDictionary>,
+    ) -> io::Result<Vec<(Box<[u8]>, MemoryEntry)>> {
         let number_of_tables = sstable_paths.len();
 
         // offsets for each sstable
@@ -442,7 +558,9 @@ impl SSTable {
             let option_entries: Vec<Option<_>> = file_ref_sstables
                 .iter_mut()
                 .zip(total_entry_offsets.iter())
-                .map(|(sstable, offset)| sstable.get_entry_from_data_file(*offset, None, None, use_variable_encoding))
+                .map(|(sstable, offset)| {
+                    sstable.get_entry_from_data_file(*offset, None, None, use_variable_encoding)
+                })
                 .collect();
 
             // if all entries are none, there is no more data
@@ -451,10 +569,7 @@ impl SSTable {
             }
 
             // add indexes
-            let entries: Vec<_> = option_entries
-                .iter()
-                .enumerate()
-                .collect();
+            let entries: Vec<_> = option_entries.iter().enumerate().collect();
 
             // find the indexes of min keys
             let min_key_indexes = SSTable::find_min_keys(&entries, true, compression_dictionary);
@@ -466,11 +581,9 @@ impl SSTable {
                 .collect();
 
             // update the offset only for entries with minimal keys
-            let _ = min_entries
-                .iter()
-                .for_each(|(index, element)| {
-                    total_entry_offsets[*index] += element.as_ref().unwrap().1.clone();
-                });
+            let _ = min_entries.iter().for_each(|(index, element)| {
+                total_entry_offsets[*index] += element.as_ref().unwrap().1.clone();
+            });
 
             // insert entry with the biggest timestamp
             let max_index = SSTable::find_max_timestamp(&min_entries);
@@ -478,7 +591,6 @@ impl SSTable {
         }
         Ok(merged_entries)
     }
-
 
     /// Finds the index of entry with the biggest timestamp
     ///
@@ -489,12 +601,16 @@ impl SSTable {
     /// # Returns
     ///
     /// An index of entry with the biggest timestamp
-    pub(crate) fn find_max_timestamp(entries: &Vec<(usize, &Option<((Box<[u8]>, MemoryEntry), u64)>)>) -> usize {
+    pub(crate) fn find_max_timestamp(
+        entries: &Vec<(usize, &Option<((Box<[u8]>, MemoryEntry), u64)>)>,
+    ) -> usize {
         let mut max_index = 0;
         let mut max_timestamp = 0;
         for (index, element) in entries {
-            if element.is_none() { continue; }
-            let timestamp = element.as_ref().unwrap().0.1.get_timestamp();
+            if element.is_none() {
+                continue;
+            }
+            let timestamp = element.as_ref().unwrap().0 .1.get_timestamp();
             if timestamp > max_timestamp {
                 max_index = *index;
                 max_timestamp = timestamp;
@@ -502,7 +618,6 @@ impl SSTable {
         }
         max_index
     }
-
 
     /// Finds the indexes of entries with minimal keys
     ///
@@ -513,21 +628,30 @@ impl SSTable {
     /// # Returns
     ///
     /// A Vector of indexes of entries with minimal keys
-    pub(crate) fn find_min_keys(entries: &Vec<(usize, &Option<((Box<[u8]>, MemoryEntry), u64)>)>, merging: bool, compression_dictionary: &mut Option<CompressionDictionary>) -> Vec<usize> {
+    pub(crate) fn find_min_keys(
+        entries: &Vec<(usize, &Option<((Box<[u8]>, MemoryEntry), u64)>)>,
+        merging: bool,
+        compression_dictionary: &mut Option<CompressionDictionary>,
+    ) -> Vec<usize> {
         let mut min_key: Box<[u8]> = Box::new([255u8; 255]);
         let mut min_indexes = vec![];
         for (index, element) in entries {
-            if element.is_none() { continue; }
+            if element.is_none() {
+                continue;
+            }
             let element = element.as_ref().unwrap();
             if !merging {
-                if element.0.1.get_tombstone() {
+                if element.0 .1.get_tombstone() {
                     continue;
                 }
             }
-            let key = &element.0.0;
+            let key = &element.0 .0;
             let decoded_key = match compression_dictionary {
-                Some(compression_dictionary) => compression_dictionary.decode(&key.to_vec().into_boxed_slice()).unwrap().clone(),
-                None => key.to_vec().into_boxed_slice()
+                Some(compression_dictionary) => compression_dictionary
+                    .decode(&key.to_vec().into_boxed_slice())
+                    .unwrap()
+                    .clone(),
+                None => key.to_vec().into_boxed_slice(),
             };
             let compare_result = min_key.cmp(&decoded_key);
             if compare_result == Ordering::Equal {
@@ -558,7 +682,13 @@ impl SSTable {
     /// Returns an `io::Error` if there's an issue when reading or deserializing the bloom filter data.
     fn bloom_filter_contains_key(&mut self, key: &[u8]) -> io::Result<bool> {
         // Use the get_cursor_data function to get the Bloom filter data cursor
-        let mut filter_data_cursor = self.get_cursor_data(self.in_single_file, "SSTable-BloomFilter.db", SSTableElementType::BloomFilter, None, false)?;
+        let mut filter_data_cursor = self.get_cursor_data(
+            self.in_single_file,
+            "SSTable-BloomFilter.db",
+            SSTableElementType::BloomFilter,
+            None,
+            false,
+        )?;
 
         let mut filter_data = Vec::new();
         filter_data_cursor.read_to_end(&mut filter_data)?;
@@ -571,7 +701,10 @@ impl SSTable {
             }
             Err(err) => {
                 eprintln!("Error deserializing BloomFilter: {:?}", err);
-                Err(io::Error::new(io::ErrorKind::Other, "Bloom filter deserialization failed"))
+                Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    "Bloom filter deserialization failed",
+                ))
             }
         }
     }
@@ -585,9 +718,21 @@ impl SSTable {
     /// # Returns
     ///
     /// An Option containing the offset if the key is found, otherwise None.
-    fn get_data_offset_from_summary(&mut self, key: &[u8], compression_dictionary: &mut Option<CompressionDictionary>) -> Option<u64> {
+    fn get_data_offset_from_summary(
+        &mut self,
+        key: &[u8],
+        compression_dictionary: &mut Option<CompressionDictionary>,
+    ) -> Option<u64> {
         let mut total_entry_offset = 0;
-        let mut summary_reader = self.get_cursor_data(self.in_single_file, "SSTable-Summary.db", SSTableElementType::Summary, Some(total_entry_offset), false).ok()?;
+        let mut summary_reader = self
+            .get_cursor_data(
+                self.in_single_file,
+                "SSTable-Summary.db",
+                SSTableElementType::Summary,
+                Some(total_entry_offset),
+                false,
+            )
+            .ok()?;
 
         // Read the min key length and min key from the summary file
         let mut min_key_len_bytes = [0u8; std::mem::size_of::<usize>()];
@@ -610,30 +755,52 @@ impl SSTable {
         total_entry_offset += max_key_len as u64;
 
         let decoded_key = match compression_dictionary {
-            Some(compression_dictionary) => compression_dictionary.decode(&key.to_vec().into_boxed_slice()).unwrap().clone(),
-            None => key.to_vec().into_boxed_slice()
+            Some(compression_dictionary) => compression_dictionary
+                .decode(&key.to_vec().into_boxed_slice())
+                .unwrap()
+                .clone(),
+            None => key.to_vec().into_boxed_slice(),
         };
 
         let decoded_min_key = match compression_dictionary {
-            Some(compression_dictionary) => compression_dictionary.decode(&min_key.to_vec().into_boxed_slice()).unwrap().clone(),
-            None => min_key.to_vec().into_boxed_slice()
+            Some(compression_dictionary) => compression_dictionary
+                .decode(&min_key.to_vec().into_boxed_slice())
+                .unwrap()
+                .clone(),
+            None => min_key.to_vec().into_boxed_slice(),
         };
 
         let decoded_max_key = match compression_dictionary {
-            Some(compression_dictionary) => compression_dictionary.decode(&max_key.to_vec().into_boxed_slice()).unwrap().clone(),
-            None => max_key.to_vec().into_boxed_slice()
+            Some(compression_dictionary) => compression_dictionary
+                .decode(&max_key.to_vec().into_boxed_slice())
+                .unwrap()
+                .clone(),
+            None => max_key.to_vec().into_boxed_slice(),
         };
 
         // Check if the key is within the range of the lowest and highest keys in the summary
-        if decoded_key.as_ref().cmp(decoded_min_key.as_ref()) == Ordering::Less || decoded_key.as_ref().cmp(decoded_max_key.as_ref()) == Ordering::Greater {
+        if decoded_key.as_ref().cmp(decoded_min_key.as_ref()) == Ordering::Less
+            || decoded_key.as_ref().cmp(decoded_max_key.as_ref()) == Ordering::Greater
+        {
             return None;
         }
 
         let mut current_key_len_bytes = [0u8; std::mem::size_of::<usize>()];
         let mut previous_offset_bytes = [0u8; std::mem::size_of::<usize>()];
 
-        summary_reader = self.get_cursor_data(self.in_single_file, "SSTable-Summary.db", SSTableElementType::Summary, Some(total_entry_offset), false).ok()?;
-        while summary_reader.read_exact(&mut current_key_len_bytes).is_ok() {
+        summary_reader = self
+            .get_cursor_data(
+                self.in_single_file,
+                "SSTable-Summary.db",
+                SSTableElementType::Summary,
+                Some(total_entry_offset),
+                false,
+            )
+            .ok()?;
+        while summary_reader
+            .read_exact(&mut current_key_len_bytes)
+            .is_ok()
+        {
             total_entry_offset += std::mem::size_of::<usize>() as u64;
 
             let current_key_len = usize::from_ne_bytes(current_key_len_bytes);
@@ -646,20 +813,39 @@ impl SSTable {
             total_entry_offset += std::mem::size_of::<usize>() as u64;
 
             let decoded_current_key = match compression_dictionary {
-                Some(compression_dictionary) => compression_dictionary.decode(&current_key_bytes.to_vec().into_boxed_slice()).unwrap().clone(),
-                None => current_key_bytes.to_vec().into_boxed_slice()
+                Some(compression_dictionary) => compression_dictionary
+                    .decode(&current_key_bytes.to_vec().into_boxed_slice())
+                    .unwrap()
+                    .clone(),
+                None => current_key_bytes.to_vec().into_boxed_slice(),
             };
 
             // Key < current key, read starting from previous offset previous_
             if decoded_key.as_ref().cmp(decoded_current_key.as_ref()) == Ordering::Less {
-                return self.get_data_offset_from_index(u64::from_ne_bytes(previous_offset_bytes), key, compression_dictionary);
+                return self.get_data_offset_from_index(
+                    u64::from_ne_bytes(previous_offset_bytes),
+                    key,
+                    compression_dictionary,
+                );
             }
 
             previous_offset_bytes = offset_bytes;
-            summary_reader = self.get_cursor_data(self.in_single_file, "SSTable-Summary.db", SSTableElementType::Summary, Some(total_entry_offset), false).ok()?;
+            summary_reader = self
+                .get_cursor_data(
+                    self.in_single_file,
+                    "SSTable-Summary.db",
+                    SSTableElementType::Summary,
+                    Some(total_entry_offset),
+                    false,
+                )
+                .ok()?;
         }
 
-        return self.get_data_offset_from_index(u64::from_ne_bytes(previous_offset_bytes), key, compression_dictionary);
+        return self.get_data_offset_from_index(
+            u64::from_ne_bytes(previous_offset_bytes),
+            key,
+            compression_dictionary,
+        );
     }
 
     /// Reads the data offset from the index file based on the seek offset and key.
@@ -672,13 +858,29 @@ impl SSTable {
     /// # Returns
     ///
     /// An Option containing the data offset if the key is found, otherwise None.
-    fn get_data_offset_from_index(&mut self, seek_offset: u64, key: &[u8], compression_dictionary: &mut Option<CompressionDictionary>) -> Option<u64> {
+    fn get_data_offset_from_index(
+        &mut self,
+        seek_offset: u64,
+        key: &[u8],
+        compression_dictionary: &mut Option<CompressionDictionary>,
+    ) -> Option<u64> {
         let mut total_entry_offset = seek_offset;
-        let mut index_reader = self.get_cursor_data(self.in_single_file, "SSTable-Index.db", SSTableElementType::Index, Some(total_entry_offset), false).ok()?;
+        let mut index_reader = self
+            .get_cursor_data(
+                self.in_single_file,
+                "SSTable-Index.db",
+                SSTableElementType::Index,
+                Some(total_entry_offset),
+                false,
+            )
+            .ok()?;
 
         let decoded_key = match compression_dictionary {
-            Some(compression_dictionary) => compression_dictionary.decode(&key.to_vec().into_boxed_slice()).unwrap().clone(),
-            None => key.to_vec().into_boxed_slice()
+            Some(compression_dictionary) => compression_dictionary
+                .decode(&key.to_vec().into_boxed_slice())
+                .unwrap()
+                .clone(),
+            None => key.to_vec().into_boxed_slice(),
         };
 
         let mut current_key_len_bytes = [0u8; std::mem::size_of::<usize>()];
@@ -696,8 +898,11 @@ impl SSTable {
             total_entry_offset += std::mem::size_of::<usize>() as u64;
 
             let decoded_current_key = match compression_dictionary {
-                Some(compression_dictionary) => compression_dictionary.decode(&current_key_bytes.to_vec().into_boxed_slice()).unwrap().clone(),
-                None => current_key_bytes.to_vec().into_boxed_slice()
+                Some(compression_dictionary) => compression_dictionary
+                    .decode(&current_key_bytes.to_vec().into_boxed_slice())
+                    .unwrap()
+                    .clone(),
+                None => current_key_bytes.to_vec().into_boxed_slice(),
             };
 
             // Key < current key, return previous offset
@@ -706,7 +911,15 @@ impl SSTable {
             }
 
             previous_offset_bytes = offset_bytes;
-            index_reader = self.get_cursor_data(self.in_single_file, "SSTable-Index.db", SSTableElementType::Index, Some(total_entry_offset), false).ok()?;
+            index_reader = self
+                .get_cursor_data(
+                    self.in_single_file,
+                    "SSTable-Index.db",
+                    SSTableElementType::Index,
+                    Some(total_entry_offset),
+                    false,
+                )
+                .ok()?;
         }
 
         // Return previous offset for the last entry in the index file
@@ -724,8 +937,15 @@ impl SSTable {
     /// # Returns
     ///
     /// An Option containing a pair of the key & MemoryEntry pair and the memory entry bytes length if successful, otherwise None.
-    pub(crate) fn get_entry_from_data_file(&mut self, offset: u64, index_density: Option<usize>, expected_key: Option<&[u8]>, use_variable_encoding: bool) -> Option<((Box<[u8]>, MemoryEntry), u64)> {
-        let (mut crc, mut timestamp, mut tombstone, mut key_len, mut offset_to_key_len, mut length) = (0u32, 0u128, false, 0usize, 0usize, 0usize);
+    pub(crate) fn get_entry_from_data_file(
+        &mut self,
+        offset: u64,
+        index_density: Option<usize>,
+        expected_key: Option<&[u8]>,
+        use_variable_encoding: bool,
+    ) -> Option<((Box<[u8]>, MemoryEntry), u64)> {
+        let (mut crc, mut timestamp, mut tombstone, mut key_len, mut offset_to_key_len, mut length) =
+            (0u32, 0u128, false, 0usize, 0usize, 0usize);
         let mut traversed_offset = 0;
 
         let mut unwrapped_key = vec![];
@@ -739,14 +959,25 @@ impl SSTable {
 
             let mut traversed_entries: usize = 0;
             while traversed_entries <= index_density {
-                let buffer = self.get_cursor_data(self.in_single_file, "SSTable-Data.db", SSTableElementType::DataEntryWithoutValue, Some(offset + traversed_offset), use_variable_encoding).ok()?.into_inner();
+                let buffer = self
+                    .get_cursor_data(
+                        self.in_single_file,
+                        "SSTable-Data.db",
+                        SSTableElementType::DataEntryWithoutValue,
+                        Some(offset + traversed_offset),
+                        use_variable_encoding,
+                    )
+                    .ok()?
+                    .into_inner();
                 if buffer.len() == 0 {
                     return None;
                 }
                 let (entry_length, mut buffer_offset) = deserialize_usize_value(&buffer, false);
-                (offset_to_key_len, length) = deserialize_usize_value(&buffer[buffer_offset..], false);
+                (offset_to_key_len, length) =
+                    deserialize_usize_value(&buffer[buffer_offset..], false);
                 buffer_offset += length;
-                (crc, timestamp, tombstone, key_len, _, length, _) = deserialize_header(&buffer[buffer_offset..], false);
+                (crc, timestamp, tombstone, key_len, _, length, _) =
+                    deserialize_header(&buffer[buffer_offset..], false);
                 buffer_offset += length;
 
                 if &buffer[buffer_offset..] == key {
@@ -763,21 +994,43 @@ impl SSTable {
                 return None;
             }
         } else {
-            let buffer = self.get_cursor_data(self.in_single_file, "SSTable-Data.db", SSTableElementType::DataEntryWithoutValue, Some(offset), use_variable_encoding).ok()?.into_inner();
+            let buffer = self
+                .get_cursor_data(
+                    self.in_single_file,
+                    "SSTable-Data.db",
+                    SSTableElementType::DataEntryWithoutValue,
+                    Some(offset),
+                    use_variable_encoding,
+                )
+                .ok()?
+                .into_inner();
             if buffer.len() == 0 {
                 return None;
             }
             let (_, mut buffer_offset) = deserialize_usize_value(&buffer, false);
             (offset_to_key_len, length) = deserialize_usize_value(&buffer[buffer_offset..], false);
             buffer_offset += length;
-            (crc, timestamp, tombstone, key_len, _, length, _) = deserialize_header(&buffer[buffer_offset..], false);
+            (crc, timestamp, tombstone, key_len, _, length, _) =
+                deserialize_header(&buffer[buffer_offset..], false);
             buffer_offset += length;
 
             unwrapped_key.extend_from_slice(&buffer[buffer_offset..]);
         }
 
         // Deserialize the last read memory entry bytes
-        let data_entry_value = if tombstone { Vec::new() } else { self.get_cursor_data(self.in_single_file, "SSTable-Data.db", SSTableElementType::DataEntryValue, Some(offset + traversed_offset + offset_to_key_len as u64), use_variable_encoding).ok()?.into_inner() };
+        let data_entry_value = if tombstone {
+            Vec::new()
+        } else {
+            self.get_cursor_data(
+                self.in_single_file,
+                "SSTable-Data.db",
+                SSTableElementType::DataEntryValue,
+                Some(offset + traversed_offset + offset_to_key_len as u64),
+                use_variable_encoding,
+            )
+            .ok()?
+            .into_inner()
+        };
 
         let mut data_entry_bytes = Vec::new();
 
@@ -789,16 +1042,28 @@ impl SSTable {
 
         data_entry_bytes.extend(crc_bytes.to_vec().as_slice());
 
-        let timestamp_bytes = if use_variable_encoding { variable_encode(timestamp) } else { Box::new(timestamp.to_ne_bytes()) };
+        let timestamp_bytes = if use_variable_encoding {
+            variable_encode(timestamp)
+        } else {
+            Box::new(timestamp.to_ne_bytes())
+        };
         data_entry_bytes.extend_from_slice(&timestamp_bytes);
 
         data_entry_bytes.extend((tombstone as u8).to_ne_bytes());
 
-        let key_len_bytes = if use_variable_encoding { variable_encode(unwrapped_key.len() as u128) } else { Box::new(unwrapped_key.len().to_ne_bytes()) };
+        let key_len_bytes = if use_variable_encoding {
+            variable_encode(unwrapped_key.len() as u128)
+        } else {
+            Box::new(unwrapped_key.len().to_ne_bytes())
+        };
         data_entry_bytes.extend_from_slice(&key_len_bytes);
 
         if !tombstone {
-            let value_len_bytes = if use_variable_encoding { variable_encode(data_entry_value.len() as u128) } else { Box::new(data_entry_value.len().to_ne_bytes()) };
+            let value_len_bytes = if use_variable_encoding {
+                variable_encode(data_entry_value.len() as u128)
+            } else {
+                Box::new(data_entry_value.len().to_ne_bytes())
+            };
             data_entry_bytes.extend_from_slice(&value_len_bytes);
         }
 
@@ -832,7 +1097,14 @@ impl SSTable {
     /// # Errors
     ///
     /// Returns an `io::Error` if there's an issue when reading the cursor data.
-    pub(crate) fn get_cursor_data(&mut self, in_single_file: bool, path_postfix: &str, sstable_element_type: SSTableElementType, total_entry_offset: Option<u64>, use_variable_encoding: bool) -> io::Result<Cursor<Vec<u8>>> {
+    pub(crate) fn get_cursor_data(
+        &mut self,
+        in_single_file: bool,
+        path_postfix: &str,
+        sstable_element_type: SSTableElementType,
+        total_entry_offset: Option<u64>,
+        use_variable_encoding: bool,
+    ) -> io::Result<Cursor<Vec<u8>>> {
         let mut buffer = Vec::new();
         let total_entry_offset = total_entry_offset.unwrap_or(0);
 
@@ -844,7 +1116,9 @@ impl SSTable {
 
         let file_element_offset = if in_single_file {
             // Seek to the file element offset index
-            file.seek(SeekFrom::Start((sstable_element_type.get_id() * std::mem::size_of::<usize>()) as u64))?;
+            file.seek(SeekFrom::Start(
+                (sstable_element_type.get_id() * std::mem::size_of::<usize>()) as u64,
+            ))?;
 
             // Read the first offset value
             let mut file_element_offset_bytes = [0u8; std::mem::size_of::<usize>()];
@@ -854,16 +1128,19 @@ impl SSTable {
             0
         };
 
-        let next_file_element_offset = if in_single_file && sstable_element_type != SSTableElementType::MerkleTree {
-            file.seek(SeekFrom::Start(((sstable_element_type.get_id() + 1) * std::mem::size_of::<usize>()) as u64))?;
+        let next_file_element_offset =
+            if in_single_file && sstable_element_type != SSTableElementType::MerkleTree {
+                file.seek(SeekFrom::Start(
+                    ((sstable_element_type.get_id() + 1) * std::mem::size_of::<usize>()) as u64,
+                ))?;
 
-            // Read the first offset value
-            let mut file_element_offset_bytes = [0u8; std::mem::size_of::<usize>()];
-            file.read_exact(&mut file_element_offset_bytes)?;
-            usize::from_ne_bytes(file_element_offset_bytes) as u64
-        } else {
-            0
-        };
+                // Read the first offset value
+                let mut file_element_offset_bytes = [0u8; std::mem::size_of::<usize>()];
+                file.read_exact(&mut file_element_offset_bytes)?;
+                usize::from_ne_bytes(file_element_offset_bytes) as u64
+            } else {
+                0
+            };
 
         match sstable_element_type {
             SSTableElementType::DataEntryWithoutValue => {
@@ -874,7 +1151,12 @@ impl SSTable {
                     return Err(err.into());
                 }
 
-                if in_single_file && file_element_offset + total_entry_offset + std::mem::size_of::<usize>() as u64 >= next_file_element_offset {
+                if in_single_file
+                    && file_element_offset
+                        + total_entry_offset
+                        + std::mem::size_of::<usize>() as u64
+                        >= next_file_element_offset
+                {
                     return Ok(Cursor::new(Vec::new()));
                 }
 
@@ -896,9 +1178,11 @@ impl SSTable {
                     Err(_) => return Ok(Cursor::new(Vec::new())), // Handle error or zero bytes read
                 };
 
-                let (crc, timestamp, tombstone, key_len, value_len, header_len, offset_to_key_len) = deserialize_header(&header_bytes, use_variable_encoding);
+                let (crc, timestamp, tombstone, key_len, value_len, header_len, offset_to_key_len) =
+                    deserialize_header(&header_bytes, use_variable_encoding);
                 let entry_length = header_len + key_len + value_len;
-                file.seek(SeekFrom::Current(header_len as i64 - result_len as i64)).ok();
+                file.seek(SeekFrom::Current(header_len as i64 - result_len as i64))
+                    .ok();
                 let mut key = vec![0u8; key_len];
                 file.read_exact(&mut key).ok();
                 buffer.extend_from_slice(&entry_length.to_ne_bytes());
@@ -920,7 +1204,12 @@ impl SSTable {
                     return Err(err.into());
                 }
 
-                if in_single_file && file_element_offset + total_entry_offset + std::mem::size_of::<usize>() as u64 >= next_file_element_offset {
+                if in_single_file
+                    && file_element_offset
+                        + total_entry_offset
+                        + std::mem::size_of::<usize>() as u64
+                        >= next_file_element_offset
+                {
                     return Ok(Cursor::new(Vec::new()));
                 }
 
@@ -945,10 +1234,12 @@ impl SSTable {
 
                 let mut offset = 0;
 
-                let (key_len, length) = deserialize_usize_value(&key_val_len_bytes[offset..], use_variable_encoding);
+                let (key_len, length) =
+                    deserialize_usize_value(&key_val_len_bytes[offset..], use_variable_encoding);
                 offset += length;
 
-                let (value_len, length) = deserialize_usize_value(&key_val_len_bytes[offset..], use_variable_encoding);
+                let (value_len, length) =
+                    deserialize_usize_value(&key_val_len_bytes[offset..], use_variable_encoding);
                 offset += length;
                 let seek_backwards_offset = offset as i64 - result_len as i64;
 
@@ -967,7 +1258,11 @@ impl SSTable {
                 let mut key_len_bytes = [0u8; std::mem::size_of::<usize>()];
                 let result = file.read_exact(&mut key_len_bytes);
                 if in_single_file {
-                    if file_element_offset + total_entry_offset + std::mem::size_of::<usize>() as u64 >= next_file_element_offset {
+                    if file_element_offset
+                        + total_entry_offset
+                        + std::mem::size_of::<usize>() as u64
+                        >= next_file_element_offset
+                    {
                         return Ok(Cursor::new(Vec::new()));
                     }
                 } else {
@@ -1016,7 +1311,11 @@ impl SSTable {
                     let mut key_len_bytes = [0u8; std::mem::size_of::<usize>()];
                     let result = file.read_exact(&mut key_len_bytes);
                     if in_single_file {
-                        if file_element_offset + total_entry_offset + std::mem::size_of::<usize>() as u64 >= next_file_element_offset {
+                        if file_element_offset
+                            + total_entry_offset
+                            + std::mem::size_of::<usize>() as u64
+                            >= next_file_element_offset
+                        {
                             return Ok(Cursor::new(Vec::new()));
                         }
                     } else {
@@ -1040,7 +1339,8 @@ impl SSTable {
             SSTableElementType::BloomFilter => {
                 if in_single_file {
                     file.seek(SeekFrom::Start(file_element_offset))?;
-                    file.take(next_file_element_offset - file_element_offset).read_to_end(&mut buffer)?;
+                    file.take(next_file_element_offset - file_element_offset)
+                        .read_to_end(&mut buffer)?;
                 } else {
                     file.seek(SeekFrom::Start(0))?;
                     file.read_to_end(&mut buffer)?;
@@ -1058,7 +1358,6 @@ impl SSTable {
         Ok(Cursor::new(buffer))
     }
 
-
     /// Reads min and max key from SSTable at a given path.
     ///
     ///
@@ -1074,7 +1373,10 @@ impl SSTable {
     /// # Errors
     ///
     /// Returns an `io::Error` if there's an issue when reading contents of SStable file.
-    pub(crate) fn get_key_range(sstable_base_path: PathBuf, in_single_file: bool) -> io::Result<(Box<[u8]>, Box<[u8]>)> {
+    pub(crate) fn get_key_range(
+        sstable_base_path: PathBuf,
+        in_single_file: bool,
+    ) -> io::Result<(Box<[u8]>, Box<[u8]>)> {
         let mut open_options = OpenOptions::new();
         open_options.read(true).write(false).create(false);
 
@@ -1088,7 +1390,9 @@ impl SSTable {
 
         // Position the file cursor on beginning of summary data
         if in_single_file {
-            file_handle.seek(SeekFrom::Start((SSTableElementType::Summary.get_id() * std::mem::size_of::<usize>()) as u64))?;
+            file_handle.seek(SeekFrom::Start(
+                (SSTableElementType::Summary.get_id() * std::mem::size_of::<usize>()) as u64,
+            ))?;
 
             let mut summary_offset_bytes = [0u8; std::mem::size_of::<usize>()];
             file_handle.read_exact(&mut summary_offset_bytes)?;
@@ -1114,7 +1418,6 @@ impl SSTable {
         file_handle.read_exact(&mut max_key_bytes)?;
         let max_key = max_key_bytes.into_boxed_slice();
 
-
         Ok((min_key, max_key))
     }
 
@@ -1136,7 +1439,14 @@ impl SSTable {
     /// # Errors
     ///
     /// Returns an `io::Error` if there's an issue when reading contents of SStable file.
-    pub(crate) fn get_sstable_offset(sstable_base_path: PathBuf, in_single_file: bool, searched_key: &[u8], scan_type: ScanType, non_existent_thresh: Option<u64>, compression_dictionary: &mut Option<CompressionDictionary>) -> io::Result<u64> {
+    pub(crate) fn get_sstable_offset(
+        sstable_base_path: PathBuf,
+        in_single_file: bool,
+        searched_key: &[u8],
+        scan_type: ScanType,
+        non_existent_thresh: Option<u64>,
+        compression_dictionary: &mut Option<CompressionDictionary>,
+    ) -> io::Result<u64> {
         let mut offset = 0;
 
         let mut open_options = OpenOptions::new();
@@ -1180,8 +1490,11 @@ impl SSTable {
             }
 
             let decoded_key = match compression_dictionary {
-                Some(compression_dictionary) => compression_dictionary.decode(&key_bytes.to_vec().into_boxed_slice()).unwrap().clone(),
-                None => key_bytes.to_vec().into_boxed_slice()
+                Some(compression_dictionary) => compression_dictionary
+                    .decode(&key_bytes.to_vec().into_boxed_slice())
+                    .unwrap()
+                    .clone(),
+                None => key_bytes.to_vec().into_boxed_slice(),
             };
 
             let mut offset_bytes = [0u8; std::mem::size_of::<usize>()];
@@ -1232,14 +1545,29 @@ impl SSTable {
     /// # Errors
     ///
     /// Returns an `io::Error` if there's an issue when reading contents of SStable file.
-    pub(crate) fn update_sstable_offsets(sstables: &mut Vec<SSTable>, mut current_offsets: Vec<u64>, searched_key: &[u8], scan_type: ScanType, use_variable_encoding: bool, compression_dictionary: &mut Option<CompressionDictionary>) -> io::Result<Vec<u64>> {
+    pub(crate) fn update_sstable_offsets(
+        sstables: &mut Vec<SSTable>,
+        mut current_offsets: Vec<u64>,
+        searched_key: &[u8],
+        scan_type: ScanType,
+        use_variable_encoding: bool,
+        compression_dictionary: &mut Option<CompressionDictionary>,
+    ) -> io::Result<Vec<u64>> {
         for (index, sstable) in sstables.iter_mut().enumerate() {
             loop {
-                let data = sstable.get_entry_from_data_file(current_offsets[index], None, None, use_variable_encoding);
+                let data = sstable.get_entry_from_data_file(
+                    current_offsets[index],
+                    None,
+                    None,
+                    use_variable_encoding,
+                );
                 if let Some(((key, _), offset)) = data {
                     let decoded_key = match compression_dictionary {
-                        Some(compression_dictionary) => compression_dictionary.decode(&key.to_vec().into_boxed_slice()).unwrap().clone(),
-                        None => key.to_vec().into_boxed_slice()
+                        Some(compression_dictionary) => compression_dictionary
+                            .decode(&key.to_vec().into_boxed_slice())
+                            .unwrap()
+                            .clone(),
+                        None => key.to_vec().into_boxed_slice(),
                     };
 
                     match scan_type {
@@ -1314,9 +1642,7 @@ impl SSTable {
         let file_handle = self
             .file_handles
             .entry(path_postfix.to_string())
-            .or_insert_with(|| {
-                open_options.open(&file_path).expect("Failed to open file")
-            });
+            .or_insert_with(|| open_options.open(&file_path).expect("Failed to open file"));
 
         // Return a mutable reference to the File in the map
         Ok(file_handle)

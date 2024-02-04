@@ -1,16 +1,16 @@
-use std::error::Error;
-use db_config::DBConfig;
-use segment_elements::TimeStamp;
 use bloom_filter::BloomFilter;
 use count_min_sketch::CMSketch;
+use db_config::DBConfig;
 use hyperloglog::HLL;
-use simhash::{hamming_distance};
-use lsm::{LSM, Paginator};
+use lsm::{Paginator, LSM};
+use segment_elements::TimeStamp;
+use simhash::hamming_distance;
+use std::error::Error;
 use token_bucket::token_bucket::TokenBucket;
 
-use crate::ReservedKeyError;
-use crate::ProbabilisticTypeError;
 use crate::token_bucket_error::TokenBucketError;
+use crate::ProbabilisticTypeError;
+use crate::ReservedKeyError;
 
 pub struct DB {
     config: DBConfig,
@@ -25,7 +25,13 @@ impl Default for DB {
         DB {
             lsm: LSM::new(&default_config).unwrap(),
             config: default_config,
-            reserved_key_prefixes: ["bl00m_f1lt3r/".as_bytes(), "c0unt_m1n_$k3tch/".as_bytes(), "hyp3r_l0g_l0g/".as_bytes(), "$1m_ha$h/".as_bytes(), "t0k3n_buck3t/".as_bytes()],
+            reserved_key_prefixes: [
+                "bl00m_f1lt3r/".as_bytes(),
+                "c0unt_m1n_$k3tch/".as_bytes(),
+                "hyp3r_l0g_l0g/".as_bytes(),
+                "$1m_ha$h/".as_bytes(),
+                "t0k3n_buck3t/".as_bytes(),
+            ],
         }
     }
 }
@@ -42,7 +48,13 @@ impl DB {
                 }
             },
             config,
-            reserved_key_prefixes: ["bl00m_f1lt3r/".as_bytes(), "c0unt_m1n_$k3tch/".as_bytes(), "hyp3r_l0g_l0g/".as_bytes(), "$1m_ha$h/".as_bytes(), "t0k3n_buck3t/state".as_bytes()],
+            reserved_key_prefixes: [
+                "bl00m_f1lt3r/".as_bytes(),
+                "c0unt_m1n_$k3tch/".as_bytes(),
+                "hyp3r_l0g_l0g/".as_bytes(),
+                "$1m_ha$h/".as_bytes(),
+                "t0k3n_buck3t/state".as_bytes(),
+            ],
         })
     }
 
@@ -51,14 +63,22 @@ impl DB {
     }
 
     /// Inserts a new key value pair into the system.
-    fn system_insert(&mut self, key: &[u8], value: &[u8], check_reserved_prefixes: bool) -> Result<(), Box<dyn Error>> {
+    fn system_insert(
+        &mut self,
+        key: &[u8],
+        value: &[u8],
+        check_reserved_prefixes: bool,
+    ) -> Result<(), Box<dyn Error>> {
         if key != "t0k3n_buck3t/state".as_bytes() {
             if self.token_bucket_take()? {
                 if check_reserved_prefixes {
                     for forbidden_key_prefix in self.reserved_key_prefixes {
                         if key.starts_with(forbidden_key_prefix) {
                             return Err(Box::new(ReservedKeyError {
-                                message: format!("Cannot insert key with system reserved prefix {}.", String::from_utf8_lossy(forbidden_key_prefix))
+                                message: format!(
+                                    "Cannot insert key with system reserved prefix {}.",
+                                    String::from_utf8_lossy(forbidden_key_prefix)
+                                ),
                             }));
                         }
                     }
@@ -77,13 +97,20 @@ impl DB {
     }
 
     /// Removes the value that's associated to the given key.
-    fn system_delete(&mut self, key: &[u8], check_reserved_prefixes: bool) -> Result<(), Box<dyn Error>> {
+    fn system_delete(
+        &mut self,
+        key: &[u8],
+        check_reserved_prefixes: bool,
+    ) -> Result<(), Box<dyn Error>> {
         if self.token_bucket_take()? {
             if check_reserved_prefixes {
                 for forbidden_key_prefix in &self.reserved_key_prefixes {
                     if key.starts_with(forbidden_key_prefix) {
                         return Err(Box::new(ReservedKeyError {
-                            message: format!("Cannot insert key with system reserved prefix {}.", String::from_utf8_lossy(forbidden_key_prefix))
+                            message: format!(
+                                "Cannot insert key with system reserved prefix {}.",
+                                String::from_utf8_lossy(forbidden_key_prefix)
+                            ),
                         }));
                     }
                 }
@@ -100,7 +127,11 @@ impl DB {
         self.system_get(key, true)
     }
 
-    fn system_get(&mut self, key: &[u8], check_reserved_prefixes: bool) -> Result<Option<Box<[u8]>>, Box<dyn Error>> {
+    fn system_get(
+        &mut self,
+        key: &[u8],
+        check_reserved_prefixes: bool,
+    ) -> Result<Option<Box<[u8]>>, Box<dyn Error>> {
         if key == "t0k3n_buck3t/state".as_bytes() {
             self.lsm.get(key).map_err(|err| From::from(err))
         } else {
@@ -110,18 +141,21 @@ impl DB {
                         for forbidden_key_prefix in &self.reserved_key_prefixes {
                             if key.starts_with(forbidden_key_prefix) {
                                 return Err(ReservedKeyError {
-                                    message: format!("Cannot insert key with system reserved prefix {}.", String::from_utf8_lossy(forbidden_key_prefix))
-                                }.into());
+                                    message: format!(
+                                        "Cannot insert key with system reserved prefix {}.",
+                                        String::from_utf8_lossy(forbidden_key_prefix)
+                                    ),
+                                }
+                                .into());
                             }
                         }
                     }
                     self.lsm.get(key).map_err(|err| From::from(err))
                 }
-                _ => { Err(From::from(TokenBucketError)) }
+                _ => Err(From::from(TokenBucketError)),
             }
         }
     }
-
 
     /// Should be called before the program exit to gracefully finish all memory tables writes,
     /// SStable merges and compactions.
@@ -146,7 +180,12 @@ impl DB {
     /// # Errors
     ///
     /// Returns a Boxed Error if there is an issue creating or serializing the Bloom filter.
-    pub fn bloom_filter_create(&mut self, key: &[u8], probability: Option<f64>, cap: Option<usize>) -> Result<Box<[u8]>, Box<dyn Error>> {
+    pub fn bloom_filter_create(
+        &mut self,
+        key: &[u8],
+        probability: Option<f64>,
+        cap: Option<usize>,
+    ) -> Result<Box<[u8]>, Box<dyn Error>> {
         let probability = probability.unwrap_or(self.config.bloom_filter_probability);
         let cap = cap.unwrap_or(self.config.bloom_filter_cap);
         let bloom_filter = BloomFilter::new(probability, cap);
@@ -207,7 +246,11 @@ impl DB {
     ///
     /// Result indicating whether the value is likely present (`Ok(true)`) or not present (`Ok(false)`),
     /// or an error wrapped in a `Box<dyn Error>`.
-    pub fn bloom_filter_contains(&mut self, key: &[u8], value: &[u8]) -> Result<bool, Box<dyn Error>> {
+    pub fn bloom_filter_contains(
+        &mut self,
+        key: &[u8],
+        value: &[u8],
+    ) -> Result<bool, Box<dyn Error>> {
         return if self.token_bucket_take()? {
             let combined_key = self.get_combined_key(key, 0);
             let bf_bytes = self.get_probabilistic_ds_bytes(combined_key.as_slice())?;
@@ -220,7 +263,7 @@ impl DB {
             Ok(bloom_filter.contains(value))
         } else {
             Err(From::from(TokenBucketError))
-        }
+        };
     }
 
     /// Creates a count-min sketch for the specified key, then returns its serialized representation.
@@ -240,7 +283,12 @@ impl DB {
     /// # Errors
     ///
     /// Returns a Boxed Error if there is an issue creating or serializing the count-min sketch.
-    pub fn count_min_sketch_create(&mut self, key: &[u8], probability: Option<f64>, tolerance: Option<f64>) -> Result<Box<[u8]>, Box<dyn Error>> {
+    pub fn count_min_sketch_create(
+        &mut self,
+        key: &[u8],
+        probability: Option<f64>,
+        tolerance: Option<f64>,
+    ) -> Result<Box<[u8]>, Box<dyn Error>> {
         let probability = probability.unwrap_or(self.config.count_min_sketch_probability);
         let tolerance = tolerance.unwrap_or(self.config.count_min_sketch_tolerance);
         let count_min_sketch = CMSketch::new(probability, tolerance);
@@ -260,7 +308,10 @@ impl DB {
     /// # Returns
     ///
     /// An `Option` containing the value associated with the key, or `None` if the key is not present.
-    pub fn count_min_sketch_get(&mut self, key: &[u8]) -> Result<Option<Box<[u8]>>, Box<dyn Error>> {
+    pub fn count_min_sketch_get(
+        &mut self,
+        key: &[u8],
+    ) -> Result<Option<Box<[u8]>>, Box<dyn Error>> {
         self.reserved_get(key, 1)
     }
 
@@ -274,7 +325,11 @@ impl DB {
     /// # Returns
     ///
     /// Result indicating success or an error wrapped in a `Box<dyn Error>`.
-    pub fn count_min_sketch_increase_count(&mut self, key: &[u8], value: &[u8]) -> Result<(), Box<dyn Error>> {
+    pub fn count_min_sketch_increase_count(
+        &mut self,
+        key: &[u8],
+        value: &[u8],
+    ) -> Result<(), Box<dyn Error>> {
         let combined_key = self.get_combined_key(key, 1);
         let cms_bytes = self.get_probabilistic_ds_bytes(combined_key.as_slice())?;
 
@@ -295,7 +350,11 @@ impl DB {
     /// # Returns
     ///
     /// Result containing the count associated with the value or an error wrapped in a `Box<dyn Error>`.
-    pub fn count_min_sketch_get_count(&mut self, key: &[u8], value: &[u8]) -> Result<u64, Box<dyn Error>> {
+    pub fn count_min_sketch_get_count(
+        &mut self,
+        key: &[u8],
+        value: &[u8],
+    ) -> Result<u64, Box<dyn Error>> {
         if self.token_bucket_take()? {
             let combined_key = self.get_combined_key(key, 1);
             let cms_bytes = self.get_probabilistic_ds_bytes(combined_key.as_slice())?;
@@ -323,7 +382,11 @@ impl DB {
     /// # Errors
     ///
     /// Returns a Boxed Error if there is an issue creating or serializing the hyperloglog.
-    pub fn hyperloglog_create(&mut self, key: &[u8], precision: Option<u32>) -> Result<Box<[u8]>, Box<dyn Error>> {
+    pub fn hyperloglog_create(
+        &mut self,
+        key: &[u8],
+        precision: Option<u32>,
+    ) -> Result<Box<[u8]>, Box<dyn Error>> {
         let precision = precision.unwrap_or(self.config.hyperloglog_precision);
         let hyperloglog = HLL::new(precision);
 
@@ -356,7 +419,11 @@ impl DB {
     /// # Returns
     ///
     /// Result indicating success or an error wrapped in a `Box<dyn Error>`.
-    pub fn hyperloglog_increase_count(&mut self, key: &[u8], value: &[u8]) -> Result<(), Box<dyn Error>> {
+    pub fn hyperloglog_increase_count(
+        &mut self,
+        key: &[u8],
+        value: &[u8],
+    ) -> Result<(), Box<dyn Error>> {
         let combined_key = self.get_combined_key(key, 2);
         let hll_bytes = self.get_probabilistic_ds_bytes(combined_key.as_slice())?;
 
@@ -413,7 +480,11 @@ impl DB {
     /// # Returns
     ///
     /// An `Option` containing the value associated with the key, or `None` if the key is not present.
-    fn reserved_get(&mut self, key: &[u8], index: usize) -> Result<Option<Box<[u8]>>, Box<dyn Error>> {
+    fn reserved_get(
+        &mut self,
+        key: &[u8],
+        index: usize,
+    ) -> Result<Option<Box<[u8]>>, Box<dyn Error>> {
         let combined_key = self.get_combined_key(key, index);
 
         if let Some(value) = self.system_get(&combined_key, false)? {
@@ -450,14 +521,18 @@ impl DB {
     ///
     /// Result containing the serialized bytes of the probabilistic data structure or an error
     /// wrapped in a `Box<dyn Error>`.
-    fn get_probabilistic_ds_bytes(&mut self, combined_key: &[u8]) -> Result<Box<[u8]>, Box<dyn Error>> {
+    fn get_probabilistic_ds_bytes(
+        &mut self,
+        combined_key: &[u8],
+    ) -> Result<Box<[u8]>, Box<dyn Error>> {
         match self.system_get(combined_key, false)? {
             Some(bytes) => Ok(bytes),
-            None => {
-                Err(Box::new(ProbabilisticTypeError {
-                    message: format!("Failed to get probabilistic structure with combined key {}.", String::from_utf8_lossy(combined_key))
-                }))
-            }
+            None => Err(Box::new(ProbabilisticTypeError {
+                message: format!(
+                    "Failed to get probabilistic structure with combined key {}.",
+                    String::from_utf8_lossy(combined_key)
+                ),
+            })),
         }
     }
 
@@ -473,12 +548,19 @@ impl DB {
     pub fn token_bucket_take(&mut self) -> Result<bool, Box<dyn Error>> {
         let mut token_bucket = match self.system_get("t0k3n_buck3t/state".as_bytes(), false)? {
             Some(bytes) => TokenBucket::deserialize(&bytes),
-            None => TokenBucket::new(self.config.token_bucket_capacity, self.config.token_bucket_refill_rate)
+            None => TokenBucket::new(
+                self.config.token_bucket_capacity,
+                self.config.token_bucket_refill_rate,
+            ),
         };
 
         let token_taken = token_bucket.take(1);
 
-        self.system_insert("t0k3n_buck3t/state".as_bytes(), token_bucket.serialize().as_ref(), false)?;
+        self.system_insert(
+            "t0k3n_buck3t/state".as_bytes(),
+            token_bucket.serialize().as_ref(),
+            false,
+        )?;
 
         Ok(token_taken)
     }

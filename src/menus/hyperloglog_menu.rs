@@ -1,8 +1,8 @@
+use crate::impl_menu;
+use crate::menus::{get_input_u32, get_input_u8, UserMenu};
 use colored::Colorize;
 use enum_iterator::Sequence;
 use NoSQLDB::DB;
-use crate::impl_menu;
-use crate::menus::{get_input_u8, get_input_u32, UserMenu};
 
 #[derive(Sequence)]
 enum HyperLogLogMenu {
@@ -14,12 +14,18 @@ enum HyperLogLogMenu {
 }
 
 impl_menu!(
-    HyperLogLogMenu, "HyperLogLog",
-    HyperLogLogMenu::CreateRetrieve, "Create or retrieve from a key".blink(),
-    HyperLogLogMenu::GetValueFromKey, "Get value from key".blink(),
-    HyperLogLogMenu::IncreaseCount, "Increase count".blink(),
-    HyperLogLogMenu::GetCount, "Get count".blink(),
-    HyperLogLogMenu::Back, "Back".yellow().italic()
+    HyperLogLogMenu,
+    "HyperLogLog",
+    HyperLogLogMenu::CreateRetrieve,
+    "Create or retrieve from a key".blink(),
+    HyperLogLogMenu::GetValueFromKey,
+    "Get value from key".blink(),
+    HyperLogLogMenu::IncreaseCount,
+    "Increase count".blink(),
+    HyperLogLogMenu::GetCount,
+    "Get count".blink(),
+    HyperLogLogMenu::Back,
+    "Back".yellow().italic()
 );
 
 pub fn hyperloglog_menu(db: &mut DB) {
@@ -50,13 +56,11 @@ pub fn hyperloglog_menu(db: &mut DB) {
                 let key = &key.unwrap();
 
                 match db.hyperloglog_get(key) {
-                    Ok(value) => {
-                        match value {
-                            Some(value) => println!("Value found: {:?}", value),
-                            None => println!("Value not found.")
-                        }
+                    Ok(value) => match value {
+                        Some(value) => println!("Value found: {:?}", value),
+                        None => println!("Value not found."),
                     },
-                    Err(err) => eprintln!("Error while getting: {}", err)
+                    Err(err) => eprintln!("Error while getting: {}", err),
                 }
             }
             HyperLogLogMenu::IncreaseCount => {
@@ -91,12 +95,12 @@ pub fn hyperloglog_menu(db: &mut DB) {
 
                 match db.hyperloglog_get_count(key) {
                     Ok(value) => println!("Count: {:?}", value),
-                    Err(err) => eprintln!("Error while getting count: {}", err)
+                    Err(err) => eprintln!("Error while getting count: {}", err),
                 }
             }
             HyperLogLogMenu::Back => {
                 clearscreen::clear().expect("Failed to clear screen.");
-                break
+                break;
             }
         }
     }

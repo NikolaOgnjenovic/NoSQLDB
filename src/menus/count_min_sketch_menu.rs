@@ -1,8 +1,8 @@
-use enum_iterator::Sequence;
-use NoSQLDB::DB;
-use colored::Colorize;
 use crate::impl_menu;
 use crate::menus::{get_input_f64, get_input_u8, UserMenu};
+use colored::Colorize;
+use enum_iterator::Sequence;
+use NoSQLDB::DB;
 
 #[derive(Sequence)]
 enum CountMinSketchMenu {
@@ -14,12 +14,18 @@ enum CountMinSketchMenu {
 }
 
 impl_menu!(
-    CountMinSketchMenu, "CountMinSketch",
-    CountMinSketchMenu::Create, "Create/retrieve".blink(),
-    CountMinSketchMenu::Get, "Get value".blink(),
-    CountMinSketchMenu::IncreaseCount, "Increase Count".blink(),
-    CountMinSketchMenu::GetCount, "Get Count".blink(),
-    CountMinSketchMenu::Back, "Back".yellow().italic()
+    CountMinSketchMenu,
+    "CountMinSketch",
+    CountMinSketchMenu::Create,
+    "Create/retrieve".blink(),
+    CountMinSketchMenu::Get,
+    "Get value".blink(),
+    CountMinSketchMenu::IncreaseCount,
+    "Increase Count".blink(),
+    CountMinSketchMenu::GetCount,
+    "Get Count".blink(),
+    CountMinSketchMenu::Back,
+    "Back".yellow().italic()
 );
 
 pub fn count_min_sketch_menu(db: &mut DB) {
@@ -41,7 +47,7 @@ pub fn count_min_sketch_menu(db: &mut DB) {
                 }
             }
             CountMinSketchMenu::Get => {
-                 clearscreen::clear().expect("Failed to clear screen.");
+                clearscreen::clear().expect("Failed to clear screen.");
                 let key = get_input_u8("Enter key: ");
                 if key.is_none() {
                     println!("Failed to serialize key into bytes.");
@@ -50,17 +56,15 @@ pub fn count_min_sketch_menu(db: &mut DB) {
                 let key = &key.unwrap();
 
                 match db.count_min_sketch_get(key) {
-                    Ok(value) => {
-                        match value {
-                            Some(value) => println!("Value found: {:?}", value),
-                            None => println!("Value not found")
-                        }
+                    Ok(value) => match value {
+                        Some(value) => println!("Value found: {:?}", value),
+                        None => println!("Value not found"),
                     },
-                    Err(err) => eprintln!("Error while getting: {}", err)
+                    Err(err) => eprintln!("Error while getting: {}", err),
                 }
             }
             CountMinSketchMenu::IncreaseCount => {
-                 clearscreen::clear().expect("Failed to clear screen.");
+                clearscreen::clear().expect("Failed to clear screen.");
                 let key = get_input_u8("Enter key: ");
                 if key.is_none() {
                     println!("Failed to serialize key into bytes.");
@@ -81,7 +85,7 @@ pub fn count_min_sketch_menu(db: &mut DB) {
                 }
             }
             CountMinSketchMenu::GetCount => {
-                 clearscreen::clear().expect("Failed to clear screen.");
+                clearscreen::clear().expect("Failed to clear screen.");
                 let key = get_input_u8("Enter key: ");
                 if key.is_none() {
                     println!("Failed to serialize key into bytes.");
@@ -98,12 +102,12 @@ pub fn count_min_sketch_menu(db: &mut DB) {
 
                 match db.count_min_sketch_get_count(key, value) {
                     Ok(value) => println!("Count: {:?}", value),
-                    Err(err) => eprintln!("Error while getting count: {}", err)
+                    Err(err) => eprintln!("Error while getting count: {}", err),
                 }
             }
             CountMinSketchMenu::Back => {
-                 clearscreen::clear().expect("Failed to clear screen.");
-                break
+                clearscreen::clear().expect("Failed to clear screen.");
+                break;
             }
         }
     }

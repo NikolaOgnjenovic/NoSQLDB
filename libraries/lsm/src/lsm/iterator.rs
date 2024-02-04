@@ -1,7 +1,7 @@
-use compression::CompressionDictionary;
-use segment_elements::MemoryEntry;
 use crate::lsm::ScanType;
 use crate::sstable::SSTable;
+use compression::CompressionDictionary;
+use segment_elements::MemoryEntry;
 
 /// Struct for iterating over entries in memory tables and sstables
 pub struct LSMIterator<'a> {
@@ -16,7 +16,16 @@ pub struct LSMIterator<'a> {
 }
 
 impl<'a> LSMIterator<'a> {
-    pub(crate) fn new(memory_table_entries: Vec<(Box<[u8]>, MemoryEntry)>, memory_offset: usize, sstables: Vec<SSTable>, offsets: Vec<u64>, scan_type: ScanType, use_variable_encoding: bool, upper_bound: Box<[u8]>, compression_dictionary: &'a mut Option<CompressionDictionary>) -> Self {
+    pub(crate) fn new(
+        memory_table_entries: Vec<(Box<[u8]>, MemoryEntry)>,
+        memory_offset: usize,
+        sstables: Vec<SSTable>,
+        offsets: Vec<u64>,
+        scan_type: ScanType,
+        use_variable_encoding: bool,
+        upper_bound: Box<[u8]>,
+        compression_dictionary: &'a mut Option<CompressionDictionary>,
+    ) -> Self {
         LSMIterator {
             memory_table_entries,
             memory_offset,
@@ -42,8 +51,11 @@ impl<'a> Iterator for LSMIterator<'a> {
             copy_offsets.push(self.memory_offset as u64);
             let (key, entry) = self.memory_table_entries[self.memory_offset].clone();
             let encoded_key = match self.compression_dictionary {
-                Some(compression_dictionary) => compression_dictionary.encode(&key.to_vec().into_boxed_slice()).unwrap().clone(),
-                None => key.to_vec().into_boxed_slice()
+                Some(compression_dictionary) => compression_dictionary
+                    .encode(&key.to_vec().into_boxed_slice())
+                    .unwrap()
+                    .clone(),
+                None => key.to_vec().into_boxed_slice(),
             };
             Option::from(((encoded_key, entry), 1u64))
         } else {
@@ -52,7 +64,8 @@ impl<'a> Iterator for LSMIterator<'a> {
 
         // option entry contains one entry from each sstable and we later combine it with entries from memory tables
         // also if we stumble upon entry with tombstone=true we just skip it and move on to the next one immediately
-        let mut option_entries: Vec<Option<_>> = self.sstables
+        let mut option_entries: Vec<Option<_>> = self
+            .sstables
             .iter_mut()
             .zip(self.offsets.iter())
             .enumerate()
@@ -61,7 +74,12 @@ impl<'a> Iterator for LSMIterator<'a> {
                 let mut new_offset = *offset; // new offset from which we continue reading in sstable
                 let mut added_offset = 0; // how many bytes we have read from stable
                 loop {
-                    if let Some((option_entry, length)) = sstable.get_entry_from_data_file(new_offset, None, None, self.use_variable_encoding) {
+                    if let Some((option_entry, length)) = sstable.get_entry_from_data_file(
+                        new_offset,
+                        None,
+                        None,
+                        self.use_variable_encoding,
+                    ) {
                         added_offset += length;
                         new_offset += length;
                         let _ = &*option_entry.0;
@@ -88,34 +106,32 @@ impl<'a> Iterator for LSMIterator<'a> {
         }
 
         // need all indexes from entries in original vector
-        let enumerated_entries: Vec<_> = option_entries
-            .iter()
-            .enumerate()
-            .collect();
+        let enumerated_entries: Vec<_> = option_entries.iter().enumerate().collect();
 
         // find indexes of entries with minimum keys
-        let min_indexes = SSTable::find_min_keys(&enumerated_entries, false, self.compression_dictionary);
+        let min_indexes =
+            SSTable::find_min_keys(&enumerated_entries, false, self.compression_dictionary);
 
         let min_entries: Vec<_> = min_indexes
             .iter()
             .map(|index| enumerated_entries[*index].clone())
             .collect();
 
-
         // update offsets
-        let _ = min_entries
-            .iter()
-            .for_each(|(index, element)| {
-                copy_offsets[*index] += element.as_ref().unwrap().1.clone();
-            });
+        let _ = min_entries.iter().for_each(|(index, element)| {
+            copy_offsets[*index] += element.as_ref().unwrap().1.clone();
+        });
 
         // find entry with the biggest timestamp
         let max_index = SSTable::find_max_timestamp(&min_entries);
 
         let (key, entry) = enumerated_entries[max_index].1.as_ref().unwrap().0.clone();
         let decoded_key = match self.compression_dictionary {
-            Some(compression_dictionary) => compression_dictionary.decode(&key.to_vec().into_boxed_slice()).unwrap().clone(),
-            None => key.to_vec().into_boxed_slice()
+            Some(compression_dictionary) => compression_dictionary
+                .decode(&key.to_vec().into_boxed_slice())
+                .unwrap()
+                .clone(),
+            None => key.to_vec().into_boxed_slice(),
         };
         let return_entry = (decoded_key, entry);
         let _ = &*return_entry.0;

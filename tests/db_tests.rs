@@ -1,23 +1,21 @@
-use std::fs::{read_dir, remove_dir_all, remove_file};
 use db_config::DBConfig;
 use db_config::MemoryTableType::BTree;
+use std::fs::{read_dir, remove_dir_all, remove_file};
 use NoSQLDB::DB;
 
 fn prepare_dirs(dbconfig: &DBConfig) {
     match read_dir(&dbconfig.write_ahead_log_dir) {
-        Ok(dir) => {
-            dir.map(|dir_entry| dir_entry.unwrap().path())
-                .for_each(|file| remove_file(file).unwrap())
-        }
-        Err(_) => ()
+        Ok(dir) => dir
+            .map(|dir_entry| dir_entry.unwrap().path())
+            .for_each(|file| remove_file(file).unwrap()),
+        Err(_) => (),
     }
 
     match read_dir(&dbconfig.sstable_dir) {
-        Ok(dir) => {
-            dir.map(|dir_entry| dir_entry.unwrap().path())
-                .for_each(|dir| remove_dir_all(dir).unwrap_or(()))
-        },
-        Err(_) => ()
+        Ok(dir) => dir
+            .map(|dir_entry| dir_entry.unwrap().path())
+            .for_each(|dir| remove_dir_all(dir).unwrap_or(())),
+        Err(_) => (),
     }
 }
 
@@ -31,17 +29,15 @@ fn test_read_write_path_one() {
 
     let mut db = DB::build(db_config).unwrap();
 
-    db.insert("test_key".as_bytes(), "test_value".as_bytes()).unwrap();
+    db.insert("test_key".as_bytes(), "test_value".as_bytes())
+        .unwrap();
 
-    let get_op= match db.get("test_key".as_bytes()).unwrap() {
+    let get_op = match db.get("test_key".as_bytes()).unwrap() {
         Some(val) => val,
-        None => panic!("Get doesn't work")
+        None => panic!("Get doesn't work"),
     };
 
-    assert_eq!(
-        "test_value".as_bytes(),
-        &*get_op
-    );
+    assert_eq!("test_value".as_bytes(), &*get_op);
 }
 
 #[test]
@@ -71,12 +67,12 @@ fn test_read_write_path_multiple() {
         let (key, value) = if i % 2 == 0 {
             (
                 Box::from(str_key_bytes.as_bytes()),
-                Box::from(str_val_bytes.as_bytes())
+                Box::from(str_val_bytes.as_bytes()),
             )
         } else {
             (
                 Box::from(i_bytes.as_ref()),
-                Box::from(i_double_bytes.as_ref())
+                Box::from(i_double_bytes.as_ref()),
             )
         };
 
@@ -91,28 +87,25 @@ fn test_read_write_path_multiple() {
         let (key, value) = if i % 2 == 0 {
             (
                 Box::from(str_key_bytes.as_bytes()),
-                Box::from(str_val_bytes.as_bytes())
+                Box::from(str_val_bytes.as_bytes()),
             )
         } else {
             (
                 Box::from(i_bytes.as_ref()),
-                Box::from(i_double_bytes.as_ref())
+                Box::from(i_double_bytes.as_ref()),
             )
         };
 
-        let get_op= match db.get(&key).unwrap() {
+        let get_op = match db.get(&key).unwrap() {
             Some(val) => val,
-            None => panic!("Get doesn't work")
+            None => panic!("Get doesn't work"),
         };
 
         if i % 100 == 0 {
             println!("{i} / 20_000");
         }
 
-        assert_eq!(
-            value,
-            Box::new(&*get_op)
-        );
+        assert_eq!(value, Box::new(&*get_op));
     }
 }
 
@@ -144,12 +137,12 @@ fn test_read_write_path_multiple_single_file() {
         let (key, value) = if i % 2 == 0 {
             (
                 Box::from(str_key_bytes.as_bytes()),
-                Box::from(str_val_bytes.as_bytes())
+                Box::from(str_val_bytes.as_bytes()),
             )
         } else {
             (
                 Box::from(i_bytes.as_ref()),
-                Box::from(i_double_bytes.as_ref())
+                Box::from(i_double_bytes.as_ref()),
             )
         };
 
@@ -164,25 +157,22 @@ fn test_read_write_path_multiple_single_file() {
         let (key, value) = if i % 2 == 0 {
             (
                 Box::from(str_key_bytes.as_bytes()),
-                Box::from(str_val_bytes.as_bytes())
+                Box::from(str_val_bytes.as_bytes()),
             )
         } else {
             (
                 Box::from(i_bytes.as_ref()),
-                Box::from(i_double_bytes.as_ref())
+                Box::from(i_double_bytes.as_ref()),
             )
         };
 
-        let get_op= match db.get(&key).unwrap() {
+        let get_op = match db.get(&key).unwrap() {
             Some(val) => val,
-            None => panic!("Get doesn't work")
+            None => panic!("Get doesn't work"),
         };
 
         println!("{i}");
 
-        assert_eq!(
-            value,
-            Box::new(&*get_op)
-        );
+        assert_eq!(value, Box::new(&*get_op));
     }
 }

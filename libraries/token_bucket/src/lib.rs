@@ -1,11 +1,10 @@
 pub mod token_bucket;
 
-
 #[cfg(test)]
 mod tests {
+    use crate::token_bucket::TokenBucket;
     use std::thread;
     use std::time::Duration;
-    use crate::token_bucket::TokenBucket;
 
     #[test]
     fn test_token_bucket_basic() {
@@ -33,7 +32,6 @@ mod tests {
 
         let serialized = bucket.serialize();
         let deserialized_bucket = TokenBucket::deserialize(&serialized);
-
 
         // Check if deserialized bucket matches original
         assert_eq!(bucket.capacity, deserialized_bucket.capacity);

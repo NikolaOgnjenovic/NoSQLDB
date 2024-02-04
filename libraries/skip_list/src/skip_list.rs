@@ -9,7 +9,7 @@ pub struct SkipList {
     tail: Arc<Mutex<Node>>,
     level: usize,
     max_level: usize,
-    length: usize
+    length: usize,
 }
 
 impl SkipList {
@@ -18,7 +18,7 @@ impl SkipList {
             tail: Arc::new(Mutex::new(Node::new(None, None, 0, max_level))),
             level: 0,
             max_level,
-            length: 0
+            length: 0,
         }
     }
 

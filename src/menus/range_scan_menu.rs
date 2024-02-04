@@ -1,27 +1,35 @@
+use crate::impl_menu;
+use crate::menus::{get_input_u8, get_input_usize, UserMenu};
 use colored::Colorize;
 use enum_iterator::Sequence;
 use NoSQLDB::DB;
-use crate::impl_menu;
-use crate::menus::{get_input_u8, get_input_usize, UserMenu};
 
 #[derive(Sequence)]
 enum RangeScanMenu {
     ChangeParameters,
     Scan,
-    Back
+    Back,
 }
 
 impl_menu!(
-    RangeScanMenu, "Range scan",
-    RangeScanMenu::ChangeParameters, "Change parameters".blink(),
-    RangeScanMenu::Scan, "Get scan".blink(),
-    RangeScanMenu::Back, "Back".yellow()
+    RangeScanMenu,
+    "Range scan",
+    RangeScanMenu::ChangeParameters,
+    "Change parameters".blink(),
+    RangeScanMenu::Scan,
+    "Get scan".blink(),
+    RangeScanMenu::Back,
+    "Back".yellow()
 );
 
 pub fn range_scan_menu(db: &mut DB) {
     let (mut page_count, mut page_len) = (Some(5), Some(20));
     loop {
-        println!("Current page count: {}, current page length: {}", page_count.unwrap(), page_len.unwrap());
+        println!(
+            "Current page count: {}, current page length: {}",
+            page_count.unwrap(),
+            page_len.unwrap()
+        );
         match RangeScanMenu::get_menu() {
             RangeScanMenu::ChangeParameters => {
                 page_count = get_input_usize("Enter page count: ");
@@ -53,7 +61,12 @@ pub fn range_scan_menu(db: &mut DB) {
 
                 let mut paginator = db.get_paginator();
 
-                match paginator.range_scan(&min_key.unwrap(), &max_key.unwrap(), page_count.unwrap(), page_len.unwrap()) {
+                match paginator.range_scan(
+                    &min_key.unwrap(),
+                    &max_key.unwrap(),
+                    page_count.unwrap(),
+                    page_len.unwrap(),
+                ) {
                     Ok(entries) => {
                         for (key, entry) in entries {
                             let entry_val = entry.get_value();
@@ -62,12 +75,12 @@ pub fn range_scan_menu(db: &mut DB) {
                             println!("Found key: {}, with value: {}", key_string, value_string);
                         }
                     }
-                    Err(e) => eprintln!("An error occurred during paginator creation: {}", e)
+                    Err(e) => eprintln!("An error occurred during paginator creation: {}", e),
                 }
             }
             RangeScanMenu::Back => {
                 clearscreen::clear().expect("Failed to clear screen.");
-                break
+                break;
             }
         }
     }

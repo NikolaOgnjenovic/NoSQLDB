@@ -63,7 +63,8 @@ impl CompressionDictionary {
 
         for key_decoded in keys {
             if !self.map.contains_key(key_decoded) {
-                self.map.insert(key_decoded.clone(), self.list.len() as u128);
+                self.map
+                    .insert(key_decoded.clone(), self.list.len() as u128);
                 self.list.push(key_decoded.clone());
                 buffer.extend_from_slice(variable_encode(key_decoded.len() as u128).as_ref());
                 buffer.extend_from_slice(key_decoded);

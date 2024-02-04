@@ -82,6 +82,9 @@ impl BloomFilter {
 
         let data = input[9..].to_vec();
 
-        Ok(BloomFilter { data, hash_fun_count })
+        Ok(BloomFilter {
+            data,
+            hash_fun_count,
+        })
     }
 }

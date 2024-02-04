@@ -11,7 +11,10 @@ impl Display for TokenBucketError {
 
 impl From<TokenBucketError> for std::io::Error {
     fn from(error: TokenBucketError) -> Self {
-        std::io::Error::new(std::io::ErrorKind::Other, format!("TokenBucketError: {}", error))
+        std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("TokenBucketError: {}", error),
+        )
     }
 }
 

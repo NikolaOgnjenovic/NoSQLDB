@@ -34,9 +34,7 @@ impl WALFile {
     }
 
     pub(crate) fn open(file_path: PathBuf) -> io::Result<Self> {
-        let file = OpenOptions::new()
-            .append(true)
-            .open(&file_path)?;
+        let file = OpenOptions::new().append(true).open(&file_path)?;
 
         Ok(Self {
             file: Some(file),

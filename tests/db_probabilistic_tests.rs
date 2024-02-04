@@ -1,22 +1,20 @@
-use std::fs::{read_dir, remove_dir_all, remove_file};
 use db_config::DBConfig;
+use std::fs::{read_dir, remove_dir_all, remove_file};
 use NoSQLDB::DB;
 
 fn prepare_dirs(dbconfig: &DBConfig) {
     match read_dir(&dbconfig.write_ahead_log_dir) {
-        Ok(dir) => {
-            dir.map(|dir_entry| dir_entry.unwrap().path())
-                .for_each(|file| remove_file(file).unwrap())
-        }
-        Err(_) => ()
+        Ok(dir) => dir
+            .map(|dir_entry| dir_entry.unwrap().path())
+            .for_each(|file| remove_file(file).unwrap()),
+        Err(_) => (),
     }
 
     match read_dir(&dbconfig.sstable_dir) {
-        Ok(dir) => {
-            dir.map(|dir_entry| dir_entry.unwrap().path())
-                .for_each(|dir| remove_dir_all(dir).unwrap_or(()))
-        }
-        Err(_) => ()
+        Ok(dir) => dir
+            .map(|dir_entry| dir_entry.unwrap().path())
+            .for_each(|dir| remove_dir_all(dir).unwrap_or(())),
+        Err(_) => (),
     }
 }
 
@@ -60,17 +58,23 @@ fn test_bloom_filter_operations() {
     let value1 = "value1".as_bytes();
     let value2 = "value2".as_bytes();
 
-    assert!(db.bloom_filter_create(key, Some(0.01), Some(10_000)).is_ok());
+    assert!(db
+        .bloom_filter_create(key, Some(0.01), Some(10_000))
+        .is_ok());
     assert!(db.bloom_filter_insert(key, value1).is_ok());
 
     for i in 0..1_000 {
-        assert!(db.bloom_filter_insert(key, &i.to_string().as_bytes()).is_ok());
+        assert!(db
+            .bloom_filter_insert(key, &i.to_string().as_bytes())
+            .is_ok());
     }
 
     let bf_bytes = db.bloom_filter_get(key).expect("");
     assert!(bf_bytes.is_some());
 
-    assert!(db.bloom_filter_contains(key, &100.to_string().as_bytes()).expect(""));
+    assert!(db
+        .bloom_filter_contains(key, &100.to_string().as_bytes())
+        .expect(""));
 
     assert!(!db.bloom_filter_contains(key, value2).expect(""));
 }

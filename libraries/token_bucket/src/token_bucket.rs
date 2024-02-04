@@ -57,7 +57,8 @@ impl TokenBucket {
     pub fn deserialize(bytes: &[u8]) -> Self {
         let capacity = usize::from_ne_bytes(bytes[0..8].try_into().unwrap());
         let tokens = usize::from_ne_bytes(bytes[8..16].try_into().unwrap());
-        let last_refill_time = TimeStamp::Custom(u128::from_ne_bytes(bytes[16..32].try_into().unwrap()));
+        let last_refill_time =
+            TimeStamp::Custom(u128::from_ne_bytes(bytes[16..32].try_into().unwrap()));
         let refill_rate = usize::from_ne_bytes(bytes[32..40].try_into().unwrap());
 
         TokenBucket {

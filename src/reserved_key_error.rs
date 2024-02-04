@@ -2,10 +2,9 @@ use std::error::Error;
 use std::fmt;
 use std::io;
 
-
 #[derive(Debug)]
 pub struct ReservedKeyError {
-    pub message: String
+    pub message: String,
 }
 
 impl fmt::Display for ReservedKeyError {

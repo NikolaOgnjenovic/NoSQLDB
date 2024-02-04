@@ -8,7 +8,7 @@ use std::cmp::Ordering;
 pub struct BTree {
     root: Option<Node>,
     order: usize,
-    length: usize
+    length: usize,
 }
 
 impl BTree {
@@ -20,7 +20,7 @@ impl BTree {
             Ok(BTree {
                 root: None,
                 order,
-                length: 0
+                length: 0,
             })
         }
     }

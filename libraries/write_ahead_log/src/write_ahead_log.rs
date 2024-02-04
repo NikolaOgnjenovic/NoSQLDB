@@ -4,9 +4,9 @@ use crc::{Crc, CRC_32_ISCSI};
 use db_config::DBConfig;
 use segment_elements::TimeStamp;
 use std::collections::VecDeque;
+use std::fs::read_dir;
 use std::path::PathBuf;
 use std::{fs, io};
-use std::fs::read_dir;
 
 struct WALConfig {
     wal_dir: PathBuf,
@@ -55,16 +55,17 @@ impl WriteAheadLog {
 
         match read_dir(&dbconfig.write_ahead_log_dir) {
             Ok(dir) => {
-                for path_buf in dir.map(|dir_entry| dir_entry.unwrap().path())
+                for path_buf in dir
+                    .map(|dir_entry| dir_entry.unwrap().path())
                     .filter(|file| match file.extension() {
                         Some(ext) => ext == "log",
-                        None => false
-                    }) {
+                        None => false,
+                    })
+                {
                     files.push_back(WALFile::open(path_buf)?);
                 }
-
             }
-            Err(_) => ()
+            Err(_) => (),
         };
 
         Ok(Self {

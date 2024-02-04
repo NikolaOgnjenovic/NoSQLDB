@@ -1,13 +1,13 @@
+use crate::impl_menu;
+use crate::menus::{get_input_with_range, UserMenu};
+use clearscreen;
+use colored::Colorize;
+use db_config::{CompactionAlgorithmType, DBConfig, MemoryTableType};
+use enum_iterator::Sequence;
+use inquire::{Confirm, Select};
 use std::io;
 use std::io::Write;
 use std::path::Path;
-use db_config::{DBConfig,MemoryTableType, CompactionAlgorithmType};
-use clearscreen;
-use enum_iterator::Sequence;
-use inquire::{Confirm, Select};
-use colored::Colorize;
-use crate::impl_menu;
-use crate::menus::{get_input_with_range, UserMenu};
 
 #[derive(Sequence)]
 enum CustomizeMenu {
@@ -39,40 +39,70 @@ enum CustomizeMenu {
     UseCompression,
     CompressionDictionaryPath,
     LsmLeveledAmplification,
-    UseVariableEncoding
+    UseVariableEncoding,
 }
 
 impl_menu!(
-    CustomizeMenu, "CUSTOMIZE CONFIGURATION",
-    CustomizeMenu::Back, "Back".yellow().italic(),
-    CustomizeMenu::BloomFilterProbability, "Bloom Filter Probability".blink(),
-    CustomizeMenu::BloomFilterCap, "Bloom Filter Capacity".blink(),
-    CustomizeMenu::CountMinSketchProbability, "Count-Min Sketch Probability".blink(),
-    CustomizeMenu::CountMinSketchTolerance, "Count-Min Sketch Tolerance".blink(),
-    CustomizeMenu::SkipListMaxLevel, "Skip List Max Level".blink(),
-    CustomizeMenu::HyperloglogPrecision, "Hyperloglog Precision".blink(),
-    CustomizeMenu::WriteAheadLogDir, "Write Ahead Log Directory".blink(),
-    CustomizeMenu::WriteAheadLogNumOfLogs, "Write Ahead Log Number of Logs".blink(),
-    CustomizeMenu::WriteAheadLogSize, "Write Ahead Log Size".blink(),
-    CustomizeMenu::BTreeOrder, "BTree Order".blink(),
-    CustomizeMenu::MemoryTableCapacity, "Memory Table Capacity".blink(),
-    CustomizeMenu::MemoryTableType, "Memory Table Type".blink(),
-    CustomizeMenu::MemoryTablePoolNum, "Memory Table Pool Number".blink(),
-    CustomizeMenu::SummaryDensity, "Summary Density".blink(),
-    CustomizeMenu::IndexDensity, "Index Density".blink(),
-    CustomizeMenu::SSTableSingleFile, "SSTable Single File".blink(),
-    CustomizeMenu::SSTableDir, "SSTable Directory".blink(),
-    CustomizeMenu::LsmMaxLevel, "LSM Max Level".blink(),
-    CustomizeMenu::LsmMaxPerLevel, "LSM Max Per Level".blink(),
-    CustomizeMenu::LsmLeveledAmplification, "LSM Leveled Amplification".blink(),
-    CustomizeMenu::CompactionEnabled, "Compaction Enabled".blink(),
-    CustomizeMenu::CompactionAlgorithmType, "Compaction Algorithm Type".blink(),
-    CustomizeMenu::CacheMaxSize, "Cache Max Size".blink(),
-    CustomizeMenu::TokenBucketCap, "Token Bucket Number".blink(),
-    CustomizeMenu::TokenBucketRefillRate, "Token Bucket Interval".blink(),
-    CustomizeMenu::UseCompression, "Use Compression".blink(),
-    CustomizeMenu::UseVariableEncoding, "Use Variable Encoding".blink(),
-    CustomizeMenu::CompressionDictionaryPath, "Compression Dictionary Path".blink()
+    CustomizeMenu,
+    "CUSTOMIZE CONFIGURATION",
+    CustomizeMenu::Back,
+    "Back".yellow().italic(),
+    CustomizeMenu::BloomFilterProbability,
+    "Bloom Filter Probability".blink(),
+    CustomizeMenu::BloomFilterCap,
+    "Bloom Filter Capacity".blink(),
+    CustomizeMenu::CountMinSketchProbability,
+    "Count-Min Sketch Probability".blink(),
+    CustomizeMenu::CountMinSketchTolerance,
+    "Count-Min Sketch Tolerance".blink(),
+    CustomizeMenu::SkipListMaxLevel,
+    "Skip List Max Level".blink(),
+    CustomizeMenu::HyperloglogPrecision,
+    "Hyperloglog Precision".blink(),
+    CustomizeMenu::WriteAheadLogDir,
+    "Write Ahead Log Directory".blink(),
+    CustomizeMenu::WriteAheadLogNumOfLogs,
+    "Write Ahead Log Number of Logs".blink(),
+    CustomizeMenu::WriteAheadLogSize,
+    "Write Ahead Log Size".blink(),
+    CustomizeMenu::BTreeOrder,
+    "BTree Order".blink(),
+    CustomizeMenu::MemoryTableCapacity,
+    "Memory Table Capacity".blink(),
+    CustomizeMenu::MemoryTableType,
+    "Memory Table Type".blink(),
+    CustomizeMenu::MemoryTablePoolNum,
+    "Memory Table Pool Number".blink(),
+    CustomizeMenu::SummaryDensity,
+    "Summary Density".blink(),
+    CustomizeMenu::IndexDensity,
+    "Index Density".blink(),
+    CustomizeMenu::SSTableSingleFile,
+    "SSTable Single File".blink(),
+    CustomizeMenu::SSTableDir,
+    "SSTable Directory".blink(),
+    CustomizeMenu::LsmMaxLevel,
+    "LSM Max Level".blink(),
+    CustomizeMenu::LsmMaxPerLevel,
+    "LSM Max Per Level".blink(),
+    CustomizeMenu::LsmLeveledAmplification,
+    "LSM Leveled Amplification".blink(),
+    CustomizeMenu::CompactionEnabled,
+    "Compaction Enabled".blink(),
+    CustomizeMenu::CompactionAlgorithmType,
+    "Compaction Algorithm Type".blink(),
+    CustomizeMenu::CacheMaxSize,
+    "Cache Max Size".blink(),
+    CustomizeMenu::TokenBucketCap,
+    "Token Bucket Number".blink(),
+    CustomizeMenu::TokenBucketRefillRate,
+    "Token Bucket Interval".blink(),
+    CustomizeMenu::UseCompression,
+    "Use Compression".blink(),
+    CustomizeMenu::UseVariableEncoding,
+    "Use Variable Encoding".blink(),
+    CustomizeMenu::CompressionDictionaryPath,
+    "Compression Dictionary Path".blink()
 );
 
 pub fn customize_menu(dbconfig: &mut DBConfig) {
@@ -81,7 +111,7 @@ pub fn customize_menu(dbconfig: &mut DBConfig) {
         match CustomizeMenu::get_menu() {
             CustomizeMenu::Back => {
                 clearscreen::clear().expect("Failed to clear screen.");
-                return
+                return;
             }
             CustomizeMenu::BloomFilterProbability => {
                 clearscreen::clear().expect("Failed to clear screen.");
@@ -98,20 +128,19 @@ pub fn customize_menu(dbconfig: &mut DBConfig) {
                             println!("Bloom filter probability changed to {}", value);
                             break;
                         }
-                        _ => println!("Invalid input. Please enter a valid number between 0 and 1."),
+                        _ => {
+                            println!("Invalid input. Please enter a valid number between 0 and 1.")
+                        }
                     }
                 }
             }
             CustomizeMenu::BloomFilterCap => {
                 clearscreen::clear().expect("Failed to clear screen.");
-                let new_value = get_input_with_range(
-                    "Enter new bloom filter capacity:",
-                    10000,
-                    100000000,
-                );
+                let new_value =
+                    get_input_with_range("Enter new bloom filter capacity:", 10000, 100000000);
                 dbconfig.bloom_filter_cap = new_value;
                 println!("Bloom filter capacity changed to {}", new_value);
-                continue
+                continue;
             }
             CustomizeMenu::CountMinSketchProbability => {
                 clearscreen::clear().expect("Failed to clear screen.");
@@ -128,7 +157,9 @@ pub fn customize_menu(dbconfig: &mut DBConfig) {
                             println!("Count-min sketch probability changed to {}", value);
                             break;
                         }
-                        _ => println!("Invalid input. Please enter a valid number between 0 and 1."),
+                        _ => {
+                            println!("Invalid input. Please enter a valid number between 0 and 1.")
+                        }
                     }
                 }
             }
@@ -147,17 +178,15 @@ pub fn customize_menu(dbconfig: &mut DBConfig) {
                             println!("Count-min sketch tolerance changed to {}", value);
                             break;
                         }
-                        _ => println!("Invalid input. Please enter a valid number between 0 and 1."),
+                        _ => {
+                            println!("Invalid input. Please enter a valid number between 0 and 1.")
+                        }
                     }
                 }
             }
             CustomizeMenu::SkipListMaxLevel => {
                 clearscreen::clear().expect("Failed to clear screen.");
-                let new_value = get_input_with_range(
-                    "Enter new skip list max level:",
-                    5,
-                    15,
-                );
+                let new_value = get_input_with_range("Enter new skip list max level:", 5, 15);
                 dbconfig.skip_list_max_level = new_value;
                 println!("Skip list max level changed to {}", new_value);
             }
@@ -216,7 +245,8 @@ pub fn customize_menu(dbconfig: &mut DBConfig) {
             }
             CustomizeMenu::MemoryTableCapacity => {
                 clearscreen::clear().expect("Failed to clear screen.");
-                let new_value = get_input_with_range("Enter new Memory table capacity: ", 500, 3000);
+                let new_value =
+                    get_input_with_range("Enter new Memory table capacity: ", 500, 3000);
                 dbconfig.memory_table_capacity = new_value;
                 println!("Mem table capacity changed to {}", new_value);
             }
@@ -228,16 +258,18 @@ pub fn customize_menu(dbconfig: &mut DBConfig) {
                     "BTree".to_string(),
                 ];
 
-                let choice = Select::new("Select memory table type:", options)
-                    .prompt();
-                let choice_str = choice.as_ref().map(|s| s.as_str()).unwrap_or("Invalid Selection");
+                let choice = Select::new("Select memory table type:", options).prompt();
+                let choice_str = choice
+                    .as_ref()
+                    .map(|s| s.as_str())
+                    .unwrap_or("Invalid Selection");
                 let memory_table_type = match choice_str {
                     "SkipList" => MemoryTableType::SkipList,
                     "HashMap" => MemoryTableType::HashMap,
                     "BTree" => MemoryTableType::BTree,
                     _ => {
                         println!("Invalid selection");
-                        continue
+                        continue;
                     }
                 };
                 println!("Set memory table type to {}", memory_table_type);
@@ -264,7 +296,8 @@ pub fn customize_menu(dbconfig: &mut DBConfig) {
             CustomizeMenu::SSTableSingleFile => {
                 clearscreen::clear().expect("Failed to clear screen.");
                 let is_enabled = Confirm::new("Enable sstable single file?")
-                    .with_default(false).prompt();
+                    .with_default(false)
+                    .prompt();
 
                 match is_enabled {
                     Ok(true) => {
@@ -307,7 +340,8 @@ pub fn customize_menu(dbconfig: &mut DBConfig) {
             }
             CustomizeMenu::LsmLeveledAmplification => {
                 clearscreen::clear().expect("Failed to clear screen.");
-                let new_value = get_input_with_range("Enter new LSM leveled amplification: ", 0, 10);
+                let new_value =
+                    get_input_with_range("Enter new LSM leveled amplification: ", 0, 10);
                 dbconfig.lsm_leveled_amplification = new_value;
                 println!("LSM leveled amplification changed to {}", new_value);
             }
@@ -325,26 +359,33 @@ pub fn customize_menu(dbconfig: &mut DBConfig) {
             }
             CustomizeMenu::CompactionAlgorithmType => {
                 clearscreen::clear().expect("Failed to clear screen.");
-                let compaction_algorithm_choices = vec![
-                    "SizeTiered".to_string(),
-                    "Leveled".to_string(),
-                ];
+                let compaction_algorithm_choices =
+                    vec!["SizeTiered".to_string(), "Leveled".to_string()];
 
-                let choice = Select::new("Select compaction algorithm type:", compaction_algorithm_choices)
-                    .prompt();
+                let choice = Select::new(
+                    "Select compaction algorithm type:",
+                    compaction_algorithm_choices,
+                )
+                .prompt();
 
-                let choice_str = choice.as_ref().map(|s| s.as_str()).unwrap_or("Invalid Selection");
-                let compaction_algorithm_type= match choice_str {
+                let choice_str = choice
+                    .as_ref()
+                    .map(|s| s.as_str())
+                    .unwrap_or("Invalid Selection");
+                let compaction_algorithm_type = match choice_str {
                     "SizeTiered" => CompactionAlgorithmType::SizeTiered,
                     "Leveled" => CompactionAlgorithmType::Leveled,
                     _ => {
                         println!("Invalid selection");
-                        continue
+                        continue;
                     }
                 };
 
                 dbconfig.compaction_algorithm_type = compaction_algorithm_type;
-                println!("Set compaction algorithm type to {}", compaction_algorithm_type);
+                println!(
+                    "Set compaction algorithm type to {}",
+                    compaction_algorithm_type
+                );
             }
             CustomizeMenu::CacheMaxSize => {
                 clearscreen::clear().expect("Failed to clear screen.");
@@ -360,7 +401,11 @@ pub fn customize_menu(dbconfig: &mut DBConfig) {
             }
             CustomizeMenu::TokenBucketRefillRate => {
                 clearscreen::clear().expect("Failed to clear screen.");
-                let new_value = get_input_with_range("Enter new Token bucket refill rate (tokens per second): ", 0, 100);
+                let new_value = get_input_with_range(
+                    "Enter new Token bucket refill rate (tokens per second): ",
+                    0,
+                    100,
+                );
                 dbconfig.token_bucket_refill_rate = new_value;
                 println!("Token bucket refill rate changed to {}", new_value);
             }
@@ -371,8 +416,14 @@ pub fn customize_menu(dbconfig: &mut DBConfig) {
                     .prompt();
 
                 match is_enabled {
-                    Ok(true) => { println!("Compression enabled."); dbconfig.use_compression = true }
-                    Ok(false) => { println!("Compression disabled."); dbconfig.use_compression = false }
+                    Ok(true) => {
+                        println!("Compression enabled.");
+                        dbconfig.use_compression = true
+                    }
+                    Ok(false) => {
+                        println!("Compression disabled.");
+                        dbconfig.use_compression = false
+                    }
                     Err(_) => println!("Error, try again."),
                 }
             }
@@ -383,8 +434,14 @@ pub fn customize_menu(dbconfig: &mut DBConfig) {
                     .prompt();
 
                 match is_enabled {
-                    Ok(true) => { println!("Variable encoding enabled."); dbconfig.use_variable_encoding = true }
-                    Ok(false) => { println!("Variable encoding enabled."); dbconfig.use_variable_encoding = false }
+                    Ok(true) => {
+                        println!("Variable encoding enabled.");
+                        dbconfig.use_variable_encoding = true
+                    }
+                    Ok(false) => {
+                        println!("Variable encoding enabled.");
+                        dbconfig.use_variable_encoding = false
+                    }
                     Err(_) => println!("Error, try again."),
                 }
             }

@@ -72,7 +72,7 @@ mod tests {
         }
         assert_eq!(500, lru.get_size());
 
-        for i in 250..550{
+        for i in 250..550 {
             let key = format!("{}{}", base_key, i.to_string());
 
             let newest = lru.get(key.as_bytes());
