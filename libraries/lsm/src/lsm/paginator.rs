@@ -46,6 +46,7 @@ impl<'a> Paginator<'a> {
     /// # Returns
     ///
     /// A vector of entries based on the scan criteria.
+    // fn scan_entries(
     fn scan_entries(
         &mut self,
         start_key: Option<&[u8]>,
@@ -97,7 +98,7 @@ impl<'a> Paginator<'a> {
     pub fn prefix_scan(
         &mut self,
         prefix: &[u8],
-        page_number: usize,
+        page_index: usize,
         page_size: usize,
     ) -> std::io::Result<Vec<(Box<[u8]>, MemoryEntry)>>
     {
@@ -108,7 +109,7 @@ impl<'a> Paginator<'a> {
             None,
             Some(prefix),
             ScanType::PrefixScan,
-            page_number,
+            page_index,
             page_size,
         )
     }

@@ -56,8 +56,8 @@ pub fn prefix_scan_menu(db: &mut DB) {
                 let mut paginator = db.get_paginator();
                 match paginator.prefix_scan(
                     &prefix.unwrap(),
-                    page_len.unwrap(),
                     page_count.unwrap(),
+                    page_len.unwrap()
                 ) {
                     Ok(entries) => {
                         for (key, entry) in entries {
