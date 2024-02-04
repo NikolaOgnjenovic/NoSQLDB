@@ -3,7 +3,7 @@
 **/Cargo.lock/
 **/.vs/
 Cargo.lock
-**/config.json
+**/*.json
 **/*.log
 **/*.num
 **/*.db

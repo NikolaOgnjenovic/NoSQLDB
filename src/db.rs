@@ -5,7 +5,7 @@ use bloom_filter::BloomFilter;
 use count_min_sketch::CMSketch;
 use hyperloglog::HLL;
 use simhash::{hamming_distance};
-use lsm::LSM;
+use lsm::{LSM, Paginator};
 use token_bucket::token_bucket::TokenBucket;
 
 use crate::ReservedKeyError;
@@ -33,22 +33,17 @@ impl Default for DB {
 impl DB {
     pub fn build(config: DBConfig) -> Result<Self, Box<dyn Error>> {
         Ok(DB {
-            lsm: LSM::new(&config)?,
+            lsm: match LSM::load_from_dir(&config) {
+                Ok(lsm) => lsm,
+                Err(e) => {
+                    eprintln!("Error occurred: {}", e);
+                    eprintln!("Memory pool wasn't reconstructed.");
+                    LSM::new(&config)?
+                }
+            },
             config,
             reserved_key_prefixes: ["bl00m_f1lt3r/".as_bytes(), "c0unt_m1n_$k3tch/".as_bytes(), "hyp3r_l0g_l0g/".as_bytes(), "$1m_ha$h/".as_bytes(), "t0k3n_buck3t/state".as_bytes()],
         })
-    }
-
-    /// Reconstructs the last memory table from the WAL. Must be called when the program didn't end
-    /// gracefully.
-    pub fn reconstruct_from_wal(&mut self) {
-        self.lsm = LSM::load_from_dir(&self.config).unwrap_or_else(|e| {
-            eprintln!("Error occurred: {}", e);
-            eprintln!("Memory pool wasn't reconstructed.");
-            // unwrap can be called because if a possible error existed, it would have manifested at the
-            // DB::build() function
-            LSM::new(&self.config).unwrap()
-        });
     }
 
     pub fn insert(&mut self, key: &[u8], value: &[u8]) -> Result<(), Box<dyn Error>> {
@@ -486,5 +481,9 @@ impl DB {
         self.system_insert("t0k3n_buck3t/state".as_bytes(), token_bucket.serialize().as_ref(), false)?;
 
         Ok(token_taken)
+    }
+
+    pub fn get_paginator(&mut self) -> Paginator {
+        Paginator::new(&mut self.lsm)
     }
 }
