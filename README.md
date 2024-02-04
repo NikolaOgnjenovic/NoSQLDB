@@ -29,4 +29,4 @@ Use cargo to run the program:
 * [Integration tests](tests)
 
 ## License
-See [license file](LICENSE.MD)
+See [license file](LICENSE)
