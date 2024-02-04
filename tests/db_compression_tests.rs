@@ -19,6 +19,8 @@ fn prepare_dirs(dbconfig: &DBConfig) {
         }
         Err(_) => ()
     }
+
+    remove_file(&dbconfig.compression_dictionary_path).ok();
 }
 
 #[test]
@@ -97,7 +99,7 @@ fn test_compressed_size_vs_uncompressed_50000_diff_keys() {
     db_config.token_bucket_refill_rate = 9999999999;
     db_config.memory_table_capacity = 100;
     db_config.memory_table_pool_num = 100;
-    db_config.compression_dictionary_path = "sstables/test_compressed_size_vs_uncompressed_50000_diff_keys/dictionary_c.bin".to_string();
+    db_config.compression_dictionary_path = "sstables/test_compressed_size_vs_uncompressed_50000_diff_keys/dictionary_u.bin".to_string();
     db_config.sstable_dir += "test_compressed_size_vs_uncompressed_50000_diff_keys/uncompressed/";
     db_config.write_ahead_log_dir += "wal_u/";
 

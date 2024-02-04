@@ -184,7 +184,7 @@ mod paginator_tests {
         db_config.memory_table_capacity = 10;
         db_config.lsm_max_per_level = 4;
         db_config.sstable_single_file = true;
-        //db_config.use_compression = true;
+        db_config.use_compression = true;
         db_config.compaction_algorithm_type = CompactionAlgorithmType::SizeTiered;
         db_config.sstable_dir = String::from("temp_dir_for_test_safety");
         let mut lsm = LSM::new(&db_config).unwrap();
@@ -203,7 +203,7 @@ mod paginator_tests {
             lsm.insert(&combined_bytes, &combined_bytes, time_stamp).expect("Failed to insert into lsm");
         }
 
-        let mut paginator = Paginator::new(&lsm);
+        let mut paginator = Paginator::new(&mut lsm);
         // Test pages
         for page_number in 0..page_count {
             let result_page = paginator.prefix_scan(prefix_bytes, page_number, page_len).expect("Failed to get pagination result");
@@ -229,6 +229,7 @@ mod paginator_tests {
         db_config.memory_table_capacity = 500;
         db_config.lsm_max_per_level = 4;
         db_config.sstable_single_file = true;
+        db_config.use_compression = true;
         db_config.compaction_algorithm_type = CompactionAlgorithmType::Leveled;
         db_config.sstable_dir = TempDir::new().expect("Failed to create temp directory").path().to_str().unwrap().to_string();
         db_config.write_ahead_log_dir = TempDir::new().expect("Failed to create temp directory").path().to_str().unwrap().to_string();
@@ -246,7 +247,7 @@ mod paginator_tests {
             }
         }
 
-        let mut paginator = Paginator::new(&lsm);
+        let mut paginator = Paginator::new(&mut lsm);
 
         // Test prefix scan for keys starting with "AB"
         let prefix_bytes = "AB".as_bytes();
@@ -269,6 +270,7 @@ mod paginator_tests {
         db_config.memory_table_capacity = 1000;
         db_config.lsm_max_per_level = 4;
         db_config.sstable_single_file = true;
+        db_config.use_compression = true;
         db_config.compaction_algorithm_type = CompactionAlgorithmType::SizeTiered;
         db_config.sstable_dir = TempDir::new().expect("Failed to create temp directory").path().to_str().unwrap().to_string();
         db_config.write_ahead_log_dir = TempDir::new().expect("Failed to create temp directory").path().to_str().unwrap().to_string();
@@ -285,7 +287,7 @@ mod paginator_tests {
             }
         }
 
-        let mut paginator = Paginator::new(&lsm);
+        let mut paginator = Paginator::new(&mut lsm);
 
         // Test prefix scan for keys starting with "AB"
         let prefix = "AB";
@@ -341,6 +343,7 @@ mod paginator_tests {
         db_config.memory_table_capacity = 1000;
         db_config.lsm_max_per_level = 4;
         db_config.sstable_single_file = true;
+        db_config.use_compression = true;
         db_config.compaction_algorithm_type = CompactionAlgorithmType::SizeTiered;
         db_config.sstable_dir = TempDir::new().expect("Failed to create temp directory").path().to_str().unwrap().to_string();
         db_config.write_ahead_log_dir = TempDir::new().expect("Failed to create temp directory").path().to_str().unwrap().to_string();
@@ -361,7 +364,7 @@ mod paginator_tests {
             }
         }
 
-        let mut paginator = Paginator::new(&lsm);
+        let mut paginator = Paginator::new(&mut lsm);
 
         // Test prefix scan for keys starting with "AB"
         let prefix = "AB";
@@ -416,6 +419,7 @@ mod paginator_tests {
         db_config.memory_table_capacity = 1000;
         db_config.lsm_max_per_level = 4;
         db_config.sstable_single_file = true;
+        db_config.use_compression = true;
         db_config.compaction_algorithm_type = CompactionAlgorithmType::SizeTiered;
         db_config.sstable_dir = TempDir::new().expect("Failed to create temp directory").path().to_str().unwrap().to_string();
         db_config.write_ahead_log_dir = TempDir::new().expect("Failed to create temp directory").path().to_str().unwrap().to_string();
@@ -431,7 +435,7 @@ mod paginator_tests {
         }
 
         // Set min & max range for paginator range scan
-        let mut paginator = Paginator::new(&lsm);
+        let mut paginator = Paginator::new(&mut lsm);
 
         // Test range scan from min range to max range
         let result_page = paginator.range_scan(&[min_key], &[max_key], 0, 26)
@@ -455,6 +459,7 @@ mod paginator_tests {
         db_config.memory_table_capacity = 1000;
         db_config.lsm_max_per_level = 4;
         db_config.sstable_single_file = true;
+        db_config.use_compression = true;
         db_config.compaction_algorithm_type = CompactionAlgorithmType::SizeTiered;
         db_config.sstable_dir = TempDir::new().expect("Failed to create temp directory").path().to_str().unwrap().to_string();
         db_config.write_ahead_log_dir = TempDir::new().expect("Failed to create temp directory").path().to_str().unwrap().to_string();
@@ -469,10 +474,10 @@ mod paginator_tests {
             lsm.insert(key_str.as_bytes(), key_str.as_bytes(), TimeStamp::Now).expect("Failed to insert into lsm");
         }
 
-        let mut paginator = Paginator::new(&lsm);
+        let mut paginator = Paginator::new(&mut lsm);
         // Assert that going forwards retrieves "Key_min" to "Key_max"
         for i in min_key..=max_key {
-             let key_str = format!("{}", i as char);
+            let key_str = format!("{}", i as char);
             let result = paginator
                 .range_iterate_next(&[min_key], &[max_key])
                 .expect("Failed to iterate to next entry")
@@ -1181,7 +1186,7 @@ mod sstable_tests {
 
     #[test]
     fn test_merge_sstables_compressed_no_variable_encoding() {
-        for range in (100..=100).step_by(99) {
+        for range in (1..=1_000).step_by(99) {
             for mem_table_type in &[MemoryTableType::SkipList, MemoryTableType::HashMap, MemoryTableType::BTree] {
                 merge_sstables(vec![true, true], &mem_table_type.clone(), range, true, false, true);
                 merge_sstables(vec![true, true], &mem_table_type.clone(), range, false, false, true);
@@ -1246,7 +1251,7 @@ mod sstable_tests {
         let merged_sstable_path = temp_dir.path().join("merged_sstable");
 
         // Merge the two SSTables
-        SSTable::merge(sstable_paths, in_single_file, &merged_sstable_path.to_owned(), merged_in_single_file, summary_density, index_density, use_variable_encoding)
+        SSTable::merge(sstable_paths, in_single_file, &merged_sstable_path.to_owned(), merged_in_single_file, summary_density, index_density, use_variable_encoding, &mut compression_dictionary)
             .expect("Failed to merge SSTables");
 
         verify_merged_sstable(&merged_sstable_path, index_density, range, merged_in_single_file, use_variable_encoding, &mut compression_dictionary);

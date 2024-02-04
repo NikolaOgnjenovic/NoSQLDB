@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use segment_elements::{MemoryEntry, TimeStamp};
 use compression::CompressionDictionary;
 use crate::sstable::SSTable;
-use db_config::{ DBConfig, CompactionAlgorithmType };
+use db_config::{DBConfig, CompactionAlgorithmType};
 use write_ahead_log::WriteAheadLog;
 use lru_cache::LRUCache;
 use crate::mem_pool::MemoryPool;
@@ -51,7 +51,7 @@ impl LSMConfig {
             use_variable_encoding: dbconfig.use_variable_encoding,
             in_single_file: dbconfig.sstable_single_file,
             summary_density: dbconfig.summary_density,
-            index_density: dbconfig.index_density
+            index_density: dbconfig.index_density,
         }
     }
 }
@@ -64,7 +64,7 @@ pub struct LSM {
     mem_pool: MemoryPool,
     lru_cache: LRUCache,
     compression_dictionary: Option<CompressionDictionary>,
-    config: LSMConfig
+    config: LSMConfig,
 }
 
 impl LSM {
@@ -93,7 +93,7 @@ impl LSM {
         for dir in dirs {
             let level = dir.file_name().unwrap().to_str().unwrap().split("_").collect::<Vec<&str>>()[1].parse::<usize>().unwrap();
             let path = PathBuf::from(dir.to_str().unwrap().split("/").last().unwrap());
-            sstable_directory_names[level-1].push(path);
+            sstable_directory_names[level - 1].push(path);
         }
 
         Ok(LSM {
@@ -108,7 +108,6 @@ impl LSM {
             sstable_directory_names,
         })
     }
-
 
 
     /// Creates directory name for new SSTable. Suffix is determined by the in_single_file parameter.
@@ -172,7 +171,7 @@ impl LSM {
     /// A `Result` containing vector with tuple as elements.
     /// Each tuple contains index of a path in sstable_directory_names[level] as well as an actual path to that SSTable.
     /// The purpose of an index is to be able to quickly delete all the tables involved in compaction process later.
-    fn find_similar_key_ranges<'a>(sstable_directory_names: &'a Vec<Vec<PathBuf>>, parent_dir: &'a PathBuf, main_min_key: &[u8], main_max_key: &[u8], level:usize) -> io::Result<Vec<(usize, &'a PathBuf)>> {
+    fn find_similar_key_ranges<'a>(sstable_directory_names: &'a Vec<Vec<PathBuf>>, parent_dir: &'a PathBuf, main_min_key: &[u8], main_max_key: &[u8], level: usize) -> io::Result<Vec<(usize, &'a PathBuf)>> {
         let base_paths = sstable_directory_names[level]
             .iter()
             .enumerate()
@@ -186,10 +185,10 @@ impl LSM {
                         let main_max_key_slice = &*main_max_key;
                         let main_min_key_slice = &*main_min_key;
                         let left = max_key >= Box::from(main_min_key);
-                        let right =  min_key <= Box::from(main_max_key);
+                        let right = min_key <= Box::from(main_max_key);
                         let condition = left && right;
                         condition
-                    },
+                    }
                     Err(_) => false,
                 }
             })
@@ -219,7 +218,7 @@ impl LSM {
                 Ok(Some(memory_entry.get_value()))
             } else {
                 Ok(None)
-            }
+            };
         }
 
         if let Some(memory_entry) = self.lru_cache.get(key) {
@@ -229,7 +228,7 @@ impl LSM {
                 Ok(Some(memory_entry.get_value()))
             } else {
                 Ok(None)
-            }
+            };
         }
 
         for level in &self.sstable_directory_names {
@@ -243,7 +242,7 @@ impl LSM {
                         Ok(Some(memory_entry.get_value()))
                     } else {
                         Ok(None)
-                    }
+                    };
                 }
             }
         }
@@ -362,15 +361,15 @@ impl LSM {
             }
 
             // Make a name for new SSTable and convert PathBuf into Path
-            let sstable_base_paths:Vec<_> = sstable_base_paths.iter().map(|path_buf| path_buf.to_owned()).collect();
-            let merged_directory = PathBuf::from(LSM::get_directory_name(level+1, merged_in_single_file));
+            let sstable_base_paths: Vec<_> = sstable_base_paths.iter().map(|path_buf| path_buf.to_owned()).collect();
+            let merged_directory = PathBuf::from(LSM::get_directory_name(level + 1, merged_in_single_file));
             let merged_base_path = self.config.parent_dir.join(merged_directory.clone());
 
             // Merge them all together, push merged SSTable into sstable_directory_names and delete all SSTables involved in merging process
-            SSTable::merge(sstable_base_paths.clone(), sstable_single_file, &merged_base_path, merged_in_single_file, self.config.summary_density, self.config.index_density, use_variable_encoding)?;
+            SSTable::merge(sstable_base_paths.clone(), sstable_single_file, &merged_base_path, merged_in_single_file, self.config.summary_density, self.config.index_density, use_variable_encoding, &mut self.compression_dictionary)?;
             self.sstable_directory_names[level].clear();
             Self::remove_all_compacted(sstable_base_paths)?;
-            self.sstable_directory_names[level+1].push(merged_directory);
+            self.sstable_directory_names[level + 1].push(merged_directory);
 
             // Check for possibility of another compaction occurring
             level += 1;
@@ -405,7 +404,7 @@ impl LSM {
             let (main_min_key, main_max_key) = SSTable::get_key_range(main_sstable_base_path.to_owned(), in_single_file)?;
 
             // Find SStables with keys in similar range one level below
-            let in_range_paths = LSM::find_similar_key_ranges(&self.sstable_directory_names, &self.config.parent_dir, &main_min_key, &main_max_key, level+1)?;
+            let in_range_paths = LSM::find_similar_key_ranges(&self.sstable_directory_names, &self.config.parent_dir, &main_min_key, &main_max_key, level + 1)?;
             let mut sstable_base_paths: Vec<_> = in_range_paths.clone()
                 .into_iter()
                 .map(|(_, path)| self.config.parent_dir.join(path.to_owned()))
@@ -419,11 +418,11 @@ impl LSM {
             }
 
             // Make a name for new SSTable
-            let merged_directory = PathBuf::from(LSM::get_directory_name(level+1, merged_in_single_file));
+            let merged_directory = PathBuf::from(LSM::get_directory_name(level + 1, merged_in_single_file));
             let merged_base_path = self.config.parent_dir.join(merged_directory.clone());
 
             // Merge them all together
-            SSTable::merge(sstable_base_paths.clone(), sstable_single_file, &merged_base_path.to_path_buf(), merged_in_single_file, self.config.summary_density, self.config.index_density, use_variable_encoding)?;
+            SSTable::merge(sstable_base_paths.clone(), sstable_single_file, &merged_base_path.to_path_buf(), merged_in_single_file, self.config.summary_density, self.config.index_density, use_variable_encoding, &mut self.compression_dictionary)?;
 
             // Extract indexes of SSTable that need to be removed
             let indexes_to_delete: Vec<_> = in_range_paths
@@ -442,7 +441,7 @@ impl LSM {
             // Replace this vector with existing in sstable_directory_names and append merged directory to it
             kept_sstable_directories.push(merged_directory);
             Self::remove_all_compacted(sstable_base_paths)?;
-            self.sstable_directory_names[level+1] = kept_sstable_directories;
+            self.sstable_directory_names[level + 1] = kept_sstable_directories;
 
             // Check for possibility of another compaction occurring
             level += 1;
@@ -475,7 +474,7 @@ impl LSM {
             match scan_type {
                 ScanType::RangeScan => {
                     let (min_key, max_key) = (min_key.unwrap(), max_key.unwrap());
-                    if curr_key.as_ref() >= min_key && curr_key.as_ref()<= max_key {
+                    if curr_key.as_ref() >= min_key && curr_key.as_ref() <= max_key {
                         entries.push(entry);
                     }
                     if curr_key.as_ref() > max_key {
@@ -527,7 +526,7 @@ impl LSM {
     ///
     /// A vector of usizes representing indexes of entries with min key value
     fn find_min_keys(entries: &Vec<(usize, &(Box<[u8]>, MemoryEntry))>) -> Vec<usize> {
-        let mut min_key:Box<[u8]> = Box::new([255u8;255]);
+        let mut min_key: Box<[u8]> = Box::new([255u8; 255]);
         let mut min_indexes = vec![];
         for (index, element) in entries {
             let key = &element.0;
@@ -540,7 +539,6 @@ impl LSM {
                 min_indexes.push(*index);
                 min_key = key.clone();
             }
-
         }
 
         min_indexes
@@ -554,7 +552,7 @@ impl LSM {
     /// # Returns
     ///
     /// A vector of sorted entries
-    fn merge_scanned_entries(all_entries: Vec<Vec<(Box<[u8]>, MemoryEntry)>>,min_key: Option<&[u8]>, max_key: Option<&[u8]>, prefix: Option<&[u8]>, scan_type: ScanType) -> Vec<(Box<[u8]>, MemoryEntry)> {
+    fn merge_scanned_entries(all_entries: Vec<Vec<(Box<[u8]>, MemoryEntry)>>, min_key: Option<&[u8]>, max_key: Option<&[u8]>, prefix: Option<&[u8]>, scan_type: ScanType) -> Vec<(Box<[u8]>, MemoryEntry)> {
         let mut scanned_entries = Vec::new();
         let mut positions: Vec<usize> = vec![0; all_entries.len()];
 
@@ -591,7 +589,7 @@ impl LSM {
                                 continue;
                             } else {
                                 return_entry = Some((index, entry));
-                                break
+                                break;
                             }
                         }
                         return_entry
@@ -627,7 +625,7 @@ impl LSM {
                 });
 
             // find entry with the biggest timestamp
-            let max_index = LSM::find_max_timestamp(&min_entries, entries.len()+1);
+            let max_index = LSM::find_max_timestamp(&min_entries, entries.len() + 1);
 
             // extract that entry
             let pushed_entry = entries
@@ -685,7 +683,7 @@ impl LSM {
     /// # Returns
     ///
     /// A LSMIterator
-    pub(crate) fn iter(&self, min_key: Option<&[u8]>, max_key: Option<&[u8]>, prefix: Option<&[u8]>, scan_type: ScanType) -> io::Result<LSMIterator> {
+    pub(crate) fn iter(&mut self, min_key: Option<&[u8]>, max_key: Option<&[u8]>, prefix: Option<&[u8]>, scan_type: ScanType) -> io::Result<LSMIterator> {
 
         // if prefix ends with zeros trim it
         let prefix = if let Some(prefix) = prefix {
@@ -748,7 +746,7 @@ impl LSM {
                 .iter()
                 .zip(in_single_files.iter())
                 .map(|(path, in_single_file)| {
-                    SSTable::get_sstable_offset(path.to_path_buf(), *in_single_file, min_key, scan_type, None).unwrap_or_else(|err| panic!("{}", err))
+                    SSTable::get_sstable_offset(path.to_path_buf(), *in_single_file, min_key, scan_type, None, &mut self.compression_dictionary).unwrap_or_else(|err| panic!("{}", err))
                 })
                 .collect();
             data_offsets
@@ -757,7 +755,7 @@ impl LSM {
                 .iter()
                 .zip(in_single_files.iter())
                 .map(|(path, in_single_file)| {
-                    SSTable::get_sstable_offset(path.to_path_buf(), *in_single_file, prefix.unwrap(), scan_type, Some(value_to_remove)).unwrap_or_else(|err| panic!("{}", err))
+                    SSTable::get_sstable_offset(path.to_path_buf(), *in_single_file, prefix.unwrap(), scan_type, Some(value_to_remove), &mut self.compression_dictionary).unwrap_or_else(|err| panic!("{}", err))
                 })
                 .collect();
             data_offsets
@@ -779,9 +777,9 @@ impl LSM {
 
         // update offsets because the index is jagged
         let updates_offsets = if let Some(min_key) = min_key {
-            SSTable::update_sstable_offsets(&mut sstables, data_offsets, min_key, scan_type, self.config.use_variable_encoding)?
+            SSTable::update_sstable_offsets(&mut sstables, data_offsets, min_key, scan_type, self.config.use_variable_encoding, &mut self.compression_dictionary)?
         } else {
-            SSTable::update_sstable_offsets(&mut sstables, data_offsets, prefix.unwrap(), scan_type, self.config.use_variable_encoding)?
+            SSTable::update_sstable_offsets(&mut sstables, data_offsets, prefix.unwrap(), scan_type, self.config.use_variable_encoding, &mut self.compression_dictionary)?
         };
 
         let memory_offset = 0;
@@ -793,7 +791,7 @@ impl LSM {
             prefix.unwrap().to_vec().into_boxed_slice()
         };
 
-        Ok(LSMIterator::new(merged_memory_entries, memory_offset, sstables, updates_offsets, scan_type, self.config.use_variable_encoding, upper_bound))
+        Ok(LSMIterator::new(merged_memory_entries, memory_offset, sstables, updates_offsets, scan_type, self.config.use_variable_encoding, upper_bound, &mut self.compression_dictionary))
     }
 
     pub fn finalize(self) {
@@ -813,18 +811,19 @@ fn extract_prefix(slice: &[u8]) -> &[u8] {
 }
 
 /// Struct for iterating over entries in memory tables and sstables
-pub struct LSMIterator {
+pub struct LSMIterator<'a> {
     memory_table_entries: Vec<(Box<[u8]>, MemoryEntry)>,
     memory_offset: usize,
     sstables: Vec<SSTable>,
     offsets: Vec<u64>,
     scan_type: ScanType,
     use_variable_encoding: bool,
-    upper_bound: Box<[u8]>
+    upper_bound: Box<[u8]>,
+    compression_dictionary: &'a mut Option<CompressionDictionary>,
 }
 
-impl LSMIterator {
-    fn new(memory_table_entries: Vec<(Box<[u8]>, MemoryEntry)>, memory_offset: usize, sstables: Vec<SSTable>, offsets: Vec<u64>, scan_type: ScanType, use_variable_encoding: bool, upper_bound: Box<[u8]>) -> Self {
+impl<'a> LSMIterator<'a> {
+    fn new(memory_table_entries: Vec<(Box<[u8]>, MemoryEntry)>, memory_offset: usize, sstables: Vec<SSTable>, offsets: Vec<u64>, scan_type: ScanType, use_variable_encoding: bool, upper_bound: Box<[u8]>, compression_dictionary: &'a mut Option<CompressionDictionary>) -> Self {
         LSMIterator {
             memory_table_entries,
             memory_offset,
@@ -832,12 +831,13 @@ impl LSMIterator {
             offsets,
             scan_type,
             use_variable_encoding,
-            upper_bound
+            upper_bound,
+            compression_dictionary,
         }
     }
 }
 
-impl Iterator for LSMIterator {
+impl<'a> Iterator for LSMIterator<'a> {
     type Item = (Box<[u8]>, MemoryEntry);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -847,7 +847,12 @@ impl Iterator for LSMIterator {
         let memory_table_entry = if self.memory_offset < self.memory_table_entries.len() {
             pushed = true;
             copy_offsets.push(self.memory_offset as u64);
-            Option::from((self.memory_table_entries[self.memory_offset].clone(), 1u64))
+            let (key, entry) = self.memory_table_entries[self.memory_offset].clone();
+            let encoded_key = match self.compression_dictionary {
+                Some(compression_dictionary) => compression_dictionary.encode(&key.to_vec().into_boxed_slice()).unwrap().clone(),
+                None => key.to_vec().into_boxed_slice()
+            };
+            Option::from(((encoded_key, entry), 1u64))
         } else {
             None
         };
@@ -858,7 +863,7 @@ impl Iterator for LSMIterator {
             .iter_mut()
             .zip(self.offsets.iter())
             .enumerate()
-            .map(|(index,(sstable, offset))|{
+            .map(|(index, (sstable, offset))| {
                 let mut return_value;
                 let mut new_offset = *offset; // new offset from which we continue reading in sstable
                 let mut added_offset = 0; // how much bytes we have read from stable
@@ -896,9 +901,9 @@ impl Iterator for LSMIterator {
             .collect();
 
         // find indexes of entries with minimum keys
-        let min_indexes = SSTable::find_min_keys(&enumerated_entries, false);
+        let min_indexes = SSTable::find_min_keys(&enumerated_entries, false, self.compression_dictionary);
 
-        let min_entries: Vec<_> =  min_indexes
+        let min_entries: Vec<_> = min_indexes
             .iter()
             .map(|index| enumerated_entries[*index].clone())
             .collect();
@@ -920,8 +925,7 @@ impl Iterator for LSMIterator {
         if pushed {
             self.memory_offset = copy_offsets.pop().unwrap() as usize;
             self.offsets = copy_offsets;
-        }
-        else {
+        } else {
             self.offsets = copy_offsets;
         }
 

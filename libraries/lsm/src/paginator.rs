@@ -4,7 +4,7 @@ use crate::lsm::ScanType;
 
 /// A Paginator provides paginated access to entries in an LSM (Log-Structured Merge) tree.
 pub struct Paginator<'a>{
-    lsm: &'a LSM,
+    lsm: &'a mut LSM,
     cached_entry_index: usize,
     cached_entries: Vec<(Box<[u8]>, MemoryEntry)>
 }
@@ -19,7 +19,7 @@ impl<'a> Paginator<'a> {
     /// # Returns
     ///
     /// A new Paginator instance.
-    pub fn new(lsm: &'a LSM) -> Self {
+    pub fn new(lsm: &'a mut LSM) -> Self {
         Self {
             lsm,
             cached_entry_index: 0,
