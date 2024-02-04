@@ -36,6 +36,8 @@ pub fn initializer_menu() {
         dbconfig
             .save(CONFIG_FILE_PATH)
             .expect("Failed to save default configuration.");
+    } else {
+        dbconfig = DBConfig::load(CONFIG_FILE_PATH).expect("Failed to load configuration");
     }
 
     clearscreen::clear().expect("Failed to clear screen.");
