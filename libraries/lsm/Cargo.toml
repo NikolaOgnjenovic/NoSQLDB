@@ -1,0 +1,23 @@
+[package]
+name = "lsm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors = ["Mihajlo Orlović", "Luka Bursać", "Nikola Ognjenović"]
+
+[dependencies]
+segment_elements = { path = "../segment_elements" }
+skip_list = { path = "../skip_list" }
+b_tree = { path = "../b_tree" }
+write_ahead_log = { path = "../write_ahead_log" }
+db_config = { path = "../db_config" }
+bloom_filter = { path = "../bloom_filter" }
+merkle_tree = { path = "../merkle_tree" }
+compression = { path = "../compression" }
+lru_cache = { path = "../lru_cache" }
+crc = "3.0.1"
+threadpool = "1.8.1"
+num-traits = "0.2.14"
+
+[dev-dependencies]
+tempfile = "3.9.0"

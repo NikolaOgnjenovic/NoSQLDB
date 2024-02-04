@@ -1,3 +1,5 @@
+mod menus;
+use crate::menus::initializer_menu::initializer_menu;
 fn main() {
-    println!("Hello, world!");
+    initializer_menu()
 }

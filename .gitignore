@@ -1,2 +1,12 @@
 /target
+**/.idea/
+**/Cargo.lock/
+**/.vs/
 Cargo.lock
+**/*.json
+**/*.log
+**/*.num
+**/*.db
+/wal
+/sstables
+**/*.bin

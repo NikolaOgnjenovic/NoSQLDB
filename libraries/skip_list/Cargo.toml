@@ -1,0 +1,14 @@
+﻿[package]
+name = "skip_list"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors = ["Mihajlo Orlović", "Luka Bursać"]
+
+[dependencies]
+segment_elements = { path = "../segment_elements" }
+bloom_filter = { path = "../bloom_filter" }
+rand = "0.8.5"
+
+[dev-dependencies]
+peak_alloc = "0.2.0"
