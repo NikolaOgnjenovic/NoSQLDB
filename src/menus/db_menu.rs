@@ -8,6 +8,10 @@ use crate::menus::bloom_filter_menu::bloom_filter_menu;
 use crate::menus::count_min_sketch_menu::count_min_sketch_menu;
 use crate::menus::{get_input_u8, UserMenu};
 use crate::menus::hyperloglog_menu::hyperloglog_menu;
+use crate::menus::prefix_iter_menu::prefix_iter_menu;
+use crate::menus::prefix_scan_menu::prefix_scan_menu;
+use crate::menus::range_iter_menu::range_iter_menu;
+use crate::menus::range_scan_menu::range_scan_menu;
 
 #[derive(Sequence)]
 enum DBMenu {
@@ -18,6 +22,10 @@ enum DBMenu {
     CountMinSketch,
     HyperLogLog,
     SimHash,
+    PrefixScan,
+    RangeScan,
+    PrefixIter,
+    RangeIter,
     Exit,
 }
 
@@ -30,6 +38,10 @@ impl_menu!(
     DBMenu::CountMinSketch, "CountMinSketch".blink(),
     DBMenu::HyperLogLog, "HyperLogLog".blink(),
     DBMenu::SimHash, "SimHash".blink(),
+    DBMenu::PrefixScan, "Prefix scan".blink(),
+    DBMenu::RangeScan, "Range scan".blink(),
+    DBMenu::PrefixIter, "Prefix iterator".blink(),
+    DBMenu::RangeIter, "Range iterator".blink(),
     DBMenu::Exit, "Exit".red().italic()
 );
 
@@ -72,9 +84,17 @@ pub fn db_menu(dbconfig: &mut DBConfig) {
                 }
                 let key = &key.unwrap();
 
-                match db.get(key).ok() {
-                    Some(value) => println!("Value found: {:?}", value),
-                    None => println!("Value not found for the given key."),
+                match db.get(key) {
+                    Ok(no_err) => {
+                        match no_err {
+                            Some(value) => {
+                                let value_string = String::from_utf8_lossy(&value);
+                                println!("Found value: {}", value_string);
+                            },
+                            None => println!("Value not found for the given key."),
+                        }
+                    },
+                    Err(e) => eprintln!("Error occurred while getting data: {}", e)
                 }
             }
             DBMenu::Delete => {
@@ -92,11 +112,8 @@ pub fn db_menu(dbconfig: &mut DBConfig) {
                 }
             }
             DBMenu::BloomFilter => bloom_filter_menu(&mut db),
-
             DBMenu::CountMinSketch => count_min_sketch_menu(&mut db),
-
             DBMenu::HyperLogLog => hyperloglog_menu(&mut db),
-
             DBMenu::SimHash => {
                  clearscreen::clear().expect("Failed to clear screen.");
 
@@ -110,6 +127,10 @@ pub fn db_menu(dbconfig: &mut DBConfig) {
 
                 println!("Hamming distance of 2 inputs is: {}", db.sim_hash_calculate_hamming_distance(&*data1, &*data2));
             }
+            DBMenu::PrefixScan => { prefix_scan_menu(&mut db); }
+            DBMenu::RangeScan => { range_scan_menu(&mut db); }
+            DBMenu::PrefixIter => { prefix_iter_menu(&mut db); }
+            DBMenu::RangeIter => { range_iter_menu(&mut db); }
             DBMenu::Exit => {
                 println!("Exiting...");
                 db.shut_down();

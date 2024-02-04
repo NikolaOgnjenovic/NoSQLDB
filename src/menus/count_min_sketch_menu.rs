@@ -27,16 +27,15 @@ pub fn count_min_sketch_menu(db: &mut DB) {
         match CountMinSketchMenu::get_menu() {
             CountMinSketchMenu::Create => {
                 clearscreen::clear().expect("Failed to clear screen.");
-                let probability = get_input_f64("Enter probability: (0.001-1");
+                let probability = get_input_f64("Enter probability: (0.001-1)");
                 let tolerance = get_input_f64("Enter tolerance: (0.001-1)");
-                let key = get_input_u8("Enter key: ");
+                let key = get_input_u8("Enter count min sketch associated key: ");
                 if key.is_none() {
                     println!("Failed to serialize key into bytes.");
                     continue;
                 }
-                let key = &key.unwrap();
 
-                match db.count_min_sketch_create(key, probability, tolerance) {
+                match db.count_min_sketch_create(key.as_ref().unwrap(), probability, tolerance) {
                     Ok(_) => println!("CountMinSketch created."),
                     Err(err) => eprintln!("Error during creation/retrieval: {}", err),
                 }

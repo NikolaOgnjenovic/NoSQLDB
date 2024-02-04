@@ -27,16 +27,15 @@ pub fn bloom_filter_menu(db: &mut DB) {
         match BloomFilterMenu::get_menu() {
             BloomFilterMenu::CreateRetrieve => {
                 clearscreen::clear().expect("Failed to clear screen.");
-                let probability = get_input_f64("Enter probability: (0.001-1");
+                let probability = get_input_f64("Enter probability: (0.001-1)");
                 let cap = get_input_usize("Enter capacity: (10k-100mil)");
-                let key = get_input_u8("Enter key: ");
+                let key = get_input_u8("Enter bloom filter associated key: ");
                 if key.is_none() {
                     println!("Failed to serialize key into bytes.");
                     continue;
                 }
-                let key = &key.unwrap();
 
-                match db.bloom_filter_create(key, probability, cap) {
+                match db.bloom_filter_create(key.as_ref().unwrap(), probability, cap) {
                     Ok(_) => println!("BloomFilter created."),
                     Err(err) => eprintln!("Error during creation/retrieval: {}", err),
                 }

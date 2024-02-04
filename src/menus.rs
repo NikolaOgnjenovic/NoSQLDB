@@ -4,6 +4,10 @@ mod count_min_sketch_menu;
 mod customize_menu;
 mod hyperloglog_menu;
 mod bloom_filter_menu;
+mod prefix_scan_menu;
+mod range_scan_menu;
+mod range_iter_menu;
+mod prefix_iter_menu;
 
 
 use std::io;
@@ -27,6 +31,7 @@ macro_rules! impl_menu {
 
         impl std::fmt::Display for $menu {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                #[allow(unreachable_patterns)]
                 match self {
                     $(
                         $op => write!(f, "{}", $op_msg),
@@ -82,7 +87,7 @@ fn get_input_with_range(prompt_message: &str, min: usize, max: usize) -> usize {
 fn get_input_usize(prompt_message: &str) -> Option<usize> {
     println!("{}", prompt_message);
     let mut input = String::new();
-    std::io::stdin().read_line(&mut input).expect("Failed to read line");
+    io::stdin().read_line(&mut input).expect("Failed to read line");
     input.trim().parse::<usize>().ok()
 }
 
