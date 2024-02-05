@@ -82,7 +82,7 @@ impl LSM {
     pub fn new(dbconfig: &DBConfig) -> Result<Self, Box<dyn Error>> {
         let lru_cache = LRUCache::new(dbconfig.cache_max_size);
         let mem_pool = MemoryPool::new(dbconfig)?;
-        let wal = WriteAheadLog::new(dbconfig)?;
+        let wal = WriteAheadLog::from_dir(&dbconfig)?;
 
         let mut sstable_directory_names = vec![vec![]; dbconfig.lsm_max_level];
 
@@ -706,7 +706,6 @@ impl LSM {
 
         let mut new_lsm = LSM::new(&dbconfig)?;
         new_lsm.mem_pool = mem_pool;
-        new_lsm.wal = WriteAheadLog::from_dir(&dbconfig)?;
 
         for table in tables_to_be_flushed {
             new_lsm.flush(table)?;

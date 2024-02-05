@@ -55,13 +55,15 @@ impl WriteAheadLog {
 
         match read_dir(&dbconfig.write_ahead_log_dir) {
             Ok(dir) => {
-                for path_buf in dir
+                let mut sorted_dirs: Vec<PathBuf> = dir
                     .map(|dir_entry| dir_entry.unwrap().path())
                     .filter(|file| match file.extension() {
                         Some(ext) => ext == "log",
                         None => false,
                     })
-                {
+                    .collect();
+                sorted_dirs.sort();
+                for path_buf in sorted_dirs {
                     files.push_back(WALFile::open(path_buf)?);
                 }
             }
